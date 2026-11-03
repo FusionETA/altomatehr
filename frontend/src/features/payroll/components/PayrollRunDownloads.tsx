@@ -1,8 +1,7 @@
 import { useMemo, useState } from "react";
 import { Download, FileText, LoaderCircle, Mail, X } from "lucide-react";
 import {
-  downloadAllowanceReport,
-  downloadDeductionReport,
+  downloadAllowanceDeductionZip,
   downloadAbPayTimesheet,
   downloadAllPayslips,
   downloadBankFile,
@@ -16,6 +15,7 @@ import {
   downloadTp1Claims,
   downloadPerkesoSkbbkTxt,
   downloadPerkesoTxt,
+  downloadStatutoryZip,
   emailRunPayslips,
   getPayrollSettings,
   type PayrollRun,
@@ -65,10 +65,18 @@ type Item = {
   // Where it is uploaded, when it is uploaded anywhere. Shown beside the
   // title so an admin can find the right file for the portal they have open.
   portal: string | null;
-  download: (runId: string, ctx: DownloadContext) => Promise<{ blob: Blob; fileName: string }>;
+  // `note` is something to say beside the row once it's saved — what a zip
+  // left out, say.
+  download: (
+    runId: string,
+    ctx: DownloadContext,
+  ) => Promise<{ blob: Blob; fileName: string; note?: string }>;
   // The same document as an Excel workbook, when it comes in both. The row
   // then offers "PDF" and "Excel" buttons, and ticking it downloads both.
   downloadXlsx?: (runId: string) => Promise<{ blob: Blob; fileName: string }>;
+  // The file's key in the statutory zip, for the four agency uploads that
+  // the zip button bundles.
+  zipKey?: string;
 };
 
 // Always offered, whatever the company's payroll bank: the people the bank file
@@ -84,11 +92,13 @@ const MANUAL_PAYMENTS_ITEM: Item = {
   download: (runId) => downloadManualPayments(runId),
 };
 
-// What the bank files need beyond the run itself. Only Hong Leong reads the
-// reference; the date reaches every format.
+// What the bank files need beyond the run itself. Hong Leong and OCBC read the
+// reference, OCBC the tape ID and ID check; the date reaches every format.
 type DownloadContext = {
   paymentDate: string;
   recipientReference: string;
+  tapeId: string;
+  idCheck: boolean;
 };
 
 const ITEMS: Item[] = [
@@ -103,22 +113,13 @@ const ITEMS: Item[] = [
     downloadXlsx: (runId) => downloadPayrollSummaryXlsx(runId),
   },
   {
-    key: "allowances",
+    key: "allowances-deductions",
     group: "REPORTS",
-    title: "Allowance Report (Excel)",
+    title: "Allowance & Deduction Reports (ZIP)",
     description:
-      "Every allowance on the run — one row per employee, one column per allowance, with totals. Benefits in kind are listed but not counted as cash.",
+      "Both Excel reports in one zip — one row per employee, one column per allowance or deduction, with totals. Deductions are those other than EPF, SOCSO, EIS and PCB: loans, unpaid leave, advances.",
     portal: null,
-    download: (runId) => downloadAllowanceReport(runId),
-  },
-  {
-    key: "deductions",
-    group: "REPORTS",
-    title: "Deduction Report (Excel)",
-    description:
-      "Deductions other than EPF, SOCSO, EIS and PCB — loans, unpaid leave, advances — one row per employee, one column per deduction. Unpaid leave and advances are listed but not totalled; the payslip takes them off gross pay.",
-    portal: null,
-    download: (runId) => downloadDeductionReport(runId),
+    download: (runId) => downloadAllowanceDeductionZip(runId),
   },
   {
     key: "schedule",
@@ -146,6 +147,7 @@ const ITEMS: Item[] = [
       "Bulk-upload CSV with EPF number, IC, name, wage, and both contributions.",
     portal: "KWSP i-Akaun (Majikan)",
     download: (runId) => downloadEpfCsv(runId),
+    zipKey: "epf",
   },
   {
     key: "perkeso",
@@ -155,6 +157,7 @@ const ITEMS: Item[] = [
       "Combined SOCSO + EIS upload (278-char fixed-width per PERKESO spec v1.0). Use this for periods before Jun 2026, or during the v1/v2 grace window (Jun-Sep 2026).",
     portal: "PERKESO ASSIST Portal",
     download: (runId) => downloadPerkesoTxt(runId),
+    zipKey: "socso-eis",
   },
   {
     key: "perkeso-skbbk",
@@ -164,6 +167,7 @@ const ITEMS: Item[] = [
       "Combined SOCSO + EIS + SKBBK (LINDUNG 24 Jam) upload (278-char fixed-width per PERKESO ASSIST 2.0 spec). Mandatory from Jun 2026 onward; until then PERKESO accepts either format.",
     portal: "PERKESO ASSIST 2.0 Portal",
     download: (runId) => downloadPerkesoSkbbkTxt(runId),
+    zipKey: "socso-eis-skbbk",
   },
   {
     key: "pcb",
@@ -172,6 +176,7 @@ const ITEMS: Item[] = [
     description: "Monthly tax deduction remittance, LHDN's CP39 fixed-width format.",
     portal: "LHDN e-PCB",
     download: (runId) => downloadPcbTxt(runId),
+    zipKey: "pcb",
   },
   {
     key: "tp1-claims",
@@ -287,6 +292,23 @@ function bankItems(bankName: string | null | undefined): Item[] {
         },
       ];
 
+    case "OcbcVelocityGiroTxt":
+      return [
+        {
+          key: "bank",
+          group: "BANK",
+          title: "OCBC Velocity GIRO (Payroll)",
+          description: `Fixed-width GIRO file for Velocity — every employee's bank routed by OCBC's own routing ID, OCBC staff included. ${refusedByServer}`,
+          portal: "Velocity@ocbc → GIRO file upload",
+          download: (runId, ctx) =>
+            downloadBankFile(runId, ctx.paymentDate, {
+              recipientReference: ctx.recipientReference,
+              tapeId: ctx.tapeId,
+              idCheck: ctx.idCheck,
+            }),
+        },
+      ];
+
     default:
       // "Other" and unset both produce no file. Saying so here beats a row
       // that downloads a 409 — but they are different problems, so the
@@ -393,6 +415,9 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
   // comes down while the CP39 refuses for a missing tax number, and one
   // shared error line would hide which needs fixing.
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // What the statutory zip left out, or why there was none.
+  const [zipNote, setZipNote] = useState<string | null>(null);
+  const [notes, setNotes] = useState<Record<string, string>>({});
 
   // Emailing is its own action, not a download — it can half-succeed the
   // same way a download batch does (one address bounces, the rest don't),
@@ -412,9 +437,23 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
   // Hong Leong makes this mandatory and nothing in payroll data implies it —
   // it is what the employee sees on their own bank statement. Prefilled with
   // the period, which is what an admin types anyway, but still theirs to edit.
-  const [recipientReference, setRecipientReference] = useState(
-    () => `SALARY ${run.periodLabel}`.toUpperCase().slice(0, 20),
+  // The 3-letter month, as the server's own default: "SALARY SEPTEMBER 2026"
+  // is 21 characters and would lose its last digit to the 20-character limit.
+  const [recipientReference, setRecipientReference] = useState(() =>
+    `SALARY ${new Date(Date.UTC(run.periodYear, run.periodMonth - 1, 1)).toLocaleString("en", {
+      month: "short",
+      timeZone: "UTC",
+    })} ${run.periodYear}`
+      .toUpperCase()
+      .slice(0, 20),
   );
+
+  // OCBC: Tape ID must differ between files with the same payment date from
+  // the same account (a second run paid that day takes 002). ID check asks
+  // the employee's bank to match the IC to the account — safer, but OCBC
+  // warns it rejects more payments, so it starts off.
+  const [tapeId, setTapeId] = useState("001");
+  const [idCheck, setIdCheck] = useState(false);
 
   // Which bank file this org gets is a setting, so the rows are not known
   // until it loads. Cached, so reopening the modal doesn't re-fetch.
@@ -447,6 +486,7 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
     [bankName, abPayEnabled, imported],
   );
   const needsReference = formatFor(bankName) === "HlbConnect";
+  const isOcbc = formatFor(bankName) === "OcbcVelocityGiroTxt";
   // Whether this company's payroll bank produces an upload file at all.
   const hasBankFile = bankItems(bankName).length > 0;
   // CIMB's Excel template has no value date — it's set in BizChannel at upload.
@@ -465,7 +505,7 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
     [items],
   );
 
-  const context: DownloadContext = { paymentDate, recipientReference };
+  const context: DownloadContext = { paymentDate, recipientReference, tapeId, idCheck };
 
   function toggle(key: string) {
     setPicked((current) => {
@@ -483,11 +523,12 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
     });
 
     try {
-      saveFile(
+      const file: Awaited<ReturnType<Item["download"]>> =
         format === "xlsx" && item.downloadXlsx
           ? await item.downloadXlsx(run.id)
-          : await item.download(run.id, context),
-      );
+          : await item.download(run.id, context);
+      saveFile(file);
+      noteFor(item, file.note);
     } catch (err) {
       setErrors((current) => ({
         ...current,
@@ -501,13 +542,22 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
 
   // One at a time rather than in parallel: each is a server-side render, and
   // eight at once is how a month-end download times one of them out.
+  function noteFor(item: Item, note: string | undefined) {
+    setNotes((current) => {
+      const { [item.key]: _gone, ...rest } = current;
+      return note ? { ...rest, [item.key]: note } : rest;
+    });
+  }
+
   async function getPicked() {
     setBusy("batch");
     setErrors({});
 
     for (const item of items.filter((entry) => picked.has(entry.key))) {
       try {
-        saveFile(await item.download(run.id, context));
+        const file = await item.download(run.id, context);
+        saveFile(file);
+        noteFor(item, file.note);
         if (item.downloadXlsx) saveFile(await item.downloadXlsx(run.id));
       } catch (err) {
         setErrors((current) => ({
@@ -521,9 +571,53 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
     setBusy(null);
   }
 
+  // The four agency uploads in one zip. A file the server couldn't produce is
+  // left out, and its row shows why — the reason comes from asking for that
+  // file alone, so it reads exactly as a single download's refusal does.
+  async function getStatutoryZip() {
+    const zipped = items.filter((item) => item.zipKey);
+    setBusy("statutory-zip");
+    setZipNote(null);
+    setErrors((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([key]) => !zipped.some((item) => item.key === key)),
+      ),
+    );
+
+    let missing = zipped;
+    let zipError: string | null = null;
+    try {
+      const { file, skipped } = await downloadStatutoryZip(run.id);
+      saveFile(file);
+      missing = zipped.filter((item) => skipped.includes(item.zipKey!));
+    } catch (err) {
+      zipError = err instanceof Error ? err.message : "Could not produce the statutory files.";
+    }
+
+    for (const item of missing) {
+      try {
+        await item.download(run.id, context);
+      } catch (err) {
+        setErrors((current) => ({
+          ...current,
+          [item.key]:
+            err instanceof Error ? err.message : `Could not produce the ${item.title}.`,
+        }));
+      }
+    }
+
+    if (zipError) setZipNote(zipError);
+    else if (missing.length > 0)
+      setZipNote(
+        `Downloaded ${zipped.length - missing.length} of ${zipped.length} files. ` +
+          `${missing.length === 1 ? "The file" : "The files"} left out ${missing.length === 1 ? "says" : "say"} why below.`,
+      );
+    setBusy(null);
+  }
+
   async function sendAllPayslips() {
     const ok = await confirm({
-      title: `Email every payslip on ${run.periodLabel}?`,
+      title: `Email every payslip on ${run.label}?`,
       message: "Each employee is sent their own payslip. This can't be recalled once sent.",
       confirmLabel: "Send payslips",
     });
@@ -544,12 +638,12 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
   const allPicked = picked.size > 0 && picked.size === items.length;
 
   return (
-    <ModalPortal label={`Download files for ${run.periodLabel}`} onClose={onClose}>
+    <ModalPortal label={`Download files for ${run.label}`} onClose={onClose}>
       {confirmDialog}
       <header className="flex items-start justify-between gap-4 border-b border-border/60 p-6">
         <div>
           <h2 className="text-xl font-semibold text-foreground">
-            Download files — {run.periodLabel}
+            Download files — {run.label}
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             {imported
@@ -588,9 +682,29 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
         <div className="space-y-5">
           {grouped.map(({ group, items }) => (
             <section key={group} className="space-y-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {GROUP_LABELS[group]}
-              </h3>
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {GROUP_LABELS[group]}
+                </h3>
+                {group === "STATUTORY" && items.some((item) => item.zipKey) ? (
+                  <button
+                    type="button"
+                    className={BUTTON_GHOST_SM}
+                    disabled={busy !== null}
+                    onClick={() => void getStatutoryZip()}
+                  >
+                    {busy === "statutory-zip" ? (
+                      <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+                    ) : (
+                      <Download className="size-3.5" aria-hidden />
+                    )}
+                    Download EPF, SOCSO &amp; PCB (zip)
+                  </button>
+                ) : null}
+              </div>
+              {group === "STATUTORY" && zipNote ? (
+                <p className="text-xs font-medium text-destructive">{zipNote}</p>
+              ) : null}
 
               {/* The bank file writes this date into the sheet and into the
                   filename the portal parses, so it is chosen here rather than
@@ -611,8 +725,9 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
                   </div>
 
                   {/* Hong Leong refuses the file without one, so it is asked
-                      for here rather than discovered as a 409. */}
-                  {needsReference ? (
+                      for here rather than discovered as a 409. OCBC takes it
+                      too, but falls back to "SALARY <MON> <YEAR>". */}
+                  {needsReference || isOcbc ? (
                     <div className="w-56">
                       <label className={`${LABEL} text-xs`} htmlFor="recipientReference">
                         Recipient reference
@@ -629,6 +744,41 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
                         What your employees see on their bank statement. Max 20 characters.
                       </p>
                     </div>
+                  ) : null}
+
+                  {isOcbc ? (
+                    <>
+                      <div className="w-28">
+                        <label className={`${LABEL} text-xs`} htmlFor="tapeId">
+                          Tape ID
+                        </label>
+                        <input
+                          id="tapeId"
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={3}
+                          className={INPUT_SM}
+                          value={tapeId}
+                          onChange={(e) => setTapeId(e.target.value.replace(/\D/g, ""))}
+                        />
+                        <p className={`${HINT} text-[11px]`}>001–999, new for each file on the same date.</p>
+                      </div>
+                      <label className="flex max-w-xs items-start gap-2 pb-1 text-xs text-foreground">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5"
+                          checked={idCheck}
+                          onChange={(e) => setIdCheck(e.target.checked)}
+                        />
+                        <span>
+                          <span className="font-semibold">ID check</span>
+                          <span className={`${HINT} block text-[11px]`}>
+                            The employee's bank matches their IC or passport to the account before crediting.
+                            Safer, but mismatches get rejected.
+                          </span>
+                        </span>
+                      </label>
+                    </>
                   ) : null}
                 </div>
               ) : null}
@@ -678,6 +828,10 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
                         {errors[item.key] ? (
                           <p className="mt-1 text-xs font-medium text-destructive">
                             {errors[item.key]}
+                          </p>
+                        ) : notes[item.key] ? (
+                          <p className="mt-1 text-xs font-medium text-foreground">
+                            {notes[item.key]}
                           </p>
                         ) : null}
                       </div>

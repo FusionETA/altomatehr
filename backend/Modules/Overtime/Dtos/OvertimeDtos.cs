@@ -17,6 +17,11 @@ public class OvertimeRequestDto
     public string StartAt { get; set; } = string.Empty;
     public string EndAt { get; set; } = string.Empty;
     public int RequestedMinutes { get; set; }
+
+    // One of the company's own overtime types, picked on the request; null =
+    // automatic (sorted by the calendar). The name is as the type is called now.
+    public string? OvertimeTypeId { get; set; }
+    public string? OvertimeTypeName { get; set; }
     public string Reason { get; set; } = string.Empty;
     // The first before/after file — kept for older clients. New ones read the
     // full lists below.
@@ -52,6 +57,12 @@ public class CreateOvertimeRequestDto
 
     [Required, MaxLength(1000)]
     public string Reason { get; set; } = string.Empty;
+
+    // One of the company's own overtime types this employee's policy offers
+    // (GET /overtime/types). Leave out for automatic: payroll sorts the hours
+    // into normal day, rest day or public holiday by the calendar.
+    [MaxLength(40)]
+    public string? OvertimeTypeId { get; set; }
 
     // Up to OvertimeRequest.MaxAttachmentsPerSide before-work files, each
     // uploaded first through POST /overtime/photo. At least one is required.

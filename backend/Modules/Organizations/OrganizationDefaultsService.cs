@@ -5,6 +5,7 @@ using AltomateHR.Api.Modules.Projects.Entities;
 using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Modules.Teams.Entities;
 using AltomateHR.Api.Modules.Employees.Entities;
+using AltomateHR.Api.Modules.Accounts;
 
 namespace AltomateHR.Api.Modules.Organizations;
 
@@ -29,9 +30,9 @@ public interface IOrganizationDefaultsService
 }
 
 public readonly record struct OrganizationDefaultsResult(
-    int PoliciesCreated, bool ProjectCreated, bool TeamCreated)
+    int PoliciesCreated, bool ProjectCreated, bool TeamCreated, int AccountsCreated = 0)
 {
-    public bool AnythingCreated => PoliciesCreated > 0 || ProjectCreated || TeamCreated;
+    public bool AnythingCreated => PoliciesCreated > 0 || ProjectCreated || TeamCreated || AccountsCreated > 0;
 }
 
 public class OrganizationDefaultsService : IOrganizationDefaultsService
@@ -39,10 +40,16 @@ public class OrganizationDefaultsService : IOrganizationDefaultsService
     private readonly IEmployeePolicyRepository _policies;
     private readonly IProjectRepository _projects;
     private readonly ITeamRepository _teams;
+    // Optional so hand-built instances in tests need not supply it.
+    private readonly IChartOfAccountRepository? _accounts;
+    private readonly Overtime.IOvertimeTypeRepository? _overtimeTypes;
 
     public OrganizationDefaultsService(
-        IEmployeePolicyRepository policies, IProjectRepository projects, ITeamRepository teams)
+        IEmployeePolicyRepository policies, IProjectRepository projects, ITeamRepository teams,
+        IChartOfAccountRepository? accounts = null, Overtime.IOvertimeTypeRepository? overtimeTypes = null)
     {
+        _accounts = accounts;
+        _overtimeTypes = overtimeTypes;
         _policies = policies;
         _projects = projects;
         _teams = teams;
@@ -111,11 +118,40 @@ public class OrganizationDefaultsService : IOrganizationDefaultsService
             teamCreated = true;
         }
 
-        return new OrganizationDefaultsResult(policiesCreated, projectCreated, teamCreated);
+        // Claim item types, so claims work before anyone sets up accounts. A
+        // new company has no Xero yet; one that has any account already keeps
+        // its own list.
+        var accountsCreated = 0;
+        if (_accounts is not null
+            && !(await _accounts.GetAllAsync()).Any(a => a.OrganizationId == organizationId))
+        {
+            foreach (var item in DefaultClaimItemTypes.All)
+            {
+                await _accounts.AddAsync(DefaultClaimItemTypes.ToAccount(item, organizationId, now));
+                accountsCreated++;
+            }
+        }
+
+        // The three built-in overtime types the policies' rates fall back to.
+        if (_overtimeTypes is not null
+            && !(await _overtimeTypes.GetAllAsync()).Any(t => t.OrganizationId == organizationId))
+        {
+            await _overtimeTypes.AddRangeAsync(Overtime.OvertimeTypeService.BuiltIns.Select(b => new Overtime.Entities.OvertimeType
+            {
+                OrganizationId = organizationId,
+                Name = b.Name,
+                Kind = b.Kind,
+                Multiplier = b.Multiplier,
+                CreatedAt = now,
+                UpdatedAt = now,
+            }));
+        }
+
+        return new OrganizationDefaultsResult(policiesCreated, projectCreated, teamCreated, accountsCreated);
     }
 
-    // The legacy defaults, field for field: full module access, geofence on,
-    // selfie off, OT enabled at the statutory multipliers.
+    // The legacy defaults: full module access, geofence on, selfie off, OT
+    // enabled at the company's rates (the statutory multipliers to start).
     private static EmployeePolicy NewPolicy(
         string organizationId, string name, SalaryType salaryType, bool isDefault, DateTime now) => new()
     {
@@ -128,12 +164,8 @@ public class OrganizationDefaultsService : IOrganizationDefaultsService
         CanAccessLeave = true,
         RequireGeofence = true,
         RequireSelfie = false,
+        // OT rates left to the company's overtime types (1.5× / 2× / 3×).
         OtEnabled = true,
-        OtRateNormalDay = 1.50m,
-        OtRateRestDay = 2.00m,
-        OtRatePublicHoliday = 3.00m,
-        OtRateRestDayInShift = 1.00m,
-        OtRatePublicHolidayInShift = 2.00m,
         CreatedAt = now,
         UpdatedAt = now,
     };

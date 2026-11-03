@@ -48,10 +48,13 @@ public class InboundSsoService : IInboundSsoService
     private readonly IPartnerAuthStore _store;
     private readonly IDirectoryService _directory;
     private readonly IAuthService _auth;
+    private readonly TeamChat.ITeamChatAlerts? _teamChat;
 
     public InboundSsoService(
-        IPartnerAuthStore store, IDirectoryService directory, IAuthService auth)
+        IPartnerAuthStore store, IDirectoryService directory, IAuthService auth,
+        TeamChat.ITeamChatAlerts? teamChat = null)
     {
+        _teamChat = teamChat;
         _store = store;
         _directory = directory;
         _auth = auth;
@@ -89,7 +92,10 @@ public class InboundSsoService : IInboundSsoService
 
         // Mints the same access + refresh pair a login does, for that org —
         // marked as SSO, so the app hides what Altomate manages instead.
-        return await _auth.SwitchOrgAsync(data.UserId, data.OrganizationId, sso: true);
+        var result = await _auth.SwitchOrgAsync(data.UserId, data.OrganizationId, sso: true);
+        if (result is not null && _teamChat is not null)
+            await _teamChat.SignedInAsync(data.UserId, membership.Role, data.OrganizationId, "Altomate SSO");
+        return result;
     }
 
     // The account must be an ADMIN OR OWNER of this org. Matched on the

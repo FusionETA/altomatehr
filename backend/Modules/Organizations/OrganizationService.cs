@@ -25,6 +25,10 @@ public class OrganizationService : IOrganizationService
     private readonly Policies.IEmployeePolicyRepository? _policies;
     private readonly AltomateHR.Api.Common.ICurrentUser? _currentUser;
 
+    // Only for editing an admin's name and email, which live on the account.
+    private readonly Auth.IUserRepository? _users;
+    private readonly TeamChat.ITeamChatAlerts? _teamChat;
+
     public OrganizationService(
         IOrganizationRepository repo,
         IOrganizationMembershipRepository memberships,
@@ -34,8 +38,12 @@ public class OrganizationService : IOrganizationService
         IDirectoryService directory,
         IOrganizationDefaultsService defaults,
         Policies.IEmployeePolicyRepository? policies = null,
-        AltomateHR.Api.Common.ICurrentUser? currentUser = null)
+        AltomateHR.Api.Common.ICurrentUser? currentUser = null,
+        Auth.IUserRepository? users = null,
+        TeamChat.ITeamChatAlerts? teamChat = null)
     {
+        _teamChat = teamChat;
+        _users = users;
         _policies = policies;
         _currentUser = currentUser;
         _repo = repo;
@@ -50,7 +58,18 @@ public class OrganizationService : IOrganizationService
     public async Task<OrganizationDto?> GetByIdAsync(string organizationId)
     {
         var org = await _repo.GetByIdAsync(organizationId);
-        return org is null ? null : ToDto(org);
+        if (org is null) return null;
+
+        return await WithXeroAsync(org);
+    }
+
+    // The Xero status reads the caller's current org; only report it for that one.
+    private async Task<OrganizationDto> WithXeroAsync(Organization org)
+    {
+        var dto = ToDto(org);
+        if (org.Id == _currentUser?.OrganizationId)
+            dto.XeroConnected = (await _xero.GetStatusAsync()).Connected;
+        return dto;
     }
 
     public async Task<IReadOnlyList<AdminAccessDto>> ListAdminsAsync()
@@ -116,6 +135,47 @@ public class OrganizationService : IOrganizationService
             Metadata: new { membership.UserId }));
 
         return (false, null);
+    }
+
+    public async Task<(bool NotFound, string? Error, AdminAccessDto? Admin)> UpdateAdminDetailsAsync(
+        string userId, UpdateAdminDetailsDto dto)
+    {
+        var membership = await _memberships.GetForUserInCurrentOrgAsync(userId);
+        if (membership is null || _users is null
+            || !string.Equals(membership.Role, "Admin", StringComparison.OrdinalIgnoreCase))
+            return (true, null, null);
+
+        var user = await _users.GetByIdAsync(userId);
+        if (user is null) return (true, null, null);
+
+        var name = dto.Name.Trim();
+        var email = dto.Email.Trim();
+        if (name.Length == 0) return (false, "A name is required.", null);
+        if (email.Length == 0) return (false, "An email is required.", null);
+
+        var emailChanged = !string.Equals(email, user.Email, StringComparison.OrdinalIgnoreCase);
+        if (emailChanged)
+        {
+            if (await _users.GetByEmailAsync(email) is { } taken && taken.Id != userId)
+                return (false, "That email is already used by another account.", null);
+
+            if (await Employees.LoginEmailRule.RefusalAsync(_memberships, _currentUser, userId) is { } refusal)
+                return (false, refusal, null);
+        }
+
+        var previousEmail = user.Email;
+        user.Name = name;
+        user.Email = email;
+        await _users.UpdateAsync(user);
+
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.SettingsOrgUpdate,
+            emailChanged ? $"Changed admin {previousEmail}'s email to {email}" : $"Updated admin {email}'s name",
+            TargetType: "OrganizationMembership",
+            TargetId: membership.Id,
+            Metadata: new { membership.UserId, Name = name, PreviousEmail = previousEmail, Email = email }));
+
+        return (false, null, ToAccessDto(membership, user.Name, user.Email));
     }
 
     public async Task<AdminAccessDto?> SetAdminAccessAsync(string userId, SetAdminAccessDto dto)
@@ -255,11 +315,20 @@ public class OrganizationService : IOrganizationService
                 org.WorkingDays,
             }));
 
-        return ToDto(org);
+        return await WithXeroAsync(org);
     }
 
-    public async Task<OrganizationDto> CreateAsync(CreateOrganizationDto dto, string ownerUserId, bool viaSso = false)
+    public async Task<OrganizationDto> CreateAsync(
+        CreateOrganizationDto dto, string ownerUserId, bool viaSso = false, bool viaSupport = false)
     {
+        // The creator becomes the Owner. In support mode that's the support
+        // person, not the customer — so the company would vanish from the
+        // customer's switcher. Support → Create company sets the right Owner.
+        if (viaSupport)
+            throw new Auth.SupportModeActionException(
+                "You're in support mode, so this company would belong to you, not the customer. "
+                + "Use Support → Create company and enter the owner's email instead.");
+
         // As with Change password: an SSO session belongs to an account the
         // external platform provisions and pays for. A company created from it
         // would be one that platform never set up, so it's refused here, not
@@ -305,6 +374,7 @@ public class OrganizationService : IOrganizationService
         // discover why.
         await _defaults.EnsureForOrganizationAsync(org.Id, org.Name);
 
+        if (_teamChat is not null) await _teamChat.CompanyCreatedAsync(org.Id, ownerUserId, "AltomateHR");
         return ToDto(org);
     }
 
@@ -339,7 +409,7 @@ public class OrganizationService : IOrganizationService
                 XeroBillStage = xeroBillStage.ToString(),
             }));
 
-        return ToDto(org);
+        return await WithXeroAsync(org);
     }
 
     public async Task<OrganizationDto?> UpdatePlanAsync(string organizationId, UpdateOrgPlanDto dto)

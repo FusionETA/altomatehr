@@ -49,6 +49,7 @@ export function AddEmployeeModal({
       .catch(() => setNextNumber(null));
   }, []);
   const [jobTitle, setJobTitle] = useState("");
+  const [nickname, setNickname] = useState("");
   const [joinDate, setJoinDate] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -59,8 +60,12 @@ export function AddEmployeeModal({
   // The list holds real policies only, the default tagged, and starts on the
   // default — there is no separate "default policy" entry to pick. Until the
   // admin picks one, the org's default is what is shown and what is saved.
+  // An admin limited to some policies may not see the default (the list is
+  // only theirs): then it starts on their first policy, so the new hire lands
+  // where they can still see them.
   const activePolicies = policies.filter((p) => !p.isArchived);
-  const defaultPolicyId = activePolicies.find((p) => p.isDefault)?.id ?? NONE;
+  const defaultPolicyId =
+    activePolicies.find((p) => p.isDefault)?.id ?? activePolicies[0]?.id ?? NONE;
   const chosenPolicyId = policyId === NONE ? defaultPolicyId : policyId;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +84,7 @@ export function AddEmployeeModal({
         name: name.trim() || undefined,
         employeeNumber: employeeNumber.trim() || undefined,
         jobTitle: jobTitle.trim() || undefined,
+        nickname: nickname.trim() || undefined,
         joinDate: joinDate || undefined,
         dateOfBirth: dateOfBirth || undefined,
         sendWelcomeEmail: sendWelcome,
@@ -169,6 +175,20 @@ export function AddEmployeeModal({
                   placeholder="Optional"
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="add-nickname" className={LABEL}>
+                Nickname
+              </label>
+              <input
+                id="add-nickname"
+                className={INPUT}
+                maxLength={60}
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                placeholder="Optional — what colleagues call them"
+              />
             </div>
 
             <div className="space-y-2">

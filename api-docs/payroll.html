@@ -430,6 +430,14 @@
             </tbody>
           </table>
         </div>
+        <div class="callout">
+          <code>bik_tax_borne_by_employer</code> ("Tax Borne by Employer &ndash; previous year (perquisite)") is
+          normally added by the engine, not by you: on a person's first run of a year it carries the PCB the
+          company paid for them last year. It is non-cash, subject to PCB as additional remuneration only
+          (no EPF, SOCSO, EIS or HRDF). It is a different code from <code>wages_tax_borne_by_employer</code>,
+          which remains a <strong>cash</strong> line. See
+          <a href="payroll-runs.html#pcb-borne">PCB borne by the employer</a>.
+        </div>
 <pre><code>curl https://&lt;api-host&gt;/payroll/adjustment-categories \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
       </section>
@@ -469,7 +477,7 @@
               <tr><td><code>periodLabel</code></td><td>string</td><td>e.g. <code>"January 2026"</code>.</td></tr>
               <tr><td><code>grossPay</code>, <code>netPay</code></td><td>decimal</td><td></td></tr>
               <tr><td><code>epfEmployee</code>, <code>socsoEmployee</code>, <code>eisEmployee</code></td><td>decimal</td><td></td></tr>
-              <tr><td><code>pcb</code></td><td>decimal</td><td>Tax actually withheld — includes any Additional PCB.</td></tr>
+              <tr><td><code>pcb</code></td><td>decimal</td><td>Tax actually taken from the employee's pay — includes any Additional PCB and <strong>excludes PCB the company paid for them</strong> (<code>pcbBorneByEmployer</code> on the payslip). Not the same as <code>pcb</code> on the payslip detail, which still contains the borne part.</td></tr>
               <tr><td><code>submittedAt</code></td><td>string?</td><td>ISO timestamp the run went live.</td></tr>
             </tbody>
           </table>
@@ -488,7 +496,8 @@
           isn't ready, so "not yet" is visible. The form declares the whole January&ndash;December
           year, so it is <code>available</code> only once the company's payroll for that year is approved
           (<code>SUBMITTED</code>) <strong>from its first run of the year through December</strong>
-          &mdash; the company's runs, whoever was on them. That is all 12 months unless an admin set a
+          &mdash; the company's runs, whoever was on them. A month with several runs counts as approved only
+          once <em>every</em> run in it is <code>SUBMITTED</code>. That is all 12 months unless an admin set a
           later payroll start month (see <a href="#set-payroll-start">PUT /payroll/annual/start</a>)
           or a run exists for an earlier month, which pulls the start back.
           That holds for leavers too: someone who leaves can return the same year, so a form issued
@@ -570,16 +579,18 @@
               <tr><td><code>id</code>, <code>employeeProfileId</code>, <code>userId</code></td><td>string</td><td></td></tr>
               <tr><td><code>snapshotName</code>, <code>snapshotEmployeeNumber</code>, <code>snapshotPosition</code></td><td>string?</td><td>As they were when the run was generated.</td></tr>
               <tr><td><code>snapshotSalaryType</code>, <code>snapshotMonthlySalary</code>, <code>snapshotHourlyRate</code></td><td></td><td></td></tr>
-              <tr><td><code>basicPay</code>, <code>proratedPay</code>, <code>otPay</code></td><td>decimal</td><td></td></tr>
+              <tr><td><code>basicPay</code>, <code>proratedPay</code>, <code>otPay</code></td><td>decimal</td><td><code>otPay</code> is the month's total overtime pay, including <code>otCustom</code>.</td></tr>
+              <tr><td><code>otCustom</code></td><td>object[]</td><td>The company's own <a href="policies.html#overtime-types">overtime types</a> paid on this payslip, each <code>{ "typeId": string, "name": string, "hours": number, "multiplier": number, "amount": number }</code>. <code>name</code> and <code>multiplier</code> are as they were when the run was generated, so renaming or re-rating a type later does not change a payslip already made. <code>amount</code> is hours &times; the hourly rate &times; multiplier, rounded for display, and is <strong>already inside <code>otPay</code></strong>: don't add it again. These hours are not in <code>otNormalHours</code> / <code>otRestHours</code> / <code>otPublicHours</code>. Empty array when none.</td></tr>
               <tr><td><code>totalAllowances</code>, <code>totalReimbursements</code>, <code>totalDeductions</code>, <code>totalBenefitsInKind</code></td><td>decimal</td><td></td></tr>
               <tr><td><code>epfEmployee</code>, <code>epfEmployer</code>, <code>socsoEmployee</code>, <code>socsoEmployer</code>, <code>eisEmployee</code>, <code>eisEmployer</code>, <code>skbbkEmployee</code></td><td>decimal</td><td></td></tr>
               <tr><td><code>pcb</code>, <code>pcbNormal</code>, <code>pcbAdditional</code>, <code>voluntaryPcb</code>, <code>cp38</code>, <code>zakat</code>, <code>hrdf</code></td><td>decimal</td><td></td></tr>
+              <tr><td><code>pcbBorneByEmployer</code></td><td>decimal</td><td>The part of <code>pcb</code> the company paid instead of deducting it; <code>0.00</code> unless the employee's profile has <code>pcbBorneByEmployer</code> on. It is still inside <code>pcb</code> (and in the CP39 file), but is not taken from <code>netPay</code> and is added to <code>totalCostToEmployer</code>. See <a href="payroll-runs.html#pcb-borne">PCB borne by the employer</a>.</td></tr>
               <tr><td><code>pcbCalculationJson</code></td><td>string?</td><td>The LHDN formula decomposition, as a JSON string. Null for payslips generated before this feature shipped.</td></tr>
               <tr><td><code>grossPay</code>, <code>netPay</code></td><td>decimal</td><td><code>grossPay</code> is the statutory gross (what was earned).</td></tr>
-              <tr><td><code>grossShown</code></td><td>decimal</td><td><code>grossPay</code> less the deductions the company keeps (<code>deduct_miscellaneous</code>, <code>deduct_loan_repayment</code>), as the payroll screens and run summary show it. Display only; <code>grossPay</code> stays the figure EPF, SOCSO, EIS and PCB are worked on. Can be negative. See <a href="payroll-runs.html#payslip-object">the payslip object</a>. (The list row from <code>GET /payslips</code> does not carry it.)</td></tr>
-              <tr><td><code>totalCostToEmployer</code></td><td>decimal</td><td>Gross pay plus the employer EPF, SOCSO and EIS and HRDF, <strong>less any deduction the company keeps</strong> &mdash; the <code>deduct_loan_repayment</code> and <code>deduct_miscellaneous</code> categories (a loan or debt recovered from pay never leaves the company). Deductions passed on to someone else (PCB, CP38, zakat) stay in the cost. Imported (YTD) payslips follow the same rule.</td></tr>
+              <tr><td><code>grossShown</code></td><td>decimal</td><td><code>grossPay</code> less the deductions the company keeps (<code>deduct_miscellaneous</code>, <code>deduct_loan_repayment</code>), as the payroll screens and run summary show it. Worked out as <code>totalCostToEmployer</code> minus the employer EPF, SOCSO, EIS and HRDF and minus <code>pcbBorneByEmployer</code> (borne PCB is in the cost but was never pay). Display only; <code>grossPay</code> stays the figure EPF, SOCSO, EIS and PCB are worked on. Can be negative. See <a href="payroll-runs.html#payslip-object">the payslip object</a>. (The list row from <code>GET /payslips</code> does not carry it.)</td></tr>
+              <tr><td><code>totalCostToEmployer</code></td><td>decimal</td><td>Gross pay plus the employer EPF, SOCSO and EIS and HRDF, <strong>less any deduction the company keeps</strong> &mdash; the <code>deduct_loan_repayment</code> and <code>deduct_miscellaneous</code> categories (a loan or debt recovered from pay never leaves the company). Deductions passed on to someone else (PCB, CP38, zakat) stay in the cost. PCB the company pays for the employee (<code>pcbBorneByEmployer</code>) is added to it. Imported (YTD) payslips follow the same rule.</td></tr>
               <tr><td><code>statutoryWarnings</code></td><td>string[]</td><td></td></tr>
-              <tr><td><code>lineItems</code></td><td>array</td><td><code>{ id, kind, label, amount, category, pcbTaxableAmount, claimId, subjectToEpf, subjectToSocso, subjectToEis, subjectToPcb }</code> each.</td></tr>
+              <tr><td><code>lineItems</code></td><td>array</td><td><code>{ id, kind, label, amount, category, pcbTaxableAmount, claimId, subjectToEpf, subjectToSocso, subjectToEis, subjectToPcb }</code> each. A line settling unpaid leave from an earlier month has its month and days in the <code>label</code>; see <a href="payroll-runs.html#generate">Generate</a>.</td></tr>
             </tbody>
           </table>
         </div>
@@ -623,8 +634,9 @@
         <strong>Needs a real payroll profile.</strong> Creating a loan against an
         <code>employeeProfileId</code> with <code>hasPayrollProfile: false</code> (a placeholder)
         is refused — fill in that person's payroll details first.
-        <strong>Locked months never change:</strong> once a month is submitted or awaiting
-        approval, its installment is fixed; use Replan to re-spread what's left, not Update.
+        <strong>Locked months never change:</strong> once the borrower's own payslip for a month is in a
+        run that is submitted or awaiting approval, that month's installment is fixed (another
+        staff group's approved run in the same month does not lock it); use Replan to re-spread what's left, not Update.
         A loan that has started repaying cannot be deleted — cancel it instead, so the
         repayments already filed stay explained.
       </div>
@@ -874,12 +886,12 @@
           <table>
             <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
-              <tr><td><code>workingDaysRule</code></td><td>string</td><td><code>CALENDAR</code> or <code>TWENTY_SIX</code> — the ÷ divisor for the ordinary rate of pay.</td></tr>
+              <tr><td><code>workingDaysRule</code></td><td>string</td><td><code>CALENDAR</code> or <code>TWENTY_SIX</code> — the ÷ divisor for the ordinary rate of pay (overtime). It does not apply to unpaid leave, which is always docked at monthly salary ÷ the month's calendar days.</td></tr>
               <tr><td><code>defaultEpfEmployeeRate</code>, <code>defaultEpfEmployerRate</code></td><td>decimal</td><td>Percent.</td></tr>
               <tr><td><code>hrdfEnabled</code>, <code>hrdfRate</code></td><td>boolean, decimal?</td><td></td></tr>
               <tr><td><code>autoApplySocsoEisRelief</code></td><td>boolean</td><td></td></tr>
-              <tr><td><code>syncClaimsToXeroOnSubmit</code>, <code>syncPayrollToXeroOnSubmit</code>, <code>xeroMappingJson</code></td><td></td><td></td></tr>
-              <tr><td><code>payrollBankName</code>, <code>payorAccountHolderName</code>, <code>payorOrganisationCode</code>, <code>ecpPayorAccountNo</code>, <code>ecpPayorBic</code></td><td>string?</td><td>The payor side of the bank file. <code>payorOrganisationCode</code> is used by the Maybank file only (CIMB no longer needs it).</td></tr>
+              <tr><td><code>syncClaimsToXeroOnSubmit</code>, <code>syncPayrollToXeroOnSubmit</code>, <code>xeroMappingJson</code></td><td></td><td><code>xeroMappingJson</code> is a JSON string whose <code>accounts</code> object is keyed by slot name. The optional <code>taxBorneByEmployer</code> slot ("PCB borne by employer") is the expense account for PCB the company pays for staff; unset, that amount posts to <code>salary</code>. See <a href="payroll-runs.html#xero-preview">Xero journal preview</a>.</td></tr>
+              <tr><td><code>payrollBankName</code>, <code>payorAccountHolderName</code>, <code>payorOrganisationCode</code>, <code>ecpPayorAccountNo</code>, <code>ecpPayorBic</code></td><td>string?</td><td>The payor side of the bank file. <code>payorOrganisationCode</code> is used by the Maybank file only (CIMB no longer needs it). <code>ecpPayorAccountNo</code> is the debiting account for the Public Bank, Maybank and OCBC files. <code>payrollBankName</code> decides the bank-file layout; <code>"OCBC Bank (Malaysia) Berhad"</code> gives the OCBC Velocity GIRO TXT (see <a href="payroll-runs.html#doc-bank-file">bank file</a>).</td></tr>
               <tr><td><code>abPayEnabled</code></td><td>boolean</td><td>Read-only. <code>true</code> when the company is connected to ABPay (it has an active API key named &ldquo;ABPay&hellip;&rdquo;), which is what makes <a href="payroll-runs.html#doc-ab-pay-timesheet"><code>GET /payroll/runs/{id}/documents/ab-pay-timesheet</code></a> available. It follows the company's API keys; it is not a saved setting and <code>PUT /payroll/settings</code> ignores it.</td></tr>
               <tr><td><code>isConfigured</code></td><td>boolean</td><td><code>true</code> once the settings were saved (<code>PUT /payroll/settings</code>, i.e. Payroll &rarr; Settings &rarr; General) or set during onboarding. <code>false</code> = nobody has reviewed these yet, so they are the statutory defaults, even if a settings row already exists (for instance one created by <code>PUT /payroll/annual/start</code>).</td></tr>
               <tr><td><code>updatedAt</code></td><td>string?</td><td>ISO 8601. Last save of the settings; <code>null</code> while <code>isConfigured</code> is <code>false</code>.</td></tr>
@@ -967,7 +979,8 @@
         year: none can be produced until every required month of that year is <code>SUBMITTED</code>,
         through December. The required months start in January, or at the payroll start month an
         admin set, and an earlier run (even a draft) pulls the start back. A draft month anywhere
-        in the range holds the year back.
+        in the range holds the year back, and so does a month in which any one of several runs is
+        still a draft or awaiting approval.
         PCB 2(II) is the one exception — a statement of what has been deducted so far — and is
         available at any point in the year.
       </div>
@@ -1008,14 +1021,14 @@
             <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
               <tr><td><code>year</code>, <code>organizationName</code>, <code>employerNo</code></td><td></td><td><code>employerNo</code> is the TIN with letters/punctuation stripped.</td></tr>
-              <tr><td><code>submittedMonths</code></td><td>int[]</td><td>1–12, which months are approved.</td></tr>
+              <tr><td><code>submittedMonths</code></td><td>int[]</td><td>1–12, which months are approved &mdash; every run in the month is <code>SUBMITTED</code>.</td></tr>
               <tr><td><code>runMonths</code></td><td>int[]</td><td>1–12, months that have a run in any status (drafts included).</td></tr>
               <tr><td><code>startMonth</code></td><td>int</td><td>The first month the forms wait for this year: 1 (January) by default, or the configured start month. <code>13</code> when the configured start year is later than <code>year</code> (nothing is required beyond runs that exist).</td></tr>
               <tr><td><code>payrollStartYear</code>, <code>payrollStartMonth</code></td><td>int | null</td><td>The saved "payroll here started in" setting. <code>null</code> when unset.</td></tr>
               <tr><td><code>requiredMonths</code></td><td>int</td><td>How many months the forms wait for, from the first required month through December.</td></tr>
               <tr><td><code>missingMonths</code></td><td>int[]</td><td>Required months not yet approved, in order. Follows the required range, so it is not always the 1–12 gaps.</td></tr>
               <tr><td><code>canGenerate</code></td><td>boolean</td><td>Every required month is approved (and at least one exists) &mdash; the year-end forms would succeed.</td></tr>
-              <tr><td><code>employees</code></td><td>array</td><td>Per-employee year totals: <code>employeeProfileId</code>, <code>employeeName</code>, <code>employeeCode</code>, identity fields, <code>grossSalary</code>, <code>bonusAndCommission</code>, <code>totalBik</code>, <code>totalPcb</code>, <code>totalMtdRemitted</code>, <code>totalCp38</code>, <code>totalZakat</code>, <code>totalEpfEmployee</code>, <code>totalSocsoEmployee</code>, <code>totalEisEmployee</code>, <code>totalIncome</code>, and a <code>months</code> array of <code>{ month, pcb, cp38, zakat }</code>. (The full row also carries the EA form's own line-by-line figures.)</td></tr>
+              <tr><td><code>employees</code></td><td>array</td><td>Per-employee year totals: <code>employeeProfileId</code>, <code>employeeName</code>, <code>employeeCode</code>, identity fields, <code>grossSalary</code>, <code>bonusAndCommission</code>, <code>totalBik</code>, <code>totalPcb</code>, <code>totalMtdRemitted</code>, <code>totalCp38</code>, <code>totalZakat</code>, <code>totalEpfEmployee</code>, <code>totalSocsoEmployee</code>, <code>totalEisEmployee</code>, <code>totalIncome</code>, and a <code>months</code> array of <code>{ month, pcb, cp38, zakat, receipt }</code>, where <code>receipt</code> is <code>{ pcbReceiptNo, pcbReceiptDate, cp38ReceiptNo, cp38ReceiptDate }</code> (each nullable, dates ISO 8601) from the LHDN receipts of the run <em>that person</em> was paid in that month &mdash; a month with several runs can carry a different receipt per run &mdash; or <code>null</code>. (The full row also carries the EA form's own line-by-line figures.)</td></tr>
             </tbody>
           </table>
         </div>
@@ -1131,7 +1144,7 @@
       </section>
     </section>
 
-    <section class="section">
+    <section class="section" id="ytd-import">
       <h2>Year-to-date import</h2>
       <p>
         Seed payroll history when an org migrates mid-year, so the PCB engine has the
@@ -1143,7 +1156,9 @@
         overwritten (silently skipped — see <code>skippedMonths</code>); a month previously
         <code>IMPORTED</code> is replaced. Imported months land as <code>SUBMITTED</code>
         immediately — there is no draft step — because only submitted runs count toward
-        year-to-date.
+        year-to-date. An imported month can never be reverted to draft or generated
+        (<code>409</code>) and is not pulled back by an earlier month's revert; to correct
+        one, import it again.
       </div>
 
       <section class="endpoint">
@@ -1174,6 +1189,7 @@
             </tbody>
           </table>
         </div>
+        <p>The HRDF column is read under any of these headers, case-insensitive (extra spaces ignored), so a history file exported from another payroll system needs no renaming: <code>HRDF</code>, <code>HRDF Levy</code>, <code>Employer HRDF</code>, <code>Employer HRDF Levy</code>, <code>HRDF Employer</code>, <code>HRDF (Employer)</code>, <code>HRD Corp</code>, <code>HRD Corp Levy</code>, <code>Employer HRD Corp Levy</code>. Under any other name it is reported as an unrecognised column and every imported month carries an HRDF of 0.</p>
         <p>Any adjustment-category label from <code>/payroll/adjustment-categories</code> also works as a column header — the amount is routed through that category's statutory rules (a benefit in kind lands as non-cash, a deduction comes off net).</p>
       </section>
 
@@ -1193,7 +1209,7 @@
             <tbody>
               <tr><td><code>ok</code></td><td>boolean</td><td></td></tr>
               <tr><td><code>errors</code></td><td>string[]</td><td>File-level problems, and rows that cannot be matched safely (see <em>Refused rows</em> below).</td></tr>
-              <tr><td><code>warnings</code></td><td>string[]</td><td>Unrecognised columns; months that will be skipped (already have payroll in this system) or replaced (previously imported) &mdash; only months that appear in the uploaded file are listed, other months of the year are never touched; rows whose IC is not on file (<code>"Jane Tan: the IC in the sheet (…) isn't on file, so the row was matched by name — check the IC."</code>); and people who would <strong>lose</strong> already-imported months when a month is replaced, per month (<code>"Importing this file removes imported months for: Jane Tan (January 2026) — this file has no row for them in those months…"</code>). Warnings never block the import.</td></tr>
+              <tr><td><code>warnings</code></td><td>string[]</td><td>Unrecognised columns; months that will be skipped (already have payroll in this system) or replaced (previously imported) &mdash; only months that appear in the uploaded file are listed, other months of the year are never touched; rows whose IC is not on file (<code>"Jane Tan: the IC in the sheet (…) isn't on file, so the row was matched by name — check the IC."</code>); and people who would <strong>lose</strong> already-imported months when a month is replaced, per month (<code>"Importing this file removes imported months for: Jane Tan (January 2026) — this file has no row for them in those months…"</code>). People whose profile has <code>pcbBorneByEmployer</code> on and who have PCB in the file (<code>"PCB borne by employer is on for: Jane Tan. Imported months aren't counted as PCB the company paid, so their first 2027 run won't add these months' PCB as a perquisite. If the company paid it, add it on that run as \"Tax Borne by Employer – previous year\"."</code>) &mdash; the file says what PCB was paid, not who paid it. Warnings never block the import.</td></tr>
               <tr><td><code>employees</code></td><td>array</td><td><code>{ employeeName, employeeProfileId, months: int[], totalGross, totalPcb }</code> per matched person. When the sheet spells the name differently from the employee it landed on, <code>employeeName</code> reads <code>"Sheet name → Matched name"</code> (a display string, not a name to match on &mdash; use <code>employeeProfileId</code>).</td></tr>
               <tr><td><code>unmatchedNames</code></td><td>string[]</td><td>Sheet names that matched nobody.</td></tr>
             </tbody>

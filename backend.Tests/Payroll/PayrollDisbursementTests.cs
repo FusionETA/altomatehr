@@ -12,6 +12,7 @@ public class PayrollDisbursementTests
     [InlineData("Malayan Banking Berhad", PayrollFileFormat.MbbM2eTxt)]
     [InlineData("CIMB Bank Berhad", PayrollFileFormat.CimbBizChannelXlsx)]
     [InlineData("Hong Leong Bank Berhad", PayrollFileFormat.HlbConnect)]
+    [InlineData("OCBC Bank (Malaysia) Berhad", PayrollFileFormat.OcbcVelocityGiroTxt)]
     public void EachSupportedBankResolvesToItsOwnFormat(string bank, PayrollFileFormat expected) =>
         Assert.Equal(expected, PayrollDisbursement.FormatFor(bank));
 
@@ -43,7 +44,7 @@ public class PayrollDisbursementTests
         // would ask an admin to choose between two answers that do the same
         // thing. One option per FORMAT is the rule.
         Assert.DoesNotContain(PayrollDisbursement.Options, o => o.Label.Contains("Islamic Berhad"));
-        Assert.Equal(5, PayrollDisbursement.Options.Count);
+        Assert.Equal(6, PayrollDisbursement.Options.Count);
 
         var formats = PayrollDisbursement.Options
             .Where(o => o.Format is not null)

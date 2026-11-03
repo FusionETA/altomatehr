@@ -1,4 +1,5 @@
-import { CircleSlash, Info, TriangleAlert, UserX } from "lucide-react";
+import { CircleSlash, ExternalLink, Info, TriangleAlert, UserX } from "lucide-react";
+import { employeeFieldUrl } from "@/features/employees/lib/profile-link";
 import type { PayrollReadiness, Payslip, SkippedEmployee } from "../api";
 import { rm } from "../lib/payroll-format";
 import { CARD, HINT, TD, TH } from "../lib/ui";
@@ -87,7 +88,8 @@ export function PayrollRunAttention({
           </h3>
           <p className={HINT}>
             Each one is required by a file this run has to produce. Submission is
-            refused until they are filled.
+            refused until they are filled. Click a field to open it on that person&apos;s
+            record in a new tab, then come back and re-run payroll.
           </p>
 
           {readiness.orgIssues.length > 0 ? (
@@ -115,7 +117,18 @@ export function PayrollRunAttention({
                       className="border-b border-border/40 last:border-0"
                     >
                       <td className={TD}>
-                        <span className="font-medium text-foreground">{issue.name}</span>
+                        {issue.userId ? (
+                          <a
+                            href={employeeFieldUrl(issue.userId)}
+                            target="_blank"
+                            rel="noopener"
+                            className="font-medium text-foreground hover:text-primary hover:underline"
+                          >
+                            {issue.name}
+                          </a>
+                        ) : (
+                          <span className="font-medium text-foreground">{issue.name}</span>
+                        )}
                         {issue.employeeCode ? (
                           <span className="ml-2 text-xs text-muted-foreground">
                             {issue.employeeCode}
@@ -123,7 +136,27 @@ export function PayrollRunAttention({
                         ) : null}
                       </td>
                       <td className={`${TD} text-muted-foreground`}>
-                        {issue.missing.join(", ")}
+                        {/* Each gap opens that person's record at the field,
+                            in a new tab — the run stays here for the re-run. */}
+                        {issue.missing.map((gap, i) => (
+                          <span key={gap}>
+                            {i > 0 ? ", " : null}
+                            {issue.userId ? (
+                              <a
+                                href={employeeFieldUrl(issue.userId, gap)}
+                                target="_blank"
+                                rel="noopener"
+                                title={`Open ${issue.name}'s record at this field`}
+                                className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                              >
+                                {gap}
+                                <ExternalLink className="size-3" aria-hidden />
+                              </a>
+                            ) : (
+                              gap
+                            )}
+                          </span>
+                        ))}
                       </td>
                     </tr>
                   ))}

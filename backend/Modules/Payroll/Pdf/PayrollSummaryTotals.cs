@@ -13,7 +13,13 @@ public sealed class PayrollSummaryTotals
 {
     public decimal Gross { get; private set; }
     public decimal Bik { get; private set; }
+    // Every ringgit of PCB remitted ("Total PCB payment") …
     public decimal Pcb { get; private set; }
+    // … split into what came out of the employee's pay and what the company
+    // paid for them (PCB borne by employer), so each band reconciles: gross −
+    // employee band = net, gross + employer band = cost.
+    public decimal PcbEmp { get; private set; }
+    public decimal PcbEr { get; private set; }
     public decimal EpfEmp { get; private set; }
     public decimal SocsoEmp { get; private set; }
     public decimal EisEmp { get; private set; }
@@ -38,6 +44,8 @@ public sealed class PayrollSummaryTotals
             t.Gross += PayrollGrossShown.Of(p);   // as shown, like PayrollPanda
             t.Bik += p.TotalBenefitsInKind;
             t.Pcb += p.Pcb;
+            t.PcbEmp += p.Pcb - p.PcbBorneByEmployer;
+            t.PcbEr += p.PcbBorneByEmployer;
             t.EpfEmp += p.EpfEmployee;
             t.SocsoEmp += p.SocsoEmployee;
             t.EisEmp += p.EisEmployee;
@@ -50,7 +58,10 @@ public sealed class PayrollSummaryTotals
             t.Cost += p.TotalCostToEmployer;
             t.Zakat += p.Zakat;
             t.HrdfWage += p.HrdfWage;
-            if (p.Hrdf > 0m) t.HrdfCount++;
+            // Counted on the statutory HRDF wage, as the run's own total is —
+            // an entered levy (PayrollRunAdjustment.HrdfLevy) changes the
+            // amount, not who the levy return counts.
+            if (p.HrdfWage > 0m) t.HrdfCount++;
         }
         return t;
     }

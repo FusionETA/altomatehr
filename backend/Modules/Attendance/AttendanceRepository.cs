@@ -65,8 +65,12 @@ public class AttendanceRepository : IAttendanceRepository
                 && (r.ClockInPhotoUrl != null || r.ClockOutPhotoUrl != null))
             .ToListAsync();
 
+    // For the still-clocked-in warnings: none go to a deactivated company.
     public Task<List<AttendanceRecord>> GetOpenRecordsAsync() =>
-        _db.AttendanceRecords.Where(r => r.TimeIn != null && r.TimeOut == null).ToListAsync();
+        _db.AttendanceRecords
+            .Where(r => r.TimeIn != null && r.TimeOut == null)
+            .Where(r => !_db.Organizations.Any(o => o.Id == r.OrganizationId && o.DeactivatedAt != null))
+            .ToListAsync();
 
     public Task<AttendanceRecord?> GetOpenForEmployeeAsync(string employeeId) =>
         _db.AttendanceRecords

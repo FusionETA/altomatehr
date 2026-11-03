@@ -12,7 +12,8 @@ public interface IOrganizationService
     // viaSso: the caller arrived through the SSO hand-off. Their account is
     // managed by the external platform, so creating a company here is refused
     // (SsoManagedActionException) — the UI hides "New company" for the same reason.
-    Task<OrganizationDto> CreateAsync(CreateOrganizationDto dto, string ownerUserId, bool viaSso = false);
+    Task<OrganizationDto> CreateAsync(
+        CreateOrganizationDto dto, string ownerUserId, bool viaSso = false, bool viaSupport = false);
 
     // --- Admin access control (Owner only) ---
     // The org's admins with their current module grant, for the Owner's
@@ -36,6 +37,13 @@ public interface IOrganizationService
     // (Default keeps hand-written test doubles compiling.)
     Task<AdminAccessDto?> SetAdminAccessAsync(string userId, SetAdminAccessDto dto) =>
         Task.FromResult<AdminAccessDto?>(null);
+
+    // Owner-only "Edit" on an Admin: their name and login email. NotFound = no
+    // such Admin here; Error = refused (email taken, or the login is also used
+    // in a company the caller doesn't own). (Default keeps test doubles compiling.)
+    Task<(bool NotFound, string? Error, AdminAccessDto? Admin)> UpdateAdminDetailsAsync(
+        string userId, UpdateAdminDetailsDto dto) =>
+        Task.FromResult<(bool, string?, AdminAccessDto?)>((true, null, null));
 
     Task<OrganizationDto?> UpdateAsync(string organizationId, UpdateOrganizationDto dto);
 

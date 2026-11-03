@@ -50,6 +50,10 @@ public class SavePayrollRunAdjustmentDto
     [Range(0, 999.99)] public decimal OtRestHours { get; set; }
     [Range(0, 999.99)] public decimal OtPublicHours { get; set; }
 
+    // Hours for the company's own overtime types, by overtime type id
+    // (0 to 999.99 each). Any hours here or above replace the approved ones.
+    public Dictionary<string, decimal> OtCustomHours { get; set; } = [];
+
     public List<ManualLineItemDto> ManualLineItems { get; set; } = [];
 
     // Keyed by the profile fixed-allowance's array INDEX as a string.
@@ -67,6 +71,10 @@ public class SavePayrollRunAdjustmentDto
     // upper bound (the month's day basis) is checked by the service.
     [Range(typeof(decimal), "0", "31")] public decimal? UnpaidLeaveDays { get; set; }
 
+    // The employer HRDF levy for this person this month. Null = computed; an
+    // amount (0 included) replaces the computed levy.
+    [Range(typeof(decimal), "0", "99999.99")] public decimal? HrdfLevy { get; set; }
+
     [MaxLength(2000)]
     public string? Notes { get; set; }
 }
@@ -80,6 +88,7 @@ public class PayrollRunAdjustmentDto
     public decimal OtNormalHours { get; set; }
     public decimal OtRestHours { get; set; }
     public decimal OtPublicHours { get; set; }
+    public Dictionary<string, decimal> OtCustomHours { get; set; } = [];
 
     public List<ManualLineItemResponseDto> ManualLineItems { get; set; } = [];
     public Dictionary<string, FixedAllowanceOverrideDto> FixedAllowanceOverrides { get; set; } = [];
@@ -88,6 +97,7 @@ public class PayrollRunAdjustmentDto
     public decimal? ExpectedHours { get; set; }
     public decimal? BasicPayOverride { get; set; }
     public decimal? UnpaidLeaveDays { get; set; }
+    public decimal? HrdfLevy { get; set; }
     public string? Notes { get; set; }
 
     public DateTime CreatedAt { get; set; }

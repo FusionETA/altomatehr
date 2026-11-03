@@ -169,13 +169,15 @@ public class PayrollRunAdjustmentServiceTests : IDisposable
         Assert.Empty(await _service.GetForRunAsync(run.Id));
     }
 
-    // Unpaid days: 0 up to the month's day basis. Beyond it the dock exceeds
-    // the salary; a negative would silently cancel the Leave module's days.
+    // Unpaid days: 0 up to the month's calendar days (the dock's divisor).
+    // Beyond it the dock exceeds the salary; a negative would silently cancel
+    // the Leave module's days.
     [Theory]
     [InlineData(-0.5, false)]
     [InlineData(0, true)]
     [InlineData(2.5, true)]
-    [InlineData(31, false)]   // more than the 26-day basis these tests use
+    [InlineData(31, true)]    // the whole of January
+    [InlineData(31.5, false)]
     public async Task SaveAsync_KeepsUnpaidDaysWithinTheMonth(double days, bool ok)
     {
         var run = await AddRunAsync();
@@ -187,6 +189,23 @@ public class PayrollRunAdjustmentServiceTests : IDisposable
         Assert.Equal(ok, result.Ok);
         if (ok) Assert.Equal((decimal)days, result.Adjustment!.UnpaidLeaveDays);
         else Assert.StartsWith("Unpaid days must be between 0 and", result.Error);
+    }
+
+    // An entered employer HRDF levy is kept (to the sen) and cleared by
+    // leaving it blank, which goes back to the computed levy.
+    [Fact]
+    public async Task SaveAsync_KeepsAnEnteredHrdfLevy_AndBlankClearsIt()
+    {
+        var run = await AddRunAsync();
+        var dto = Dto();
+        dto.HrdfLevy = 80.456m;
+
+        var saved = await _service.SaveAsync(run.Id, "emp-1", dto);
+        Assert.True(saved.Ok);
+        Assert.Equal(80.46m, saved.Adjustment!.HrdfLevy);
+
+        var cleared = await _service.SaveAsync(run.Id, "emp-1", Dto());
+        Assert.Null(cleared.Adjustment!.HrdfLevy);
     }
 
     // Kind comes off the catalogue, never off the request, so what is stored

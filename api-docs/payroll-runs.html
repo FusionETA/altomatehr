@@ -94,13 +94,24 @@
         <li><strong>SUBMITTED is final.</strong> It is the only status that feeds next month's
           year-to-date figures, so getting there is guarded (see
           <a href="#submit">Submit for approval</a>) and getting out of it cascades: reverting a month
-          also reverts every later <em>submitted</em> month in the same year.</li>
+          also reverts every later <em>submitted</em> month in the same year that reaches it through shared
+          people, and sends later months <em>awaiting approval</em> back to draft
+          (see <a href="#revert">Revert</a>). An <code>IMPORTED</code> month (seeded by the
+          <a href="payroll.html#ytd-import">YTD import</a>) is never part of that cascade and cannot be reverted
+          or generated itself &mdash; import it again to correct it.</li>
         <li><strong>Statutory files, the bank file, the run reports and payslip emails all require
           SUBMITTED.</strong> Two exceptions: the single payslip PDF and the
           <a href="#doc-summary">run summary</a> (PDF or Excel) can be downloaded before approval, as
           marked previews.</li>
-        <li><strong>A run is unique per period.</strong> <code>POST /payroll/runs</code> for a month that
-          already has a run answers <code>409</code> — open the existing run instead of retrying.</li>
+        <li><strong>A month can hold several runs, but a person is in only one.</strong> A month may be
+          split into runs for different staff groups (&ldquo;Workers&rdquo;, &ldquo;Management&rdquo;), each
+          prepared, approved, filed and paid on its own. At most one run in a month may be unnamed, so
+          <a href="#create"><code>POST /payroll/runs</code></a> needs a <code>name</code> whenever the month
+          already has an unnamed run (<code>409</code> otherwise). Nobody is paid twice for a month: anyone
+          already in another run that month is dropped from a new one, and left out of a re-run. Every run
+          has its own <code>id</code>; the <a href="#run-object"><code>label</code></a> (&ldquo;October 2026
+          &ndash; Workers&rdquo;) tells them apart, and a named run's file names carry its
+          name (see <a href="#run-files">Run names in file names</a>).</li>
         <li><strong>Two employee ids.</strong> Every id on this page is an
           <code>employeeProfileId</code> from <code>GET /payroll/employees</code> or the
           <a href="#picker">picker</a> below — <strong>not</strong> the user id <code>GET /employees</code>
@@ -112,12 +123,58 @@
           thing.</li>
         <li><strong>Staleness.</strong> The run object's <code>isStale</code> field is <code>true</code>
           when something an adjustment, a claim attachment or a profile edit touched has changed since the
-          payslips were last generated. Submission is refused while it is true — re-run payroll first.</li>
+          payslips were last generated. Submission is refused while it is true — re-run payroll first. A change
+          to one person (an unpaid-leave or overtime approval) marks only the generated drafts that could
+          hold them: a run whose chosen roster leaves that person out is not marked, and a run with no
+          roster (everyone) is.
+          Approving or reverting a run also marks the generated <em>drafts</em> of the later months of the same
+          year stale (filed or pending runs are never marked), and so does approving, cancelling or editing
+          <em>unpaid</em> leave: a change to an earlier, already-filed month is settled on the person's next
+          run (see <a href="#generate">Generate</a>), so those drafts were built from old figures. Run
+          <a href="#generate">generate</a> again on them.</li>
+        <li><strong>Across the year boundary.</strong> If the run holds PCB the company paid for someone
+          (<a href="#pcb-borne">PCB borne by the employer</a>), approving or reverting it also marks every
+          generated <em>draft</em> of the <em>next</em> year stale, because a person's first run of that year
+          carries this year's borne PCB as a perquisite.</li>
       </ul>
       <div class="callout warn">
         Writes here move money and file paperwork with Malaysian authorities. Grant
         <code>payroll:write</code> only to a system that genuinely needs to run payroll, not just to read it.
       </div>
+    </section>
+
+    <section class="section" id="pcb-borne">
+      <h2>PCB borne by the employer</h2>
+      <p>
+        When an employee's profile has <code>pcbBorneByEmployer</code> on (see
+        <a href="employees.html">Employees</a>), the company pays their PCB instead of deducting it. The
+        figures behave as follows:
+      </p>
+      <ul>
+        <li><strong>In the month.</strong> PCB is worked out exactly as usual &mdash; no gross-up. It stays in
+          <code>pcb</code>, the CP39 file and the year-to-date, but is not taken from <code>netPay</code>.
+          The payslip's <code>pcbBorneByEmployer</code> carries that amount (<code>0.00</code> for everyone
+          else), and <code>totalCostToEmployer</code> includes it. CP38, zakat and <code>voluntaryPcb</code>
+          are still the employee's.</li>
+        <li><strong>In the next year.</strong> The tax is a perquisite of the <em>following</em> year (LHDN PR
+          3/2024 &sect;6.1). On the person's first run of the next year (January, or the first month they are
+          paid) <a href="#generate">generate</a> adds last year's approved total as a line with category
+          <code>bik_tax_borne_by_employer</code> and a label like
+          <code>Tax Borne by Employer &ndash; 2026 (perquisite)</code>: non-cash, taxed as additional
+          remuneration, no EPF, SOCSO or EIS, and reported on Form EA B1(d). It is not part of
+          <code>grossPay</code> or <code>netPay</code>.</li>
+        <li><strong>Imported months don't count.</strong> A <a href="payroll.html#ytd-import">YTD import</a>
+          says what PCB was paid, not who paid it, so imported months never produce
+          <code>pcbBorneByEmployer</code>; the import preview warns when this applies.</li>
+        <li><strong>Not the same as <code>wages_tax_borne_by_employer</code></strong>, which stays a
+          cash line.</li>
+        <li><strong>Xero.</strong> The journal debits the borne amount to the optional
+          <code>taxBorneByEmployer</code> account slot, falling back to <code>salary</code> (see
+          <a href="#xero-preview">Xero journal preview</a>).</li>
+        <li><strong>Cross-year coupling.</strong> Approving or reverting a run that holds borne PCB marks the
+          next year's generated drafts stale, and the run cannot be reverted while a later-year run holding the
+          same people is awaiting approval or approved (<a href="#revert">revert</a>, <code>409</code>).</li>
+      </ul>
     </section>
 
     <!-- ───────────────────────── Runs ───────────────────────── -->
@@ -131,7 +188,7 @@
           <span class="path">/payroll/runs</span>
           <span class="tag scope">payroll:read</span>
         </div>
-        <p>Every payroll run in the org, newest first by period. Totals only — no payslips.</p>
+        <p>Every payroll run in the org, newest first by period; a month's runs are in the order they were started. Totals only — no payslips.</p>
         <h3>Response <code>200</code></h3>
         <p>An array of <a href="#run-object">run objects</a>.</p>
 <pre><code>curl https://&lt;api-host&gt;/payroll/runs \
@@ -149,7 +206,8 @@
           it whose payroll profile is complete enough to be paid. Use this to build
           <code>policyIds</code> / <code>excludedEmployeeProfileIds</code> for
           <a href="#create">create</a> — an employee with an incomplete profile never appears here, so
-          they cannot be scoped into a run.
+          they cannot be scoped into a run. When the month already has runs, an employee who is in one of
+          them is still listed but marked <code>takenByRunId</code> / <code>takenByRunLabel</code>.
         </p>
         <h3>Query</h3>
         <div class="table-wrap">
@@ -158,6 +216,7 @@
             <tbody>
               <tr><td><code>year</code></td><td>number</td><td>no</td><td>Period year of the run you are about to create. Send with <code>month</code>.</td></tr>
               <tr><td><code>month</code></td><td>number</td><td>no</td><td>Period month, 1&ndash;12.</td></tr>
+              <tr><td><code>exceptRunId</code></td><td>string</td><td>no</td><td>A run to leave out when working out who is already taken that month &mdash; pass the run being edited so its own people are not shown as taken. Only used together with <code>year</code> and <code>month</code>; an id that is not one of the month's runs changes nothing.</td></tr>
             </tbody>
           </table>
         </div>
@@ -189,9 +248,11 @@
               <tr><td><code>policies[].name</code></td><td>string</td><td></td></tr>
               <tr><td><code>policies[].isDefault</code></td><td>boolean</td><td></td></tr>
               <tr><td><code>policies[].members[].employeeProfileId</code></td><td>string</td><td>What <a href="#create">create</a> and every adjustment/claim route take as the employee id.</td></tr>
-              <tr><td><code>policies[].members[].name</code></td><td>string</td><td></td></tr>
+              <tr><td><code>policies[].members[].name</code></td><td>string</td><td>The legal name with the <a href="employees.html">nickname</a> appended, <code>"Name (Nickname)"</code>, when one is set, to help find the person. Payslips use the legal name only.</td></tr>
               <tr><td><code>policies[].members[].employeeId</code></td><td>string</td><td>The org's own employee number.</td></tr>
               <tr><td><code>policies[].members[].jobTitle</code></td><td>string</td><td></td></tr>
+              <tr><td><code>policies[].members[].takenByRunId</code></td><td>string or null</td><td>Id of the other run this month the employee is already in &mdash; as a payslip once that run has been generated, otherwise on its roster. <code>null</code> when free, and always <code>null</code> without <code>year</code> and <code>month</code>. A person who is taken is dropped from a new run even if you send them.</td></tr>
+              <tr><td><code>policies[].members[].takenByRunLabel</code></td><td>string or null</td><td>That run's <code>label</code>, e.g. <code>"October 2026 &ndash; Workers"</code>.</td></tr>
             </tbody>
           </table>
         </div>
@@ -200,6 +261,10 @@
 
 # for the January 2026 run, including leavers still payable that month
 curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
+  -H "Authorization: Bearer wp_live_xxx"
+
+# while editing run_123 of that month, so its own people are not marked taken
+curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1&amp;exceptRunId=run_123" \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
       </section>
 
@@ -217,7 +282,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
             <tbody>
               <tr><td><code>run</code></td><td>object</td><td>A <a href="#run-object">run object</a>.</td></tr>
               <tr><td><code>payslips</code></td><td><a href="#payslip-object">payslip</a>[]</td><td>Empty until <a href="#generate">generate</a> has run.</td></tr>
-              <tr><td><code>memberEmployeeProfileIds</code></td><td>string[]</td><td>The roster chosen when the run was created. Empty means "everyone payable" (a run created before the picker existed, or one created with no <code>policyIds</code>/<code>excludedEmployeeProfileIds</code>).</td></tr>
+              <tr><td><code>memberEmployeeProfileIds</code></td><td>string[]</td><td>The roster chosen when the run was created. Empty means "everyone payable" (a run created before the picker existed, or one created with no <code>policyIds</code>/<code>excludedEmployeeProfileIds</code>) &mdash; only ever true of a month's sole run: when a second run is created in the month, the existing runs' people are written down as their rosters.</td></tr>
             </tbody>
           </table>
         </div>
@@ -233,7 +298,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <span class="path">/payroll/runs</span>
           <span class="tag scope">payroll:write</span>
         </div>
-        <p>Start a DRAFT run for a period. The id, status, totals and timestamps are the server's to set.</p>
+        <p>Start a DRAFT run for a period. The id, status, totals and timestamps are the server's to set. A month can have several runs &mdash; see the rules for <code>name</code> below.</p>
         <h3>Request body</h3>
         <div class="table-wrap">
           <table>
@@ -241,6 +306,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
             <tbody>
               <tr><td><code>periodYear</code></td><td>number</td><td>yes</td><td>2000–2100.</td></tr>
               <tr><td><code>periodMonth</code></td><td>number</td><td>yes</td><td>1–12.</td></tr>
+              <tr><td><code>name</code></td><td>string or null</td><td>when the month already has an unnamed run</td><td>Max 60 characters (<code>400</code> beyond that); trimmed, and blank counts as no name. What sets this run apart from the month's others, e.g. <code>"Workers"</code>. At most one run a month may be unnamed. Names must be unique within the month, compared case-insensitively, and so must the letters-and-digits form used in file names (<code>"Team 1"</code> and <code>"Team-1"</code> both file as <code>Team1</code>).</td></tr>
               <tr><td><code>policyIds</code></td><td>string[] or null</td><td>no</td><td>Policy ids from the <a href="#picker">picker</a>. Null or omitted means every policy — the whole eligible roster.</td></tr>
               <tr><td><code>excludedEmployeeProfileIds</code></td><td>string[] or null</td><td>no</td><td>Individual employees to leave out of an otherwise-included policy. Remembered with <code>policyIds</code> — see the note below.</td></tr>
               <tr><td><code>skipProration</code></td><td>boolean</td><td>no</td><td>Default <code>false</code>. <code>true</code> means the pay figures are final (e.g. an import) and joiners and leavers are <strong>not</strong> prorated again. Can be changed later on a draft with <a href="#update">PATCH</a>.</td></tr>
@@ -253,17 +319,37 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <strong>The chosen roster is remembered.</strong> When the request sends at least one
           <code>policyIds</code> entry and resolves to at least one employee, the run stores the
           <code>policyIds</code> and <code>excludedEmployeeProfileIds</code> you sent, not just the
-          resulting list of people. <a href="#generate">Generate</a> uses them to pick up employees who become
+          resulting list of people &mdash; less anyone already in another run that month, who count as unticked,
+          so they do not drift into this run if that other run is deleted. <a href="#generate">Generate</a> uses them to pick up employees who become
           payable on those policies later. A run created from an explicit list (no <code>policyIds</code>,
           only exclusions), one that resolved to nobody, and one created before this was recorded store
           nothing: their roster stays exactly as frozen.
         </div>
+        <div class="callout warn">
+          <strong>People already in another run that month are dropped, silently.</strong> The run is created
+          with whoever is left; compare <code>employeeCount</code> or <code>memberEmployeeProfileIds</code> on
+          the response with what you sent. Use the <a href="#picker">picker</a> with <code>year</code> and
+          <code>month</code> to see who is taken before you create.
+        </div>
         <h3>Errors</h3>
-        <p><code>409</code> <code>{ "error": "A payroll run already exists for January 2026." }</code> — one run per period, every time.</p>
-<pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs \
+        <ul>
+          <li><code>400</code> <code>{ "errors": { "Name": ["…"] } }</code> &mdash; <code>name</code> longer than 60 characters, or <code>periodYear</code> / <code>periodMonth</code> out of range.</li>
+          <li><code>409</code> <code>{ "error": "A payroll run already exists for January 2026. To add another run for the month, give it a name — for example the staff group it pays." }</code> &mdash; no <code>name</code> sent while the month has an unnamed run. A client that never sends a name keeps getting this refusal once its month has a run, and can recreate its own run after deleting it.</li>
+          <li><code>409</code> <code>{ "error": "January 2026 already has a run named \"Workers\". Choose another name." }</code> &mdash; or <code>"\"Team-1\" is too close to January 2026 – Team 1 — their files would have the same name. Choose a more different name."</code></li>
+          <li><code>409</code> <code>{ "error": "Everyone you picked is already in another January 2026 run. A person can be in only one run a month." }</code> &mdash; nobody would be left.</li>
+          <li><code>409</code> <code>{ "error": "Another January 2026 payroll run was started at the same moment. Reload and try again." }</code> &mdash; two creates raced and the database refused one; nothing was saved. Retry after reloading the picker.</li>
+        </ul>
+<pre><code># the month's first run, unnamed
+curl -X POST https://&lt;api-host&gt;/payroll/runs \
   -H "Authorization: Bearer wp_live_xxx" \
   -H "Content-Type: application/json" \
-  -d '{ "periodYear": 2026, "periodMonth": 1 }'</code></pre>
+  -d '{ "periodYear": 2026, "periodMonth": 1 }'
+
+# a second run for the same month, for one staff group
+curl -X POST https://&lt;api-host&gt;/payroll/runs \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "periodYear": 2026, "periodMonth": 1, "name": "Workers", "policyIds": ["pol_123"] }'</code></pre>
       </section>
 
       <section class="endpoint" id="update">
@@ -272,12 +358,13 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <span class="path">/payroll/runs/{id}</span>
           <span class="tag scope">payroll:write</span>
         </div>
-        <p>Change a DRAFT run's settings. Today the only setting is <code>skipProration</code>. Only fields you send change.</p>
+        <p>Change a run's settings: its <code>name</code> (in any status) or <code>skipProration</code> (DRAFT only). Only fields you send change.</p>
         <h3>Request body</h3>
         <div class="table-wrap">
           <table>
             <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
             <tbody>
+              <tr><td><code>name</code></td><td>string or null</td><td>no</td><td>Max 60 characters (<code>400</code> beyond that). Omitted or <code>null</code>: unchanged. <code>""</code> (or blank) clears the name, which is refused while another run in the month is unnamed. Same uniqueness rules as on <a href="#create">create</a>. Allowed on a run in any status &mdash; it is only a label &mdash; and it does not mark the run stale. Sending the name the run already has changes nothing.</td></tr>
               <tr><td><code>skipProration</code></td><td>boolean or null</td><td>no</td><td><code>true</code>: do not prorate joiners/leavers (pay figures are final). <code>false</code>: prorate as usual. Omitted or <code>null</code>: unchanged.</td></tr>
             </tbody>
           </table>
@@ -287,17 +374,27 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
         <div class="callout warn">
           Changing the value on a run that has already been generated marks it stale
           (<code>isStale: true</code>); call <a href="#generate">generate</a> again so the payslips
-          are re-priced. Sending the value the run already has changes nothing.
+          are re-priced. Sending the value the run already has changes nothing. Any
+          <code>skipProration</code> on a run that is not a draft is a <code>409</code>, and the whole
+          request is refused &mdash; a <code>name</code> sent with it is not saved either.
         </div>
         <h3>Errors</h3>
         <ul>
+          <li><code>400</code> <code>{ "errors": { "Name": ["…"] } }</code> &mdash; <code>name</code> longer than 60 characters.</li>
           <li><code>404</code> &mdash; no such run (empty body).</li>
-          <li><code>409</code> <code>{ "error": "Only a draft payroll run can be changed." }</code></li>
+          <li><code>409</code> <code>{ "error": "Only a draft payroll run can be changed." }</code> &mdash; <code>skipProration</code> on a run that is not a draft.</li>
+          <li><code>409</code> <code>{ "error": "Another January 2026 run has no name, so this one needs one." }</code> &mdash; clearing a name while another run in the month is unnamed.</li>
+          <li><code>409</code> a duplicate-name refusal, with the same two messages as <a href="#create">create</a>.</li>
         </ul>
 <pre><code>curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
   -H "Authorization: Bearer wp_live_xxx" \
   -H "Content-Type: application/json" \
-  -d '{ "skipProration": true }'</code></pre>
+  -d '{ "skipProration": true }'
+
+curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "Workers" }'</code></pre>
       </section>
 
       <section class="endpoint" id="delete">
@@ -306,8 +403,8 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <span class="path">/payroll/runs/{id}</span>
           <span class="tag scope">payroll:write</span>
         </div>
-        <p>Delete a DRAFT run along with its payslips, adjustments and claim attachments. Attached claims
-          themselves survive and become free to attach to another run.</p>
+        <p>Delete a DRAFT run along with its payslips, adjustments, chosen roster and claim attachments. Attached claims
+          themselves survive and become free to attach to another run, and its people become free to join another run that month.</p>
         <h3>Response</h3>
         <p><code>204</code> No Content.</p>
         <h3>Errors</h3>
@@ -326,20 +423,23 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <tbody>
             <tr><td><code>id</code></td><td>string</td><td></td></tr>
             <tr><td><code>periodYear</code> / <code>periodMonth</code></td><td>number</td><td></td></tr>
-            <tr><td><code>periodLabel</code></td><td>string</td><td>e.g. <code>"January 2026"</code>, rendered server-side.</td></tr>
+            <tr><td><code>periodLabel</code></td><td>string</td><td>The month only, e.g. <code>"January 2026"</code>, rendered server-side. Identical for every run of the month.</td></tr>
+            <tr><td><code>name</code></td><td>string or null</td><td>The run's name within its month, e.g. <code>"Workers"</code>. Null for an unnamed run.</td></tr>
+            <tr><td><code>label</code></td><td>string</td><td>The label to show when a month has several runs: <code>"October 2026 &ndash; Workers"</code> (an en dash), or just the month when the run is unnamed. Also what <code>alsoReverted</code>, <code>attachedToRunPeriod</code> and the run's own documents use.</td></tr>
+            <tr><td><code>runNumber</code></td><td>number</td><td>1 for the month's first run, 2 for the next, and so on. Not reused while a later run exists. Used for a bank file's batch id and the file-name tag of an unnamed later run.</td></tr>
             <tr><td><code>status</code></td><td>string</td><td><code>"DRAFT"</code> · <code>"PENDING_APPROVAL"</code> · <code>"SUBMITTED"</code>.</td></tr>
             <tr><td><code>source</code></td><td>string</td><td><code>"COMPUTED"</code> (the normal path) or <code>"IMPORTED"</code> (seeded from a migration — its statutory files, bank file and run reports are refused; its payslips are still downloadable).</td></tr>
             <tr><td><code>skipProration</code></td><td>boolean</td><td>True when the pay figures are final and joiners/leavers are not prorated. See <a href="#update">PATCH</a>.</td></tr>
             <tr><td><code>employeeCount</code></td><td>number</td><td></td></tr>
             <tr><td><code>totalGross</code> / <code>totalNet</code></td><td>number</td><td>MYR, run totals. <code>totalGross</code> is the statutory figure: everything earned, before any deduction.</td></tr>
-            <tr><td><code>totalGrossShown</code></td><td>number</td><td>MYR. <code>totalGross</code> less the deductions the company keeps (<code>deduct_miscellaneous</code>, <code>deduct_loan_repayment</code>), which is the Gross the payroll screens and the <a href="#doc-summary">run summary</a> show. Worked out as <code>totalCostToEmployer</code> minus the employer EPF, SOCSO, EIS and HRDF totals, rounded to 2 decimals. It is <strong>display only</strong>: <code>totalGross</code> is what EPF, SOCSO, EIS and PCB are worked on and what the statutory files carry. It equals the sum of the payslips' <code>grossShown</code>, and can be negative when the kept deductions exceed pay. For a limited admin the totals cover only the payslips in their scope. Equal to <code>totalGross</code> on a run stored before kept deductions came off the cost.</td></tr>
+            <tr><td><code>totalGrossShown</code></td><td>number</td><td>MYR. <code>totalGross</code> less the deductions the company keeps (<code>deduct_miscellaneous</code>, <code>deduct_loan_repayment</code>), which is the Gross the payroll screens and the <a href="#doc-summary">run summary</a> show. Worked out as <code>totalCostToEmployer</code> minus the employer EPF, SOCSO, EIS and HRDF totals and minus the PCB the company paid for staff (<a href="#pcb-borne">PCB borne by the employer</a>), rounded to 2 decimals &mdash; borne PCB sits in the cost but was never pay, so it is not counted as gross. It is <strong>display only</strong>: <code>totalGross</code> is what EPF, SOCSO, EIS and PCB are worked on and what the statutory files carry. It equals the sum of the payslips' <code>grossShown</code>, and can be negative when the kept deductions exceed pay. For a limited admin the totals cover only the payslips in their scope. Equal to <code>totalGross</code> on a run stored before kept deductions came off the cost.</td></tr>
             <tr><td><code>totalEmployeeEpf</code> / <code>totalEmployerEpf</code></td><td>number</td><td></td></tr>
             <tr><td><code>totalEmployeeSocso</code> / <code>totalEmployerSocso</code></td><td>number</td><td></td></tr>
             <tr><td><code>totalEmployeeEis</code> / <code>totalEmployerEis</code></td><td>number</td><td></td></tr>
             <tr><td><code>totalEmployeeSkbbk</code></td><td>number</td><td></td></tr>
-            <tr><td><code>totalPcb</code> / <code>totalCp38</code> / <code>totalZakat</code></td><td>number</td><td></td></tr>
-            <tr><td><code>totalHrdf</code></td><td>number</td><td></td></tr>
-            <tr><td><code>employeesSubjectToHrdf</code></td><td>number</td><td></td></tr>
+            <tr><td><code>totalPcb</code> / <code>totalCp38</code> / <code>totalZakat</code></td><td>number</td><td><code>totalPcb</code> is all PCB remitted for the run, including any part the company paid for staff. The run object has no total for that borne part: it is stored on the run (and is what <code>totalGrossShown</code> is worked out from) but is not returned, so sum the payslips' <code>pcbBorneByEmployer</code> if you need it.</td></tr>
+            <tr><td><code>totalHrdf</code></td><td>number</td><td>Employer HRDF levy for the run. Includes any amount entered as <code>hrdfLevy</code> on an <a href="#save-adjustment">adjustment</a> in place of the computed levy.</td></tr>
+            <tr><td><code>employeesSubjectToHrdf</code></td><td>number</td><td>Payslips with an HRDF wage above 0. An entered <code>hrdfLevy</code> changes the amount, not this count.</td></tr>
             <tr><td><code>totalWagesSubjectToHrdf</code></td><td>number</td><td></td></tr>
             <tr><td><code>totalCostToEmployer</code></td><td>number</td><td>Sum of the payslips' <code>totalCostToEmployer</code> — see the payslip row below for what that excludes.</td></tr>
             <tr><td><code>generatedAt</code></td><td>string or null</td><td>ISO 8601. Null until <a href="#generate">generate</a> has run.</td></tr>
@@ -367,27 +467,29 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
             <tr><td><code>snapshotMonthlySalary</code> / <code>snapshotHourlyRate</code></td><td>number or null</td><td></td></tr>
             <tr><td><code>totalWorkingDays</code> / <code>proratedDays</code> / <code>prorationDaysInPeriod</code> / <code>proratedFactor</code></td><td>number</td><td>Three separate day figures on purpose — the ordinary-rate basis and the proration divisor are not the same thing.</td></tr>
             <tr><td><code>workedHours</code> / <code>expectedHours</code></td><td>number or null</td><td>Display-only for MONTHLY staff; for HOURLY staff <code>workedHours</code> is the paid quantity.</td></tr>
-            <tr><td><code>unpaidLeaveDays</code></td><td>number or null</td><td>Unpaid days on this payslip: the days typed on the run's <a href="#save-adjustment">adjustment</a> if there are any, otherwise approved unpaid leave from the Leave module. Null when none. The money is the <code>Unpaid Leave</code> line. <strong>One exception:</strong> when the run already carries its own non-zero <code>deduct_unpaid_leave</code> line for this person (an imported timesheet's U/L column, or one typed by hand) and no days were typed, the Leave module's approved days are still shown here but are <em>not</em> docked again &mdash; that line is the month's unpaid leave.</td></tr>
+            <tr><td><code>unpaidLeaveDays</code></td><td>number or null</td><td>Unpaid days docked on this payslip: the days typed on the run's <a href="#save-adjustment">adjustment</a> if there are any, otherwise approved unpaid leave from the Leave module. Null when none. The money is the <code>Unpaid Leave</code> line. <strong>One exception:</strong> when the run already carries its own non-zero <code>deduct_unpaid_leave</code> line for this person (an imported timesheet's U/L column, or one typed by hand) and no days were typed, the Leave module's approved days are still shown here but are <em>not</em> docked again &mdash; that line is the month's unpaid leave.</td></tr>
             <tr><td><code>basicPay</code> / <code>proratedPay</code></td><td>number</td><td>For MONTHLY staff <code>basicPay</code> is the profile salary, or the adjustment's <a href="#save-adjustment"><code>basicPayOverride</code></a> when one is set; with an override <code>proratedPay</code> equals it (never prorated again).</td></tr>
-            <tr><td><code>otNormalHours</code> / <code>otRestHours</code> / <code>otPublicHours</code> / <code>otPay</code></td><td>number</td><td></td></tr>
+            <tr><td><code>otNormalHours</code> / <code>otRestHours</code> / <code>otPublicHours</code> / <code>otPay</code></td><td>number</td><td>Hours at the three built-in overtime types, and the month's total overtime pay, which includes the custom types below.</td></tr>
+            <tr><td><code>otCustom</code></td><td>object[]</td><td>The company's own <a href="policies.html#overtime-types">overtime types</a> paid on this payslip, each <code>{ "typeId": string, "name": string, "hours": number, "multiplier": number, "amount": number }</code>. <code>name</code> and <code>multiplier</code> are as they were when the run was generated, so renaming or re-rating a type later does not change a payslip already made. <code>amount</code> is hours &times; the hourly rate &times; multiplier, rounded for display, and is <strong>already inside <code>otPay</code></strong>: don't add it again. These hours are not in <code>otNormalHours</code> / <code>otRestHours</code> / <code>otPublicHours</code>. Empty array when none.</td></tr>
             <tr><td><code>totalAllowances</code> / <code>totalReimbursements</code> / <code>totalDeductions</code> / <code>totalBenefitsInKind</code></td><td>number</td><td></td></tr>
             <tr><td><code>epfEmployee</code> / <code>epfEmployer</code></td><td>number</td><td></td></tr>
             <tr><td><code>socsoEmployee</code> / <code>socsoEmployer</code></td><td>number</td><td></td></tr>
             <tr><td><code>eisEmployee</code> / <code>eisEmployer</code></td><td>number</td><td></td></tr>
             <tr><td><code>skbbkEmployee</code> / <code>skbbkWage</code></td><td>number</td><td></td></tr>
-            <tr><td><code>pcb</code> / <code>pcbNormal</code> / <code>pcbAdditional</code></td><td>number</td><td><code>pcb</code> is what was actually withheld; the <a href="#doc-pcb-details">PCB details</a> document explains the breakdown behind it.</td></tr>
+            <tr><td><code>pcb</code> / <code>pcbNormal</code> / <code>pcbAdditional</code></td><td>number</td><td><code>pcb</code> is what was actually withheld and remitted &mdash; including any part the company paid for the employee (<code>pcbBorneByEmployer</code>); the <a href="#doc-pcb-details">PCB details</a> document explains the breakdown behind it.</td></tr>
             <tr><td><code>pcbCalculationJson</code></td><td>string or null</td><td>The raw LHDN-form decomposition, as stored — JSON-encoded text, not a nested object. Null only on payslips generated before this field existed.</td></tr>
             <tr><td><code>cp38</code></td><td>number</td><td>Court-ordered arrears instalment, filed separately from PCB.</td></tr>
             <tr><td><code>voluntaryPcb</code></td><td>number</td><td>"Additional PCB" — included in the CP39 file's PCB field, but not in <code>pcb</code> itself.</td></tr>
+            <tr><td><code>pcbBorneByEmployer</code></td><td>number</td><td>MYR. The part of <code>pcb</code> the company paid instead of deducting it; <code>0.00</code> unless the employee's profile has <code>pcbBorneByEmployer</code> on (and for imported months, always). Not taken from <code>netPay</code>; added to <code>totalCostToEmployer</code>. See <a href="#pcb-borne">PCB borne by the employer</a>.</td></tr>
             <tr><td><code>zakat</code></td><td>number</td><td></td></tr>
             <tr><td><code>hrdf</code> / <code>hrdfWage</code></td><td>number</td><td>Employer-only; not deducted from the employee.</td></tr>
             <tr><td><code>grossPay</code> / <code>netPay</code></td><td>number</td><td><code>grossPay</code> is the statutory gross (what was earned): EPF, SOCSO, EIS and PCB are worked out on it.</td></tr>
-            <tr><td><code>grossShown</code></td><td>number</td><td><code>grossPay</code> less the deductions the company keeps (<code>deduct_miscellaneous</code>, <code>deduct_loan_repayment</code>), as the run table and the <a href="#doc-summary">run summary</a> show it. Worked out as <code>totalCostToEmployer</code> minus the employer EPF, SOCSO, EIS and HRDF, rounded to 2 decimals, so a YTD-imported payslip with no line items behind it still gets the right figure. Display only &mdash; use <code>grossPay</code> for anything statutory. Not clamped: it is negative when the kept deductions exceed pay. Example: earnings 9,000.00 and a 175.00 miscellaneous deduction gives <code>grossPay</code> 9000.00 and <code>grossShown</code> 8825.00.</td></tr>
-            <tr><td><code>totalCostToEmployer</code></td><td>number</td><td>Gross pay plus the employer EPF, SOCSO and EIS and HRDF, <strong>less any deduction the company keeps</strong> &mdash; the <code>deduct_loan_repayment</code> and <code>deduct_miscellaneous</code> categories (a loan or debt recovered from pay never leaves the company). Deductions passed on to someone else (PCB, CP38, zakat) stay in the cost. Imported (YTD) payslips follow the same rule.</td></tr>
+            <tr><td><code>grossShown</code></td><td>number</td><td><code>grossPay</code> less the deductions the company keeps (<code>deduct_miscellaneous</code>, <code>deduct_loan_repayment</code>), as the run table and the <a href="#doc-summary">run summary</a> show it. Worked out as <code>totalCostToEmployer</code> minus the employer EPF, SOCSO, EIS and HRDF and minus <code>pcbBorneByEmployer</code>, rounded to 2 decimals (borne PCB is in the cost but was never pay), so a YTD-imported payslip with no line items behind it still gets the right figure. Display only &mdash; use <code>grossPay</code> for anything statutory. Not clamped: it is negative when the kept deductions exceed pay. Example: earnings 9,000.00 and a 175.00 miscellaneous deduction gives <code>grossPay</code> 9000.00 and <code>grossShown</code> 8825.00.</td></tr>
+            <tr><td><code>totalCostToEmployer</code></td><td>number</td><td>Gross pay plus the employer EPF, SOCSO and EIS and HRDF, <strong>less any deduction the company keeps</strong> &mdash; the <code>deduct_loan_repayment</code> and <code>deduct_miscellaneous</code> categories (a loan or debt recovered from pay never leaves the company). Deductions passed on to someone else (PCB, CP38, zakat) stay in the cost, and so does PCB the company pays for the employee (<code>pcbBorneByEmployer</code>). Imported (YTD) payslips follow the same rule.</td></tr>
             <tr><td><code>statutoryWarnings</code></td><td>string[]</td><td>Stable codes &mdash; these flag a filing or a profile gap, not an error in the figures: <code>MISSING_INCOME_TAX_NUMBER</code>, <code>MISSING_EPF_NUMBER</code>, <code>MISSING_SOCSO_NUMBER</code> (a scheme other than <code>NOT_COVERED</code> is in force but no SOCSO number is saved) and <code>MISSING_SOCSO_SCHEME</code>. <code>MISSING_SOCSO_SCHEME</code> means no scheme is saved and none can be suggested for the period (a Malaysian aged 55&ndash;59 at period end), so <strong>SOCSO is 0 on this payslip</strong>; set <code>socsoScheme</code> on the profile and regenerate.</td></tr>
             <tr><td><code>lineItems[].id</code></td><td>string</td><td></td></tr>
             <tr><td><code>lineItems[].kind</code></td><td>string</td><td><code>"ALLOWANCE"</code> · <code>"DEDUCTION"</code> · <code>"REIMBURSEMENT"</code>.</td></tr>
-            <tr><td><code>lineItems[].label</code> / <code>.amount</code> / <code>.category</code></td><td>mixed</td><td></td></tr>
+            <tr><td><code>lineItems[].label</code> / <code>.amount</code> / <code>.category</code></td><td>mixed</td><td>A line settling unpaid leave from an earlier month carries its month and days in the <code>label</code> (<code>Unpaid Leave – Sep 2026 (approved late, 2 days)</code>, category <code>deduct_unpaid_leave</code>; or <code>Unpaid Leave refund – Sep 2026 (1 day)</code>, category <code>wages_arrears</code>). See <a href="#generate">Generate</a>.</td></tr>
             <tr><td><code>lineItems[].pcbTaxableAmount</code></td><td>number or null</td><td></td></tr>
             <tr><td><code>lineItems[].claimId</code></td><td>string or null</td><td>Set when the line came from an <a href="#claims">attached claim</a>.</td></tr>
             <tr><td><code>lineItems[].subjectToEpf</code> / <code>.subjectToSocso</code> / <code>.subjectToEis</code> / <code>.subjectToPcb</code></td><td>boolean</td><td>Which wage bases this line fed, as the category defines it.</td></tr>
@@ -413,6 +515,41 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           and rebuilds from scratch, folding in whatever adjustments and claims are on the run.
         </p>
         <p>
+          <strong>Unpaid leave decided after its month was filed is settled here.</strong> For each MONTHLY
+          employee, generation looks at the earlier months of the <em>same year</em> that were computed and
+          approved (<code>SUBMITTED</code>) here. If unpaid leave in one of them was approved after that month
+          was run, or was cancelled or changed after being docked, the difference is added to this payslip as
+          its own line item, priced at <em>that</em> month's salary &divide; its calendar days:
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Line <code>label</code></th><th><code>category</code></th><th>When</th></tr></thead>
+            <tbody>
+              <tr><td><code>Unpaid Leave – Sep 2026 (approved late, 2 days)</code></td><td><code>deduct_unpaid_leave</code></td><td>Days owed that were not docked in their own month. A deduction; it reduces the statutory bases like the ordinary <code>Unpaid Leave</code> line.</td></tr>
+              <tr><td><code>Unpaid Leave refund – Sep 2026 (1 day)</code></td><td><code>wages_arrears</code></td><td>Days docked earlier that have since been cancelled or shortened. A payment (arrears of wages).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          The month is written as the three-letter English month and year (<code>Sep 2026</code>); the day count
+          is <code>1 day</code> / <code>2 days</code> / <code>1.5 days</code>. A month can add one line of each kind.
+          These days are <strong>not</strong> in the payslip's <code>unpaidLeaveDays</code>, which counts only
+          the run's own month. The API returns the line only through the usual
+          <a href="#payslip-object"><code>lineItems[]</code></a> fields (<code>label</code>, <code>category</code>,
+          <code>amount</code>); it does not expose which month a line settled as a separate field, so read it from
+          the label. Months imported from a previous system, and months where unpaid days were typed on the
+          run's <a href="#save-adjustment">adjustment</a>, are never revisited. Once a run is approved, what it
+          settled is final and is not settled again by a later run; reverting it to draft makes that provisional
+          again.
+        </p>
+        <p>
+          <strong>Last year's borne PCB is added on a person's first run of the year.</strong> For an employee
+          who had PCB paid by the company in an approved run of the previous year, generation adds one
+          non-cash line, category <code>bik_tax_borne_by_employer</code>, for that total &mdash; but only on
+          their first payslip of the year (no earlier payslip this year, draft or not). See
+          <a href="#pcb-borne">PCB borne by the employer</a>.
+        </p>
+        <p>
           <strong>The roster can grow on a re-run.</strong> If the draft was created with
           <code>policyIds</code> (<a href="#create"><code>POST /payroll/runs</code></a> remembered them and
           <code>excludedEmployeeProfileIds</code>) and has never been approved, generating again
@@ -420,7 +557,8 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           example an employee transferred into a chosen policy, or a new hire &mdash; and
           <code>memberEmployeeProfileIds</code> in the response then includes them. This holds whatever
           <code>skipProration</code> is set to. Employees listed in <code>excludedEmployeeProfileIds</code>
-          are never added, and nobody is ever removed from the roster by this. A run created without
+          are never added, and nobody is ever removed from the roster by this. Anyone who is in another run that
+          month is never added, and is left out of the payslips even if this run's roster still lists them. A run created without
           <code>policyIds</code> (e.g. from an explicit list, as an import does), a month reverted to draft
           after approval, and a run created before the roster was remembered keep their roster exactly as it was.
         </p>
@@ -450,7 +588,8 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
         <h3>Errors</h3>
         <ul>
           <li><code>404</code> — no such run (empty body).</li>
-          <li><code>409</code> <code>{ "error": "Payroll can only be run on a draft." }</code> — a submitted month's figures are filed and never rebuilt.</li>
+          <li><code>409</code> <code>{ "error": "Payroll can only be run on a draft." }</code> — a submitted month's figures are filed and never rebuilt. This is also what an imported month answers in practice, because an import lands as <code>SUBMITTED</code>.</li>
+          <li><code>409</code> <code>{ "error": "This month was imported from your previous payroll system, so payroll can't be run on it. To correct it, import it again under Payroll runs → Import earlier payroll — that replaces the imported month." }</code> — a run with <code>source: "IMPORTED"</code> is never generated, whatever its status, because it would replace the previous system's figures with today's calculation.</li>
         </ul>
 <pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs/run_123/generate \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
@@ -476,6 +615,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
               <tr><td><code>orgIssues</code></td><td>string[]</td><td>Missing Company Info fields, e.g. <code>"Employer LHDN E-number"</code>.</td></tr>
               <tr><td><code>employeeIssues[].name</code></td><td>string</td><td></td></tr>
               <tr><td><code>employeeIssues[].employeeCode</code></td><td>string</td><td></td></tr>
+              <tr><td><code>employeeIssues[].userId</code></td><td>string</td><td>The employee's user id, the <code>{id}</code> the <a href="employees.html">Employees</a> endpoints take. Use it to open that person's record and fix the gap.</td></tr>
               <tr><td><code>employeeIssues[].missing</code></td><td>string[]</td><td><code>"Employee number"</code>, <code>"IC number"</code>, <code>"Passport number"</code> or <code>"EPF number (digits only)"</code> (the stored EPF number is not all digits, e.g. a placeholder like <code>"XXXXXX"</code>, on someone with an EPF contribution in this run; a blank one is not listed).</td></tr>
             </tbody>
           </table>
@@ -542,8 +682,17 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <li>The run has no payslips yet (press <a href="#generate">generate</a> first).</li>
           <li>The run is <code>isStale</code> — something changed after the last generation.</li>
           <li>Any payslip's net pay is negative (exactly RM 0 is allowed).</li>
-          <li>The previous calendar month has no run, or has a run that is not yet SUBMITTED — months must
-            submit in order, because year-to-date figures compound off each filed month.</li>
+          <li>The previous calendar month has no run, or has a run that is not yet SUBMITTED and that shares
+            at least one person with this one &mdash; months must submit in order, because year-to-date figures
+            compound off each filed month. The order is <strong>per person</strong>: a previous-month run for a
+            different staff group does not hold this one up. A run's people are its roster plus anyone it has
+            a payslip for; a run with neither (nobody chosen, nothing generated) counts as everyone, so it
+            overlaps and blocks every other run.</li>
+          <li><strong>Any earlier month of the same year</strong> has a run that is not yet SUBMITTED (draft or
+            awaiting approval) and shares at least one person with this one &mdash; not only last month's. This
+            is checked even when last month has no run at all, or has one for other people. Filing this month
+            first would freeze those people's year-to-date without the earlier run, and would settle unpaid leave
+            that run settles too. The earliest such month is named.</li>
           <li><a href="#readiness">Readiness</a> is not <code>ok</code>.</li>
         </ul>
         <h3>Response <code>200</code></h3>
@@ -553,7 +702,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <li><code>404</code> — no such run.</li>
           <li><code>409</code> <code>{ "error": "…" }</code> — one of: already awaiting approval / already submitted / the guards above, each with its own message (e.g.
             <code>"Submit December 2025 first — payroll runs are submitted in order, and that month's run is still a draft."</code> or
-            <code>"Cannot submit — fix these first: …"</code>).</li>
+            <code>"Cannot submit — fix these first: …"</code>). For an earlier month that is still open: <code>"Submit March 2026 first — payroll runs are submitted in order, and that month's run for some of these people is still a draft."</code> (the wording says &ldquo;draft&rdquo; even when that run is awaiting approval).</li>
         </ul>
 <pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs/run_123/submit \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
@@ -569,6 +718,13 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           PENDING_APPROVAL → SUBMITTED, by a different actor than the one who submitted (both are recorded
           on the run). If the org has opted into automatic Xero posting, this also posts the run's journal —
           best effort: a Xero failure here never un-approves the run.
+        </p>
+        <p>
+          <strong>Side effect:</strong> approving marks the generated <em>drafts</em> of the later months of the
+          same year stale (<code>isStale: true</code>), because unpaid leave this run settled must not be settled a
+          second time by a draft built before the approval. Re-run those drafts with
+          <a href="#generate">generate</a> before submitting them. If the run holds PCB borne by the employer,
+          next year's generated drafts are marked stale too (<a href="#pcb-borne">see above</a>).
         </p>
         <h3>Response <code>200</code></h3>
         <p>The updated <a href="#run-object">run object</a>.</p>
@@ -617,9 +773,41 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <span class="tag scope">payroll:write</span>
         </div>
         <p>
-          SUBMITTED → DRAFT. <strong>Cascades</strong>: every later SUBMITTED month in the same year is
-          reverted too, because their year-to-date figures were computed off this one. Check
+          SUBMITTED → DRAFT. <strong>Cascades</strong>: every later SUBMITTED run (a later month, same year)
+          that shares a person with this one is reverted too, because their year-to-date figures were computed
+          off this one. The reach is <strong>transitive</strong>: runs are walked in month order, and once a run
+          is caught, its people count too. A September run for Ali reaches an October run for Ali and Ben, which
+          in turn reaches a November run for Ben only. Year-to-date is per person, so a group that is never
+          reached is left alone. A run with neither roster nor payslips counts as everyone, so it cascades to
+          every later run, and is itself caught by any earlier run's revert. Other runs of the <em>same</em>
+          month are never part of the cascade. Check
           <a href="#revert-impact">revert-impact</a> first to see what else will move.
+        </p>
+        <p>
+          <strong>Later runs awaiting approval are sent back to draft too.</strong> A later
+          <code>PENDING_APPROVAL</code> run reached the same way is moved to <code>DRAFT</code>, its submission is
+          cleared, and its <code>approvalRejectionReason</code> is set to
+          <code>"Sent back: the March 2026 payroll run was reverted to draft."</code> (the reverted run's
+          label). It needs a fresh generate before it can be submitted again. Later <em>drafts</em> that were
+          already generated are marked stale (<code>isStale: true</code>) and need a re-run as well; they are not
+          listed in <code>alsoReverted</code>.
+        </p>
+        <p>
+          <strong>Imported months are out of both ends of this.</strong> A run with
+          <code>source: "IMPORTED"</code> cannot be reverted (<code>409</code> below), and it is
+          never pulled back by an earlier month's revert: its figures were typed in from the previous
+          system, not computed off this year-to-date, so they stay <code>SUBMITTED</code>. To correct an
+          imported month, upload it again with the <a href="payroll.html#ytd-import">YTD import</a>, which
+          replaces it.
+        </p>
+        <p>
+          <strong>A next-year run can block the revert.</strong> If this run holds PCB the company paid for
+          someone (<a href="#pcb-borne">PCB borne by the employer</a>), the next year's run that carried it
+          forward as a perquisite has to come back to draft first. The revert is refused (<code>409</code>
+          below) while a run of the following year &mdash; other than an imported one &mdash; that is awaiting
+          approval or approved includes any of those people (or has no roster, which counts as everyone). It
+          is <em>not</em> pulled back automatically, and <a href="#revert-impact">revert-impact</a> does not
+          list it. After a successful revert the next year's generated drafts are marked stale.
         </p>
         <h3>Response <code>200</code></h3>
         <div class="table-wrap">
@@ -627,7 +815,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
             <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
               <tr><td><code>run</code></td><td>object</td><td>The <a href="#run-object">run object</a> that was asked for, reverted.</td></tr>
-              <tr><td><code>alsoReverted</code></td><td>string[]</td><td>Period labels of the other months reverted with it, e.g. <code>["February 2026", "March 2026"]</code>. Empty is the common case.</td></tr>
+              <tr><td><code>alsoReverted</code></td><td>string[]</td><td>Run <a href="#run-object">labels</a> of the other runs moved back to draft with it, e.g. <code>["February 2026", "March 2026 – Workers"]</code>: the later submitted runs first, then the later runs that were awaiting approval. Empty is the common case.</td></tr>
             </tbody>
           </table>
         </div>
@@ -635,6 +823,8 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
         <ul>
           <li><code>404</code> — no such run.</li>
           <li><code>409</code> <code>{ "error": "Only a submitted run can be reverted to draft." }</code></li>
+          <li><code>409</code> <code>{ "error": "Revert January 2027 first — it added 2026's PCB borne by the employer as a taxable perquisite, and reverting this month could change that amount." }</code> &mdash; the blocking run's <a href="#run-object">label</a> and this run's year are filled in. Nothing is changed.</li>
+          <li><code>409</code> <code>{ "error": "This month was imported from your previous payroll system, so it can't go back to draft. To correct it, import it again under Payroll runs → Import earlier payroll — that replaces the imported month." }</code> — the run has <code>source: "IMPORTED"</code>. Nothing is changed.</li>
         </ul>
 <pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs/run_123/revert \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
@@ -646,11 +836,16 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <span class="path">/payroll/runs/{id}/revert-impact</span>
           <span class="tag scope">payroll:read</span>
         </div>
-        <p>What a revert of this run would also pull back to draft — for a confirmation step before calling <a href="#revert">revert</a>.</p>
+        <p>What a revert of this run would also pull back to draft — for a confirmation step before calling <a href="#revert">revert</a>. It lists exactly the set <a href="#revert"><code>alsoReverted</code></a> would return: later submitted runs (reached through shared people, directly or through another run), then later runs awaiting approval.</p>
+        <p>
+          This endpoint needs access to <strong>every employee</strong> in the company, reads included, because for
+          an admin limited to some policies the list would be wrong. API keys have that, so you will not meet the
+          <code>403</code> a limited human admin gets.
+        </p>
         <h3>Response <code>200</code></h3>
-        <p><code>{ "alsoReverted": string[] }</code> — period labels. Empty if the run is not SUBMITTED (not an error — there is simply nothing to cascade).</p>
+        <p><code>{ "alsoReverted": string[] }</code> — run <a href="#run-object">labels</a>. Empty if the run is not SUBMITTED or is an <code>IMPORTED</code> run (not an error — there is simply nothing to cascade, and an imported run cannot be reverted anyway). Imported months are never listed among the runs a revert would pull back.</p>
         <h3>Errors</h3>
-        <p><code>404</code> — no such run.</p>
+        <p><code>404</code> — no such run. <code>403</code> — only for a caller without access to every employee (not an API key).</p>
 <pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/revert-impact \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
       </section>
@@ -745,7 +940,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           an employee the file says nothing about has their existing manual lines <em>deleted</em>, which
           is why the template arrives pre-filled. The salary columns are the opposite — blank means
           "leave this salary alone". The import never touches an employee's typed <code>unpaidLeaveDays</code> or <code>basicPayOverride</code> (or
-          their overtime hours and notes): it carries the saved values through.
+          their <code>hrdfLevy</code>, overtime hours and notes): it carries the saved values through.
         </div>
         <p>
           Rows are matched against the employees who can be on this run, by the same rule as
@@ -826,15 +1021,17 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
               <tr><td><code>fixedAllowances[].index</code></td><td>number</td><td>The key <code>fixedAllowanceOverrides</code> uses, as a string.</td></tr>
               <tr><td><code>fixedAllowances[].category</code> / <code>.name</code> / <code>.amount</code> / <code>.treatAsRecurring</code></td><td>mixed</td><td>The profile's own recurring row.</td></tr>
               <tr><td><code>autoWorkedHours</code> / <code>autoExpectedHours</code></td><td>number or null</td><td>Derived from attendance for the period; null when attendance does not apply (see <code>attendanceApplies</code>) rather than a confident zero.</td></tr>
-              <tr><td><code>autoUnpaidLeaveDays</code></td><td>number</td><td>Approved unpaid leave the Leave module has for the run's month, in days (<code>0</code> when none). This is what generation docks when <code>adjustment.unpaidLeaveDays</code> is null &mdash; unless the run already has its own non-zero <code>deduct_unpaid_leave</code> line for this person, in which case these days are shown on the payslip but not docked a second time.</td></tr>
+              <tr><td><code>autoUnpaidLeaveDays</code></td><td>number</td><td>Approved unpaid leave the Leave module has for the run's month, in days (<code>0</code> when none). This is what generation docks when <code>adjustment.unpaidLeaveDays</code> is null &mdash; unless the run already has its own non-zero <code>deduct_unpaid_leave</code> line for this person, in which case these days are shown on the payslip but not docked a second time. It counts working days only: a weekend or public holiday inside an unpaid leave stays paid, even though the day is priced on calendar days.</td></tr>
               <tr><td><code>unpaidDayRate</code></td><td>number or null</td><td>What one unpaid day is worth: <code>unpaidMonthlySalary</code> ÷ <code>unpaidDayBasis</code>. <strong>Not rounded</strong> (generation rounds the final line to 2 decimals, not the rate). Null for HOURLY staff, or when the monthly salary is missing or 0.</td></tr>
               <tr><td><code>unpaidMonthlySalary</code></td><td>number or null</td><td>The employee's current monthly salary. Null for HOURLY staff.</td></tr>
-              <tr><td><code>unpaidDayBasis</code></td><td>integer</td><td>Days in the month for pricing and the upper bound for <code>unpaidLeaveDays</code>: <code>26</code> when the company's Payroll Settings count 26 working days, otherwise the month's calendar days (28–31).</td></tr>
-              <tr><td><code>unpaidDayBasisLabel</code></td><td>string</td><td><code>"working days"</code> or <code>"calendar days"</code> — what <code>unpaidDayBasis</code> counts.</td></tr>
+              <tr><td><code>unpaidDayBasis</code></td><td>integer</td><td>The run's month's calendar days (28–31), always. It is the divisor for pricing an unpaid day and the upper bound for <code>unpaidLeaveDays</code>. The company's <code>workingDaysRule</code> in Payroll Settings does not change it, so <code>TWENTY_SIX</code> companies get the calendar days too.</td></tr>
+              <tr><td><code>unpaidDayBasisLabel</code></td><td>string</td><td>Always <code>"calendar days"</code> — what <code>unpaidDayBasis</code> counts.</td></tr>
               <tr><td><code>attendanceApplies</code></td><td>boolean</td><td></td></tr>
+              <tr><td><code>computedHrdfLevy</code></td><td>number or null</td><td>MYR. The employer HRDF levy the formula gives this person (HRDF wage &times; the company's HRDF rate, rounded to 2 decimals), read from the run's last payroll, without any <code>hrdfLevy</code> typed on the adjustment. <code>0</code> when HRDF is off in Payroll Settings. <strong>Null</strong> until payroll has been run for the run, while the run needs re-running (<code>isStale</code>), or when this employee has no payslip on it. It is a hint for what to type against, not a saved value. A non-citizen's HRDF wage is 0, so their computed levy is 0.</td></tr>
               <tr><td><code>cashOvertime</code></td><td>boolean</td><td>False when the employee's policy banks overtime as time off, or disables it — typed OT hours are then ignored at generation.</td></tr>
               <tr><td><code>overtimeDisabledReason</code></td><td>string or null</td><td>Explains a false <code>cashOvertime</code>.</td></tr>
               <tr><td><code>approvedOtNormalHours</code> / <code>approvedOtRestHours</code> / <code>approvedOtPublicHours</code></td><td>number</td><td>What generation pays by default, before any typed override.</td></tr>
+              <tr><td><code>overtimeTypes</code></td><td>object[]</td><td>Every overtime box an editor should show, in order: the three built-in types, then the company's own <a href="policies.html#overtime-types">overtime types</a> this person's policy offers, plus any other type that has approved or typed hours so nothing owed is hidden. Each is <code>{ "key": string, "name": string, "builtIn": boolean, "multiplier": number, "approvedHours": number }</code>. <code>key</code> is <code>"normalDay"</code>, <code>"restDay"</code> or <code>"publicHoliday"</code> for the built-ins (the boxes <code>otNormalHours</code> / <code>otRestHours</code> / <code>otPublicHours</code> fill), otherwise the overtime type id, which is the key <code>otCustomHours</code> uses. <code>multiplier</code> is what this person's policy pays; <code>approvedHours</code> is what generation would pay by default.</td></tr>
               <tr><td><code>loanInstallments[].loanId</code> / <code>.label</code> / <code>.amount</code></td><td>mixed</td><td>Read-only here — loans are managed elsewhere.</td></tr>
               <tr><td><code>editable</code></td><td>boolean</td><td>False once the run has left DRAFT.</td></tr>
             </tbody>
@@ -863,6 +1060,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
             <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
             <tbody>
               <tr><td><code>otNormalHours</code> / <code>otRestHours</code> / <code>otPublicHours</code></td><td>number</td><td>no (default 0)</td><td>0–999.99.</td></tr>
+              <tr><td><code>otCustomHours</code></td><td>object</td><td>no (default <code>{}</code>)</td><td>Hours for the company's own overtime types, keyed by overtime type id, each 0–999.99, e.g. <code>{ "ot_type_123": 3.5 }</code>. An id that is not one of the company's own (custom) types is refused; an archived type is still accepted. Zeros are not stored. <strong>If any hours are typed here or in the three fields above, they replace every approved overtime hour for this person</strong>, so retype all the types you want paid. This follows the full-replace rule: omitting it clears what was saved.</td></tr>
               <tr><td><code>manualLineItems[].category</code></td><td>string</td><td>yes (per row)</td><td>Max 60 chars. A code from the Categories sheet / <code>GET /payroll/runs/{id}/adjustments/template</code>'s Categories sheet. Unrecognised → <code>400</code>.</td></tr>
               <tr><td><code>manualLineItems[].label</code></td><td>string or null</td><td>no</td><td>Max 200 chars.</td></tr>
               <tr><td><code>manualLineItems[].amount</code></td><td>number</td><td>yes (per row)</td><td>0–99999999.99. Always non-negative — the category already decides whether it adds or deducts.</td></tr>
@@ -870,7 +1068,8 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
               <tr><td><code>fixedAllowanceOverrides</code></td><td>object</td><td>no</td><td>Keyed by the profile fixed-allowance's array index as a string, e.g. <code>{ "0": { "amount": 500, "skip": false } }</code>. <code>amount: null</code> keeps the profile's figure; <code>skip: true</code> zeroes that row out for this run only.</td></tr>
               <tr><td><code>workedHours</code> / <code>expectedHours</code></td><td>number or null</td><td>no</td><td>0–9999.99. Overrides what attendance derived.</td></tr>
               <tr><td><code>basicPayOverride</code></td><td>number or null</td><td>no (default null)</td><td>0&ndash;9999999.99, rounded to 2 decimals (MYR). This month's basic pay instead of the profile salary &mdash; for a run whose figures come from an outside timesheet that already cut a joiner's or leaver's basic to the days worked. <code>null</code> = the profile salary, prorated as usual. MONTHLY staff only; a value saved for HOURLY staff is accepted and ignored.</td></tr>
-              <tr><td><code>unpaidLeaveDays</code></td><td>number or null</td><td>no (default null)</td><td>Unpaid days to dock for this run, fractions allowed (e.g. <code>1.5</code>). <code>null</code> = use approved unpaid leave from the Leave module. <strong>A number replaces it</strong> — it is not added to it, so days already applied for in Leave are not docked twice; <code>0</code> means "dock nothing, even if Leave has approved days". Must be between 0 and the month's <code>unpaidDayBasis</code> (see the context endpoint). MONTHLY staff only.</td></tr>
+              <tr><td><code>unpaidLeaveDays</code></td><td>number or null</td><td>no (default null)</td><td>Unpaid days to dock for this run, fractions allowed (e.g. <code>1.5</code>). <code>null</code> = use approved unpaid leave from the Leave module. <strong>A number replaces it</strong> — it is not added to it, so days already applied for in Leave are not docked twice; <code>0</code> means "dock nothing, even if Leave has approved days". Must be between 0 and the month's calendar days, i.e. <code>unpaidDayBasis</code> (see the context endpoint). MONTHLY staff only.</td></tr>
+              <tr><td><code>hrdfLevy</code></td><td>number or null</td><td>no (default null)</td><td>Employer HRDF levy for this person in this run, MYR, 0–99999.99, rounded to 2 decimals. <code>null</code> = computed: the company's HRDF rate &times; the person's HRDF wage, for citizens only. <strong>An amount replaces the computed levy</strong>, and <code>0</code> is an amount (it means "no levy this month"). The replacement is the payslip's <code>hrdf</code>, so it flows into the run's <code>totalHrdf</code> and the cost to employer. It does not depend on the rate or on citizenship. The HRDF wage (<code>hrdfWage</code>) is not changed and stays the statutory figure; net pay is not affected, because the levy is paid by the employer.</td></tr>
               <tr><td><code>notes</code></td><td>string or null</td><td>no</td><td>Max 2000 chars.</td></tr>
             </tbody>
           </table>
@@ -888,9 +1087,15 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           out saves <code>null</code>, which silently clears days you typed earlier and falls back to the Leave
           module. Read the saved row first and send <code>unpaidLeaveDays</code> back with everything else.
         </div>
+        <div class="callout warn">
+          <strong><code>hrdfLevy</code> follows the full-replace rule as well.</strong> A PUT that omits it (or
+          sends <code>null</code>) clears an amount saved earlier, and the levy goes back to being computed.
+          Send the saved <code>hrdfLevy</code> back with everything else. A <code>hrdfLevy</code> above 99999.99 or
+          below 0 is a <code>400</code>.
+        </div>
         <p>
           When the run is generated, typed days are priced exactly like approved unpaid leave: monthly salary ÷
-          <code>unpaidDayBasis</code> × days, rounded to 2 decimals, and added as an <code>Unpaid Leave</code> deduction
+          the month's calendar days (<code>unpaidDayBasis</code>) × days, rounded to 2 decimals, and added as an <code>Unpaid Leave</code> deduction
           line that also reduces the statutory bases. HOURLY staff are paid only for hours worked, so a value saved for
           them is accepted but has no effect. Saving does not change any payslip until the run is
           <a href="#generate">generated</a> again.
@@ -900,10 +1105,11 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
         <h3>Errors</h3>
         <ul>
           <li><code>400</code> <code>{ "error": "Unknown adjustment category 'xyz'." }</code></li>
-          <li><code>400</code> <code>{ "errors": { "UnpaidLeaveDays": ["…"] } }</code> — a field failed validation, e.g. <code>unpaidLeaveDays</code> below 0 or above 31, or <code>basicPayOverride</code> below 0 or above 9999999.99 (or any other range above).</li>
+          <li><code>400</code> <code>{ "errors": { "UnpaidLeaveDays": ["…"] } }</code> — a field failed validation, e.g. <code>unpaidLeaveDays</code> below 0 or above 31, <code>basicPayOverride</code> below 0 or above 9999999.99, or <code>hrdfLevy</code> above 99999.99 (or any other range above).</li>
           <li><code>404</code> — no such run.</li>
           <li><code>409</code> <code>{ "error": "This run is no longer a draft — revert it before editing adjustments." }</code></li>
-          <li><code>409</code> <code>{ "error": "Unpaid days must be between 0 and 26 — the month's 26 working days." }</code> — <code>unpaidLeaveDays</code> is more than the month's <code>unpaidDayBasis</code> (the number and the words <code>calendar</code> / <code>working</code> vary with the company's setting and the month). Note this one is a <strong>409</strong>, not a 400.</li>
+          <li><code>409</code> <code>{ "error": "Unpaid days must be between 0 and 31 — the month's 31 calendar days." }</code> — <code>unpaidLeaveDays</code> is more than the month's calendar days (<code>unpaidDayBasis</code>); the number is the month's length (28–31) and the wording never changes. Note this one is a <strong>409</strong>, not a 400.</li>
+          <li><code>400</code> <code>{ "error": "Unknown overtime type 'ot_type_999'." }</code> — a key of <code>otCustomHours</code> is not one of the company's own overtime types. <code>{ "error": "Overtime hours must be between 0 and 999.99." }</code> — an <code>otCustomHours</code> value is out of range.</li>
         </ul>
 <pre><code>curl -X PUT https://&lt;api-host&gt;/payroll/runs/run_123/adjustments/emp_123 \
   -H "Authorization: Bearer wp_live_xxx" \
@@ -912,12 +1118,14 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
     "otNormalHours": 4,
     "otRestHours": 0,
     "otPublicHours": 0,
+    "otCustomHours": { "ot_type_123": 3.5 },
     "manualLineItems": [
       { "category": "allowance_travel", "label": "February site travel", "amount": 250.00, "treatAsRecurring": false }
     ],
     "fixedAllowanceOverrides": {},
     "basicPayOverride": 1850.00,
-    "unpaidLeaveDays": null
+    "unpaidLeaveDays": 1.5,
+    "hrdfLevy": 45.00
   }'</code></pre>
       </section>
 
@@ -946,12 +1154,14 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <tbody>
             <tr><td><code>id</code> / <code>payrollRunId</code> / <code>employeeProfileId</code></td><td>string</td><td></td></tr>
             <tr><td><code>otNormalHours</code> / <code>otRestHours</code> / <code>otPublicHours</code></td><td>number</td><td></td></tr>
+            <tr><td><code>otCustomHours</code></td><td>object</td><td>Typed hours for the company's own overtime types, keyed by overtime type id. <code>{}</code> when none. Same shape as the request.</td></tr>
             <tr><td><code>manualLineItems[].kind</code></td><td>string</td><td><code>"ALLOWANCE"</code> · <code>"DEDUCTION"</code> · <code>"REIMBURSEMENT"</code> — derived from the category, never trusted from input.</td></tr>
             <tr><td><code>manualLineItems[].category</code> / <code>.label</code> / <code>.amount</code> / <code>.treatAsRecurring</code></td><td>mixed</td><td></td></tr>
             <tr><td><code>fixedAllowanceOverrides</code></td><td>object</td><td>Same shape as the request.</td></tr>
             <tr><td><code>workedHours</code> / <code>expectedHours</code></td><td>number or null</td><td></td></tr>
             <tr><td><code>basicPayOverride</code></td><td>number or null</td><td>This run's basic pay in place of the profile salary (MONTHLY staff). Null = the profile salary.</td></tr>
             <tr><td><code>unpaidLeaveDays</code></td><td>number or null</td><td>Typed unpaid days. Null = the Leave module's approved unpaid leave is used; a number (including <code>0</code>) replaces it.</td></tr>
+            <tr><td><code>hrdfLevy</code></td><td>number or null</td><td>The entered employer HRDF levy. Null = the levy is computed; a number (including <code>0</code>) replaces it.</td></tr>
             <tr><td><code>notes</code></td><td>string or null</td><td></td></tr>
             <tr><td><code>createdAt</code> / <code>updatedAt</code></td><td>string</td><td>ISO 8601.</td></tr>
           </tbody>
@@ -1014,7 +1224,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
               <tr><td><code>category</code> / <code>claimType</code></td><td>string</td><td>Claim enums.</td></tr>
               <tr><td><code>amount</code> / <code>spentAt</code></td><td>number / string</td><td>ISO 8601 date.</td></tr>
               <tr><td><code>userId</code> / <code>employeeProfileId</code> / <code>employeeName</code> / <code>employeeNumber</code></td><td>string</td><td></td></tr>
-              <tr><td><code>attachedToRunId</code> / <code>attachedToRunPeriod</code></td><td>string or null</td><td>Null means free to attach.</td></tr>
+              <tr><td><code>attachedToRunId</code> / <code>attachedToRunPeriod</code></td><td>string or null</td><td>Null means free to attach. <code>attachedToRunPeriod</code> is that run's <code>label</code> (e.g. <code>"January 2026 &ndash; Workers"</code>), not just the month.</td></tr>
               <tr><td><code>blockedReason</code></td><td>string or null</td><td>Why it cannot be attached right now (e.g. the claimant has no payroll profile, or is an archived leaver with no last day). Null means it can. Here, with no run in view, an archived claimant who has a last day is not blocked; see the leaver rule under <a href="#attach-claim">attach</a>.</td></tr>
             </tbody>
           </table>
@@ -1098,6 +1308,23 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
         or, for an imported run, a message explaining the previous system already filed it. Both are
         omitted below to avoid repetition.
       </div>
+      <div class="callout" id="run-files">
+        <strong>Run names in file names.</strong> A named run adds a tag to the file names it produces so two
+        runs in a month never hand out the same name. The tag is the run's name reduced to ASCII letters and
+        digits, cut to 30 characters (<code>"Team 1"</code> gives <code>Team1</code>); an unnamed run after the
+        month's first uses <code>Run2</code>, <code>Run3</code>&hellip;; an unnamed first run adds nothing, so
+        a month with one run keeps exactly the names shown below. The tag goes before the extension after an
+        underscore &mdash; <code>SOCSO_EIS_012026_Workers.txt</code>,
+        <code>Payslips_2026_01_Workers_All.zip</code>, <code>payroll-2026-01_Workers.zip</code>,
+        <code>Payroll_Summary_January_2026_Workers.pdf</code>,
+        <code>ABPay {Company name} 2026-01 Workers.xlsx</code> &mdash; except the PCB (CP39) file, whose name is
+        letters and digits only because the e-PCB upload refuses anything else: <code>{10-digit employer no}012026Workers.txt</code>.
+        This covers the statutory files, the bank file, the payslips ZIP, the documents bundle, the statutory and allowance/deduction zips, the run
+        summary, payment schedule, PCB details, allowance, deduction and manual-payment reports and the
+        ABPay timesheet. The single payslip PDF and the TP1 documents are per employee and keep their names.
+        A run's own documents (summary, payment schedule, and so on) head their pages with the run
+        <code>label</code>; a payslip still shows the month only.
+      </div>
 
       <section class="endpoint" id="file-epf">
         <div class="endpoint-head">
@@ -1170,6 +1397,39 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
 <pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/files/pcb \
   -H "Authorization: Bearer wp_live_xxx" -o pcb.txt</code></pre>
       </section>
+
+      <section class="endpoint" id="file-statutory-zip">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/files/statutory</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>The four statutory uploads above &mdash; EPF, SOCSO + EIS, SOCSO + EIS with SKBBK, and PCB (CP39) &mdash; in one zip, for the month-end filing.</p>
+        <p>The run must be approved and calculated here, as in the rest of this section: an unapproved run, or one imported from a previous system, answers <code>409</code>.</p>
+        <div class="callout warn">
+          <strong>A file that can't be produced is left out, not an error.</strong> A missing PERKESO Employer Code, a missing LHDN E-number or a non-numeric EPF number costs you that one file only; the rest still arrive. The same checks as the single-file routes apply &mdash; they just don't fail the request. Read the headers below to see what is missing. The reasons are not in a 200 response; call the single-file route for that file to read its message.
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p><code>Content-Type: application/zip</code>, filename <code>Statutory_{Month}_{Year}.zip</code> (e.g. <code>Statutory_January_2026.zip</code>; a named run adds its <a href="#run-files">tag</a>). Inside, each file keeps the name it has when downloaded on its own, in the order EPF, SOCSO + EIS, SOCSO + EIS (SKBBK), PCB. Two extra headers:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Header</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>X-Bundle-File-Count</code></td><td>How many files are in the zip (1 to 4).</td></tr>
+              <tr><td><code>X-Bundle-Skipped</code></td><td>Comma-separated keys of files left out, from <code>epf</code>, <code>socso-eis</code>, <code>socso-eis-skbbk</code>, <code>pcb</code>. Omitted entirely when nothing was left out.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Browsers calling from another origin can read both headers and <code>Content-Disposition</code>.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> &mdash; no such run (empty body).</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> &mdash; the run is not approved, or was imported from a previous system.</li>
+          <li><code>409</code> <code>{ "error": "None of the statutory files could be produced for this run. Each file's reason is listed with it.", "skipped": { "epf": "…", "socso-eis": "…", "socso-eis-skbbk": "…", "pcb": "…" } }</code> &mdash; none of the four could be produced. <code>skipped</code> maps each file's key to why. An empty zip is never returned.</li>
+        </ul>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/files/statutory \
+  -H "Authorization: Bearer wp_live_xxx" -D - -o statutory.zip</code></pre>
+      </section>
     </section>
 
     <!-- ───────────────────────── Documents ───────────────────────── -->
@@ -1228,6 +1488,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <span class="tag scope">payroll:read</span>
         </div>
         <p>The whole run on one sheet: gross, every statutory deduction and net per employee, with run totals. The <code>Gross</code> column (and its total) is the <a href="#run-object">shown gross</a> &mdash; <code>grossShown</code> / <code>totalGrossShown</code>, i.e. pay less the deductions the company keeps &mdash; not <code>grossPay</code>. A PDF by default, or an Excel workbook with the same figures.</p>
+        <p>PCB is split between the two contribution bands so each one reconciles. The employee band's <code>PCB</code> column is what left the employee's pay (<code>pcb</code> minus <code>pcbBorneByEmployer</code>), so gross less the employee band is net. When at least one payslip in the run has PCB borne by the employer, the employer band gains a <code>PCB</code> column (<code>PCB (paid by employer)</code> in the Excel <code>Summary</code> sheet), placed after <code>HRDF</code> and before the cost, so gross plus the employer band is cost to employer. With none, that column is absent, so read headers rather than relying on positions. The &ldquo;total PCB payment&rdquo; figure still counts every ringgit remitted, borne or not.</p>
         <div class="callout warn">
           <strong>Available before approval.</strong> This is the one run report that is not held back until
           <code>SUBMITTED</code>: once payslips have been generated, a <code>DRAFT</code> or
@@ -1237,6 +1498,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <code>_FOR_APPROVAL</code> &mdash; because re-running payroll can change every figure. The documents
           bundle and every other document and file on this page still require approval.
         </div>
+        <p>This is one run's summary. To check a month that has been split into several runs as a whole, use the <a href="#month-summary">month summary</a>.</p>
         <h3>Query parameters</h3>
         <div class="table-wrap">
           <table>
@@ -1251,6 +1513,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
           <li><code>format</code> omitted or <code>pdf</code>: <code>Content-Type: application/pdf</code>, filename <code>Payroll_Summary_{Month}_{Year}.pdf</code> (e.g. <code>Payroll_Summary_January_2026.pdf</code>). While the run is not yet approved: <code>Payroll_Summary_{Month}_{Year}_DRAFT.pdf</code> (<code>DRAFT</code>) or <code>Payroll_Summary_{Month}_{Year}_FOR_APPROVAL.pdf</code> (<code>PENDING_APPROVAL</code>).</li>
           <li><code>format=xlsx</code>: an Excel workbook, filename <code>Payroll_Summary_{Month}_{Year}.xlsx</code> (with the same <code>_DRAFT</code> / <code>_FOR_APPROVAL</code> suffix before an approval), with three sheets: <code>Summary</code> (one row per employee), <code>Totals</code> and <a href="#doc-summary-breakdown"><code>Breakdown</code></a> (one row per employee, one column per pay item). It is loaded and gated exactly as the PDF is, so the two always carry the same figures. (The <code>DRAFT</code> / <code>FOR APPROVAL</code> watermark and banner are PDF-only; the Excel copy shows the run's status in its header block and carries the file-name suffix.)</li>
         </ul>
+        <p>The summary's &ldquo;Employees subject to HRDF&rdquo; total counts payslips with an HRDF wage above 0 (it used to count an HRDF amount above 0). An <code>hrdfLevy</code> entered on an <a href="#save-adjustment">adjustment</a> changes the HRDF amount shown, not who is counted, so an entered <code>0</code> still counts the employee.</p>
         <h3 id="doc-summary-breakdown">The <code>Breakdown</code> sheet (xlsx)</h3>
         <p>
           The third sheet lays each employee's pay out wide: <strong>one row per employee, one column per pay item</strong>.
@@ -1269,7 +1532,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
               <tr><td><code>Basic</code></td><td>The prorated pay actually paid for the period.</td></tr>
               <tr><td><code>U/L</code></td><td>Unpaid-leave deduction, negative.</td></tr>
               <tr><td><code>Travelling</code>, <code>Meal</code>, <code>Parking</code></td><td>The travel (private), meal and parking allowance lines.</td></tr>
-              <tr><td><code>Hours</code></td><td>Overtime hours paid (normal + rest day + public holiday). The only column that is not money, and it is not part of Total Gross.</td></tr>
+              <tr><td><code>Hours</code></td><td>Overtime hours paid (normal + rest day + public holiday + any of the company's own overtime types). The only column that is not money, and it is not part of Total Gross.</td></tr>
               <tr><td><code>OT</code></td><td>Calculated overtime pay plus any overtime wage lines.</td></tr>
               <tr><td><code>Comm</code>, <code>Bonus</code></td><td>Commission lines and non-annual bonus lines.</td></tr>
               <tr><td><code>Deduction</code></td><td>Miscellaneous deduction lines, negative.</td></tr>
@@ -1308,6 +1571,53 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1" \
 
 curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary?format=xlsx" \
   -H "Authorization: Bearer wp_live_xxx" -o summary.xlsx</code></pre>
+      </section>
+
+      <section class="endpoint" id="month-summary">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/month/{year}/{month}/summary</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>Every run in a month combined into one read-only summary, for checking a month that has been split into several runs. The same layout and figures as the <a href="#doc-summary">run summary</a>, with every run's employees on one sheet in employee-number order. Nothing is filed from it &mdash; each run still files on its own.</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Param</th><th>In</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>year</code></td><td>path</td><td>integer</td><td>Period year. A non-integer segment does not match the route (<code>404</code>).</td></tr>
+              <tr><td><code>month</code></td><td>path</td><td>integer</td><td>Period month, 1&ndash;12.</td></tr>
+              <tr><td><code>format</code></td><td>query</td><td>string, optional</td><td><code>pdf</code> (the default, also when empty) or <code>xlsx</code>, case-insensitive.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <ul>
+          <li><code>pdf</code>: <code>Content-Type: application/pdf</code>, filename <code>Payroll_Summary_{Month}_{Year}_All_Runs.pdf</code>, e.g. <code>Payroll_Summary_January_2026_All_Runs.pdf</code>. The page header reads <code>January 2026 &ndash; all runs</code>.</li>
+          <li><code>xlsx</code>: an Excel workbook, filename <code>Payroll_Summary_{Month}_{Year}_All_Runs.xlsx</code>, laid out as the <a href="#doc-summary">run summary</a> workbook.</li>
+        </ul>
+        <div class="callout warn">
+          <strong>Available before approval, and only as final as its least-approved run.</strong> The month counts as
+          <code>DRAFT</code> when any of its runs is a draft (including one not yet generated), otherwise
+          <code>PENDING_APPROVAL</code> when any is awaiting approval, and only <code>SUBMITTED</code> when every run is.
+          A month that is not fully submitted is marked not approved exactly as the run summary is: the PDF
+          carries the <code>DRAFT</code> / <code>FOR APPROVAL</code> watermark and banner, and the file name ends in
+          <code>_DRAFT</code> or <code>_FOR_APPROVAL</code> (<code>Payroll_Summary_January_2026_All_Runs_DRAFT.pdf</code>).
+          Imported runs are left out, and a run that has not been generated adds no rows.
+        </div>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> <code>{ "error": "month must be 1–12." }</code> &mdash; a month outside 1&ndash;12.</li>
+          <li><code>400</code> <code>{ "error": "format must be pdf or xlsx." }</code> &mdash; any other <code>format</code>.</li>
+          <li><code>403</code> <code>{ "error": { "status": 403, "message": "…" } }</code> &mdash; besides a missing scope or module, the caller must have access to every employee in the company; API keys do.</li>
+          <li><code>404</code> &mdash; the month has no computed run (empty body).</li>
+          <li><code>409</code> <code>{ "error": "Run payroll on at least one of this month's runs before downloading its summary." }</code> &mdash; none of the month's runs has payslips yet.</li>
+        </ul>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/month/2026/1/summary \
+  -H "Authorization: Bearer wp_live_xxx" -o month-summary.pdf
+
+curl "https://&lt;api-host&gt;/payroll/runs/month/2026/1/summary?format=xlsx" \
+  -H "Authorization: Bearer wp_live_xxx" -o month-summary.xlsx</code></pre>
       </section>
 
       <section class="endpoint" id="doc-payment-schedule">
@@ -1409,6 +1719,35 @@ curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary?format=xls
   -H "Authorization: Bearer wp_live_xxx" -o deductions.xlsx</code></pre>
       </section>
 
+      <section class="endpoint" id="doc-allowances-deductions">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/runs/{id}/documents/allowances-deductions</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>The <a href="#doc-allowances">Allowance report</a> and the <a href="#doc-deductions">Deduction report</a> in one zip. Same rules as the <a href="#file-statutory-zip">statutory zip</a>: the run must be approved and calculated here, and a report that can't be produced is left out rather than failing the request.</p>
+        <p>A run with only one of the two zips that one and names the other in <code>X-Bundle-Skipped</code> (for example a run with no allowances).</p>
+        <h3>Response <code>200</code></h3>
+        <p><code>Content-Type: application/zip</code>, filename <code>Allowance_Deduction_Reports_{Month}_{Year}.zip</code> (a named run adds its <a href="#run-files">tag</a>). Inside, the workbooks keep the names they have when downloaded on their own (<code>Allowance_Report_&hellip;.xlsx</code>, <code>Deduction_Report_&hellip;.xlsx</code>). Two extra headers:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Header</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>X-Bundle-File-Count</code></td><td>How many reports are in the zip (1 or 2).</td></tr>
+              <tr><td><code>X-Bundle-Skipped</code></td><td>Comma-separated keys of reports left out, from <code>allowances</code>, <code>deductions</code>. Omitted entirely when nothing was left out.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>404</code> &mdash; no such run (empty body).</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> &mdash; the run is not approved, or was imported from a previous system.</li>
+          <li><code>409</code> <code>{ "error": "No allowances on this run, and no deductions other than EPF, SOCSO, EIS and PCB.", "skipped": { "allowances": "…", "deductions": "…" } }</code> &mdash; neither report has anything to show. An empty zip is never returned.</li>
+        </ul>
+<pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/documents/allowances-deductions \
+  -H "Authorization: Bearer wp_live_xxx" -D - -o reports.zip</code></pre>
+      </section>
+
       <section class="endpoint" id="doc-bank-file">
         <div class="endpoint-head">
           <span class="method get">GET</span>
@@ -1419,27 +1758,37 @@ curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary?format=xls
         <div class="callout">
           <strong>CIMB is an Excel file.</strong> For a CIMB company this is CIMB's own BizChannel@CIMB bulk-payroll Excel template, and it carries every bank-transfer payee, NRIC and passport holders alike (the <code>Beneficiary ID</code> column is left blank). <code>paymentDate</code> is not used for CIMB: the value date is set in BizChannel when you upload.
         </div>
+        <div class="callout">
+          <strong>OCBC is a fixed-width TXT file.</strong> For an OCBC company (<code>payrollBankName</code> <code>"OCBC Bank (Malaysia) Berhad"</code>) this is the OCBC Velocity &ldquo;GIRO&rdquo; payroll file. The debiting account is the company's <code>ecpPayorAccountNo</code> from <a href="payroll.html#payroll-settings">payroll settings</a>. Each payee is routed by their own bank, which must be a bank OCBC has a routing ID for.
+        </div>
         <h3>Query parameters</h3>
         <div class="table-wrap">
           <table>
             <thead><tr><th>Param</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
               <tr><td><code>paymentDate</code></td><td>string, optional</td><td>ISO 8601 date — the value date. Defaults to the last day of the payroll period. Ignored for CIMB.</td></tr>
-              <tr><td><code>recipientReference</code></td><td>string, optional</td><td>Hong Leong only; every other bank ignores it.</td></tr>
+              <tr><td><code>recipientReference</code></td><td>string, optional</td><td>The reference the payee sees on their statement. <strong>Required for Hong Leong</strong> (the file is refused without it). <strong>Optional for OCBC</strong>: blank gives <code>SALARY &lt;MON&gt; &lt;YEAR&gt;</code> (e.g. <code>SALARY JAN 2026</code>); text is cut to 20 characters and reduced to plain keyboard characters. Every other bank ignores it.</td></tr>
               <tr><td><code>channel</code></td><td>string, optional</td><td>Hong Leong only: <code>"ConnectFirst"</code> or <code>"ConnectBiz"</code> — the two upload portals take different files, so this is required for an HLB org.</td></tr>
+              <tr><td><code>tapeId</code></td><td>string, optional</td><td>OCBC only. A number from <code>001</code> to <code>999</code>; blank means <code>001</code>. Use a different one for each file you send OCBC with the same value date and debiting account, whenever you upload them. Anything else is a <code>409</code>. Ignored by every other bank.</td></tr>
+              <tr><td><code>idCheck</code></td><td>boolean, optional</td><td>OCBC only. Default <code>false</code>. <code>true</code> asks each payee's bank to match their IC or passport number to the account before crediting. Safer, but OCBC warns it is prone to rejections, so leave it off unless you want it. When on, every payee needs a 12-digit NRIC or a passport number on file. Ignored by every other bank.</td></tr>
             </tbody>
           </table>
         </div>
         <h3>Response <code>200</code></h3>
+        <p>Maybank's TXT batch id carries <code>R{runNumber}</code> after the period (e.g. <code>202601R2</code>) for a month's second and later runs, so each upload's batch id is unique; the first run keeps the plain period. Every format's file name also carries the run's <a href="#run-files">name tag</a>.</p>
         <p>Content type and filename depend on the configured bank (e.g. Public Bank's ECP spreadsheet, Maybank's TXT, CIMB's Excel template, or Hong Leong's two formats).</p>
         <p>For CIMB, <code>Content-Type</code> is an Excel workbook (<code>.xlsx</code>), filename <code>CIMB_Bulk_Payroll_{MM}{YYYY}.xlsx</code> (e.g. <code>CIMB_Bulk_Payroll_012026.xlsx</code>). One sheet, <code>EPF</code> (CIMB's template name): row 1 is the template's field rules, row 2 the headers (<code>*Beneficiary Name</code>, <code>Beneficiary ID</code>, <code>*BNM Code</code>, <code>*Account Number</code>, <code>*Payment Amount</code>, <code>Reference Number</code>), and one payee per row from row 3. <code>Beneficiary ID</code> is blank; <code>*BNM Code</code> is CIMB's dropdown label (e.g. <code>35-CIMB Bank Berhad</code>); the account number is text; the amount is a number to 2 decimals. Names and reference have <code>-</code> and <code>/</code> replaced by spaces and are cut to CIMB's lengths (40 and 30).</p>
+        <p>For OCBC, <code>Content-Type</code> is <code>text/plain</code> (ASCII, CRLF line endings), filename <code>OCBC_GIRO_Payroll_{MM}{YYYY}_T{tapeId}.txt</code> (e.g. <code>OCBC_GIRO_Payroll_012026_T001.txt</code>, plus the run's name tag when it has one). Every line is exactly 480 characters: one header (<code>01</code>) with the company, its debiting account, the tape id and the value date; one detail line (<code>02</code>) per payee with account, amount in sen, name, routing ID and reference; one trailer (<code>03</code>) with the payee count and total. Beneficiary names are cut to 22 characters, and an account number longer than 17 digits is refused rather than cut.</p>
         <h3>Errors</h3>
         <ul>
           <li><code>404</code> — no such run.</li>
-          <li><code>409</code> <code>{ "error": "…" }</code> — run not submitted/imported; no payroll bank configured or it is set to "Other"; an unsupported bank; or Hong Leong with no <code>channel</code>. For Public Bank (and the other formats sharing its payee rules) also: a <code>BANK_TRANSFER</code> employee whose <code>bankName</code> is not a recognised Malaysian bank (the message names them), one whose <code>bankAccountNumber</code> has no digits at all, e.g. <code>"N/A"</code> (named too), for CIMB an account number longer than 16 digits (named &mdash; never cut to fit), and <code>"Nothing to put in the bank file — nobody on this run is paid by bank transfer to a Malaysian account. Everyone owed pay is on the Manual payments sheet."</code></li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — run not submitted/imported; no payroll bank configured or it is set to "Other"; an unsupported bank; Hong Leong with no <code>channel</code>; for OCBC, no debiting account (<code>ecpPayorAccountNo</code>) set, a <code>tapeId</code> that is not 001&ndash;999, or payees it can't include (the message names each one: a bank OCBC has no routing ID for, an account number over 17 digits, or, with <code>idCheck</code>, no IC or passport number). For Public Bank (and the other formats sharing its payee rules) also: a <code>BANK_TRANSFER</code> employee whose <code>bankName</code> is not a recognised Malaysian bank (the message names them), one whose <code>bankAccountNumber</code> has no digits at all, e.g. <code>"N/A"</code> (named too), for CIMB an account number longer than 16 digits (named &mdash; never cut to fit), and <code>"Nothing to put in the bank file — nobody on this run is paid by bank transfer to a Malaysian account. Everyone owed pay is on the Manual payments sheet."</code></li>
         </ul>
 <pre><code>curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/bank-file?paymentDate=2026-01-31" \
   -H "Authorization: Bearer wp_live_xxx" -o bank-file</code></pre>
+<pre><code># OCBC: second file for the same value date, with the ID check on
+curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/bank-file?paymentDate=2026-01-31&amp;tapeId=002&amp;idCheck=true" \
+  -H "Authorization: Bearer wp_live_xxx" -o ocbc-giro.txt</code></pre>
       </section>
 
       <section class="endpoint" id="doc-manual-payments">
@@ -1529,7 +1878,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary?format=xls
           <table>
             <thead><tr><th>Param</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
-              <tr><td><code>paymentDate</code></td><td>string, optional</td><td>ISO 8601 date, passed through to the bank file (CIMB ignores it).</td></tr>
+              <tr><td><code>paymentDate</code></td><td>string, optional</td><td>ISO 8601 date, passed through to the bank file (CIMB ignores it). The zip's bank file takes none of the bank-file options: OCBC gets tape id <code>001</code> with no ID check and the default reference, and Hong Leong, which needs a <code>channel</code>, is left out (<code>bank-file</code> in <code>X-Bundle-Skipped</code>). Fetch those with the <a href="#doc-bank-file">bank-file endpoint</a>.</td></tr>
             </tbody>
           </table>
         </div>
@@ -1635,6 +1984,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary?format=xls
           <span class="tag scope">payroll:read</span>
         </div>
         <p>The manual journal that WOULD post, so it can be checked against the chart of accounts before committing. Writes nothing.</p>
+        <p>PCB the company pays for staff (<a href="#pcb-borne">PCB borne by the employer</a>) is its own debit line, <code>PCB BORNE BY EMPLOYER - {project}</code>, since net pay no longer carries it. It goes to the optional <code>taxBorneByEmployer</code> account slot ("PCB borne by employer") in the payroll settings' <code>xeroMappingJson</code>; if that slot is not set it posts to the <code>salary</code> account, so it never blocks a post by itself. The PCB payable credit is unchanged.</p>
         <h3>Response <code>200</code></h3>
         <div class="table-wrap">
           <table>
@@ -1642,7 +1992,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary?format=xls
             <tbody>
               <tr><td><code>ok</code></td><td>boolean</td><td>Whether these lines would actually post — check this, not the HTTP status: a mapping problem still answers <code>200</code>.</td></tr>
               <tr><td><code>error</code></td><td>string or null</td><td>Why <code>ok</code> is false, e.g. an unmapped account.</td></tr>
-              <tr><td><code>narration</code> / <code>date</code></td><td>string</td><td></td></tr>
+              <tr><td><code>narration</code> / <code>date</code></td><td>string</td><td>Narration is <code>{year} - SALARY FOR {MONTH} {year}</code>, with <code> - {RUN NAME}</code> (upper-cased) added for a named run. Each run of a month is posted as its own journal.</td></tr>
               <tr><td><code>lines[].accountCode</code> / <code>.description</code> / <code>.amount</code> / <code>.trackingOption</code></td><td>mixed</td><td></td></tr>
               <tr><td><code>balance</code></td><td>number</td><td>Sum of every line's amount — should be 0 for a balanced journal.</td></tr>
               <tr><td><code>totalDebits</code> / <code>totalCredits</code></td><td>number</td><td></td></tr>
@@ -1653,6 +2003,17 @@ curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary?format=xls
         </div>
         <h3>Errors</h3>
         <p><code>404</code> — no such run.</p>
+        <div class="callout warn">
+          <strong>Reimbursed claims need a Xero-linked account.</strong> Each claim attached to the
+          run debits the account it was coded to, and only an account that has been synced from
+          Xero (it has a <code>xeroAccountId</code>, see <a href="accounts.html#accounts">Accounts</a>)
+          counts. A claim coded to a hand-made account, or to none, makes the journal
+          <code>ok: false</code> with <code>error</code> reading
+          <code>This run cannot post to Xero yet — reimbursement claims with no Xero-linked expense account: …</code>
+          followed by the claim labels. The reason is that a hand-made account can share a code with a
+          different Xero account and post to the wrong ledger. Fix it by changing the claim's account
+          to a Xero one, then preview again.
+        </div>
 <pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/xero/preview \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
       </section>
@@ -1680,7 +2041,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/summary?format=xls
         <h3>Errors</h3>
         <ul>
           <li><code>404</code> — no such run (empty body).</li>
-          <li><code>409</code> <code>{ "error": "…" }</code> — note the body here is just <code>{ "error" }</code>, not the full shape above: not <code>SUBMITTED</code> yet, the org is not connected to Xero, an unmapped account, or an unbalanced journal.</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> — note the body here is just <code>{ "error" }</code>, not the full shape above: not <code>SUBMITTED</code> yet, the org is not connected to Xero, an unmapped account (including a reimbursed claim coded to an account without a Xero id, see <a href="#xero-preview">the preview</a>), or an unbalanced journal.</li>
         </ul>
 <pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs/run_123/xero/sync \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>

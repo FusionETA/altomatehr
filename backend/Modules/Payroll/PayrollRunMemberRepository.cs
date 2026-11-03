@@ -15,9 +15,9 @@ public class PayrollRunMemberRepository : IPayrollRunMemberRepository
             .Where(m => m.PayrollRunId == payrollRunId)
             .ToListAsync();
 
-    public async Task ReplaceForRunAsync(string payrollRunId, IEnumerable<string> employeeProfileIds)
+    public async Task ReplaceForRunAsync(PayrollRun run, IEnumerable<string> employeeProfileIds)
     {
-        var existing = await GetForRunAsync(payrollRunId);
+        var existing = await GetForRunAsync(run.Id);
         if (existing.Count > 0) _db.PayrollRunMembers.RemoveRange(existing);
 
         var now = DateTime.UtcNow;
@@ -25,8 +25,10 @@ public class PayrollRunMemberRepository : IPayrollRunMemberRepository
         {
             _db.PayrollRunMembers.Add(new PayrollRunMember
             {
-                PayrollRunId = payrollRunId,
+                PayrollRunId = run.Id,
                 EmployeeProfileId = profileId,
+                PeriodYear = run.PeriodYear,
+                PeriodMonth = run.PeriodMonth,
                 CreatedAt = now,
             });   // StampTenant sets OrganizationId
         }

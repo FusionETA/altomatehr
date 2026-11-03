@@ -33,12 +33,9 @@ public enum OtDayType
 // or OtMethod is TIME_BANK which banks 1:1 rather than paying a premium) —
 // Reason says which.
 //
-// OutOfShiftMultiplier is the x-HRP rate for hours beyond the regular shift;
-// InShiftMultiplier is the x-ORP premium for hours worked WITHIN the regular
-// shift on a rest day / public holiday (always null on a normal day, where
-// in-shift hours are just ordinary pay).
+// OutOfShiftMultiplier is the x-HRP rate the day's overtime is paid at: the
+// policy's own for that built-in type, or else the company's.
 public record OtRateResolution(
     OtDayType DayType,
     decimal? OutOfShiftMultiplier,
-    decimal? InShiftMultiplier,
     string Reason);

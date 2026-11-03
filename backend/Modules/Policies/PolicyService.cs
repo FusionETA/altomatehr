@@ -13,11 +13,25 @@ public class PolicyService : IPolicyService
     private readonly IEmployeePolicyRepository _policies;
     private readonly IPolicyLeaveEntitlementRepository _entitlements;
 
+    // Optional like _access: a hand-built instance in a test needs neither.
+    private readonly IPolicyOvertimeRateRepository? _overtimeRates;
+    private readonly Overtime.IOvertimeTypeRepository? _overtimeTypes;
+
+    // Optional so hand-built instances in tests need not supply it; without
+    // it every caller is treated as unrestricted (as an Owner is).
+    private readonly Organizations.IModuleAccessService? _access;
+
     public PolicyService(
         IEmployeePolicyRepository policies,
         IPolicyLeaveEntitlementRepository entitlements,
-        IDirectoryService directory)
+        IDirectoryService directory,
+        Organizations.IModuleAccessService? access = null,
+        IPolicyOvertimeRateRepository? overtimeRates = null,
+        Overtime.IOvertimeTypeRepository? overtimeTypes = null)
     {
+        _access = access;
+        _overtimeRates = overtimeRates;
+        _overtimeTypes = overtimeTypes;
         _policies = policies;
         _entitlements = entitlements;
         _directory = directory;
@@ -26,17 +40,58 @@ public class PolicyService : IPolicyService
     public async Task<IEnumerable<PolicyDto>> GetAllAsync()
     {
         var policies = await _policies.GetAllAsync();
+        var rates = _overtimeRates is null
+            ? Enumerable.Empty<PolicyOvertimeRate>().ToLookup(r => r.PolicyId)
+            : (await _overtimeRates.GetAllAsync()).ToLookup(r => r.PolicyId);
         var result = new List<PolicyDto>(policies.Count);
         foreach (var policy in policies)
-            result.Add(ToDto(policy, await _entitlements.GetByPolicyAsync(policy.Id)));
+            result.Add(ToDto(policy, await _entitlements.GetByPolicyAsync(policy.Id), rates[policy.Id]));
         return result;
     }
 
+    public async Task<IEnumerable<PolicyDto>> GetVisibleAsync()
+    {
+        var access = await AccessAsync();
+        var all = await GetAllAsync();
+        if (access?.PolicyScope is null) return all;
+
+        var visible = all.Where(p => access.CanEditPolicy(p.Id)).ToList();
+        foreach (var policy in visible) policy.CanEdit = !await CoversAdministratorsAsync(policy.Id);
+        return visible;
+    }
+
+    // Whether any of the company's admins or its owner resolves to this policy.
+    private async Task<bool> CoversAdministratorsAsync(string policyId)
+    {
+        var administrators = (await _directory.GetMembershipsForCurrentOrgAsync())
+            .Where(m => !Common.OrgRoles.IsOnPayroll(m.Role))
+            .Select(m => m.UserId);
+        return (await GetEffectivePoliciesForEmployeesAsync(administrators))
+            .Values.Any(p => p.Id == policyId);
+    }
+
+    private async Task<Organizations.AdminAccess?> AccessAsync() =>
+        _access is null ? null : await _access.GetAccessAsync();
+
+    // Creating, archiving and choosing the default reach the whole company —
+    // the Owner's call. Admins edit the policies they're given instead.
+    private async Task<PolicySaveResult?> RefuseUnlessCompanyWideAsync(string what) =>
+        await AccessAsync() is { ManagesAllPolicies: false }
+            ? new PolicySaveResult(false, null,
+                $"Only the organization's owner can {what}. You can edit the policies your admin access covers.",
+                Forbidden: true)
+            : null;
+
     public async Task<PolicySaveResult> CreateAsync(SavePolicyDto dto)
     {
+        if (await RefuseUnlessCompanyWideAsync("create a policy") is { } refused) return refused;
+
         var name = dto.Name.Trim();
         if (await _policies.GetByNameAsync(name) is not null)
             return new PolicySaveResult(false, null, $"A policy named \"{name}\" already exists.");
+
+        if (await OvertimeRatesProblemAsync(dto.OvertimeRates) is { } overtimeProblem)
+            return new PolicySaveResult(false, null, overtimeProblem);
 
         var now = DateTime.UtcNow;
         var policy = Apply(new EmployeePolicy { CreatedAt = now }, dto, name);
@@ -46,51 +101,80 @@ public class PolicyService : IPolicyService
 
         await _policies.AddAsync(policy);
         await SaveEntitlementsAsync(policy.Id, dto.LeaveEntitlements);
+        var rates = await SaveOvertimeRatesAsync(policy.Id, dto.OvertimeRates);
 
-        return new PolicySaveResult(true, ToDto(policy, ToEntities(policy.Id, dto.LeaveEntitlements)), null);
+        return new PolicySaveResult(true, ToDto(policy, ToEntities(policy.Id, dto.LeaveEntitlements), rates), null);
     }
 
     public async Task<PolicySaveResult> UpdateAsync(string id, SavePolicyDto dto)
     {
         var policy = await _policies.GetByIdAsync(id);
-        if (policy is null)
+        var access = await AccessAsync();
+        // A policy outside an admin's scope is one they can't see — a 404,
+        // not a 403 that would confirm it exists.
+        if (policy is null || access is not null && !access.CanEditPolicy(id))
             return new PolicySaveResult(false, null, null);   // → 404
+
+        // An admin limited to some policies covers only the STAFF on them.
+        // The company's admins and owner sit on a policy too — explicitly, or
+        // through the default — and a limited admin mustn't change their leave
+        // or clock-in rules, so such a policy stays the Owner's.
+        if (access?.PolicyScope is not null && await CoversAdministratorsAsync(id))
+        {
+            return new PolicySaveResult(false, null,
+                "This policy also applies to the company's admins or owner, so only the owner can change it.",
+                Forbidden: true);
+        }
 
         var name = dto.Name.Trim();
         var clash = await _policies.GetByNameAsync(name);
         if (clash is not null && clash.Id != id)
-            return new PolicySaveResult(false, null, $"A policy named \"{name}\" already exists.");
+        {
+            // Don't name a policy the caller can't see.
+            return new PolicySaveResult(false, null, access is null || access.CanEditPolicy(clash.Id)
+                ? $"A policy named \"{name}\" already exists."
+                : $"The name \"{name}\" isn't available. Choose another.");
+        }
+
+        if (await OvertimeRatesProblemAsync(dto.OvertimeRates) is { } overtimeProblem)
+            return new PolicySaveResult(false, null, overtimeProblem);
 
         Apply(policy, dto, name);
         policy.UpdatedAt = DateTime.UtcNow;
         await _policies.UpdateAsync(policy);
         await SaveEntitlementsAsync(policy.Id, dto.LeaveEntitlements);
+        var rates = await SaveOvertimeRatesAsync(policy.Id, dto.OvertimeRates);
 
-        return new PolicySaveResult(true, ToDto(policy, ToEntities(policy.Id, dto.LeaveEntitlements)), null);
+        return new PolicySaveResult(true, ToDto(policy, ToEntities(policy.Id, dto.LeaveEntitlements), rates), null);
     }
 
-    public async Task<PolicyDto?> SetArchivedAsync(string id, bool archived)
+    public async Task<PolicySaveResult> SetArchivedAsync(string id, bool archived)
     {
+        if (await RefuseUnlessCompanyWideAsync(archived ? "archive a policy" : "restore a policy") is { } refused)
+            return refused;
+
         var policy = await _policies.GetByIdAsync(id);
-        if (policy is null) return null;
+        if (policy is null) return new PolicySaveResult(false, null, null);
 
         policy.IsArchived = archived;
         if (archived) policy.IsDefault = false;   // an archived policy can't be the default
         policy.UpdatedAt = DateTime.UtcNow;
         await _policies.UpdateAsync(policy);
-        return ToDto(policy, await _entitlements.GetByPolicyAsync(policy.Id));
+        return new PolicySaveResult(true, ToDto(policy, await _entitlements.GetByPolicyAsync(policy.Id), await RatesOfAsync(policy.Id)), null);
     }
 
-    public async Task<PolicyDto?> SetDefaultAsync(string id)
+    public async Task<PolicySaveResult> SetDefaultAsync(string id)
     {
+        if (await RefuseUnlessCompanyWideAsync("choose the default policy") is { } refused) return refused;
+
         var policy = await _policies.GetByIdAsync(id);
-        if (policy is null || policy.IsArchived) return null;
+        if (policy is null || policy.IsArchived) return new PolicySaveResult(false, null, null);
 
         policy.IsDefault = true;
         policy.UpdatedAt = DateTime.UtcNow;
         await _policies.UpdateAsync(policy);
         await _policies.ClearDefaultExceptAsync(policy.Id);   // exactly one default
-        return ToDto(policy, await _entitlements.GetByPolicyAsync(policy.Id));
+        return new PolicySaveResult(true, ToDto(policy, await _entitlements.GetByPolicyAsync(policy.Id), await RatesOfAsync(policy.Id)), null);
     }
 
     public async Task<PolicyModuleAccess> GetModuleAccessAsync(string employeeId)
@@ -188,6 +272,47 @@ public class PolicyService : IPolicyService
         return entitlements.ToDictionary(e => e.LeaveTypeId, e => e.DefaultDays);
     }
 
+    // Each must be one of the company's own (custom) overtime types; the
+    // built-in ones have their own fields.
+    private async Task<string?> OvertimeRatesProblemAsync(List<PolicyOvertimeRateDto>? rates)
+    {
+        if (rates is null || rates.Count == 0 || _overtimeTypes is null) return null;
+        var custom = (await _overtimeTypes.GetAllAsync())
+            .Where(t => t.Kind == Overtime.Entities.OvertimeTypeKind.CUSTOM)
+            .Select(t => t.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        var unknown = rates.FirstOrDefault(r => !custom.Contains(r.OvertimeTypeId));
+        if (unknown is not null)
+            return $"\"{unknown.OvertimeTypeId}\" isn't one of the company's own overtime types.";
+        return rates.GroupBy(r => r.OvertimeTypeId).Any(g => g.Count() > 1)
+            ? "Each overtime type can be listed once."
+            : null;
+    }
+
+    // Null = the caller said nothing about them: left as they are.
+    private async Task<List<PolicyOvertimeRate>> SaveOvertimeRatesAsync(string policyId, List<PolicyOvertimeRateDto>? dtos)
+    {
+        if (_overtimeRates is null) return [];
+        if (dtos is null) return await _overtimeRates.GetByPolicyAsync(policyId);
+
+        // Only what differs from "on, at the company's rate" is stored.
+        var rows = dtos
+            .Where(d => d.Multiplier is not null || !d.Enabled)
+            .Select(d => new PolicyOvertimeRate
+            {
+                PolicyId = policyId,
+                OvertimeTypeId = d.OvertimeTypeId,
+                Multiplier = d.Multiplier,
+                Enabled = d.Enabled,
+            })
+            .ToList();
+        await _overtimeRates.ReplaceForPolicyAsync(policyId, rows);
+        return rows;
+    }
+
+    private async Task<List<PolicyOvertimeRate>> RatesOfAsync(string policyId) =>
+        _overtimeRates is null ? [] : await _overtimeRates.GetByPolicyAsync(policyId);
+
     private async Task SaveEntitlementsAsync(string policyId, IEnumerable<PolicyLeaveEntitlementDto> dtos) =>
         await _entitlements.ReplaceForPolicyAsync(policyId, ToEntities(policyId, dtos));
 
@@ -232,14 +357,13 @@ public class PolicyService : IPolicyService
         policy.OtRateNormalDay = dto.OtRateNormalDay;
         policy.OtRatePublicHoliday = dto.OtRatePublicHoliday;
         policy.OtRateRestDay = dto.OtRateRestDay;
-        policy.OtRatePublicHolidayInShift = dto.OtRatePublicHolidayInShift;
-        policy.OtRateRestDayInShift = dto.OtRateRestDayInShift;
         policy.OtSalaryThreshold = dto.OtSalaryThreshold;
         policy.Temporary = dto.Temporary;
         return policy;
     }
 
-    private static PolicyDto ToDto(EmployeePolicy p, IEnumerable<PolicyLeaveEntitlement> entitlements) => new()
+    private static PolicyDto ToDto(
+        EmployeePolicy p, IEnumerable<PolicyLeaveEntitlement> entitlements, IEnumerable<PolicyOvertimeRate> overtimeRates) => new()
     {
         Id = p.Id,
         Name = p.Name,
@@ -267,8 +391,9 @@ public class PolicyService : IPolicyService
         OtRateNormalDay = p.OtRateNormalDay,
         OtRatePublicHoliday = p.OtRatePublicHoliday,
         OtRateRestDay = p.OtRateRestDay,
-        OtRatePublicHolidayInShift = p.OtRatePublicHolidayInShift,
-        OtRateRestDayInShift = p.OtRateRestDayInShift,
+        OvertimeRates = overtimeRates
+            .Select(r => new PolicyOvertimeRateDto { OvertimeTypeId = r.OvertimeTypeId, Multiplier = r.Multiplier, Enabled = r.Enabled })
+            .ToList(),
         OtSalaryThreshold = p.OtSalaryThreshold,
         Temporary = p.Temporary,
         LeaveEntitlements = entitlements

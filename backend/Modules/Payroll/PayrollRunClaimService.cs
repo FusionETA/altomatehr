@@ -103,7 +103,7 @@ public class PayrollRunClaimService : IPayrollRunClaimService
                     AttachedToRunId = existing?.PayrollRunId,
                     AttachedToRunPeriod = run is null
                         ? null
-                        : PayrollPeriodLabel.For(run.PeriodYear, run.PeriodMonth),
+                        : PayrollPeriodLabel.ForRun(run),
                     BlockedReason = BlockedReasonFor(c, person),
                 };
             })
@@ -139,7 +139,7 @@ public class PayrollRunClaimService : IPayrollRunClaimService
             var holder = await _runs.GetByIdAsync(existing.PayrollRunId);
             var where = holder is null
                 ? "another payroll run"
-                : PayrollPeriodLabel.For(holder.PeriodYear, holder.PeriodMonth);
+                : PayrollPeriodLabel.ForRun(holder);
 
             return new PayrollRunClaimAttachResult(
                 true, false, null,
@@ -173,7 +173,7 @@ public class PayrollRunClaimService : IPayrollRunClaimService
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.PayrollRunClaimAttach,
             $"Attached claim {claim.ClaimNumber} to the "
-            + $"{PayrollPeriodLabel.For(run.PeriodYear, run.PeriodMonth)} payroll run",
+            + $"{PayrollPeriodLabel.ForRun(run)} payroll run",
             TargetType: "PayrollRunClaim",
             TargetId: attachment.Id,
             Metadata: new

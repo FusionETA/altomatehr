@@ -21,4 +21,17 @@ public class SsoCreateCompanyTests
 
         Assert.Contains("Altomate", ex.Message);
     }
+
+    // In support mode the creator would be the support person, not the
+    // customer: refused, pointing at Support → Create company.
+    [Fact]
+    public async Task ASupportSession_CannotCreateACompany()
+    {
+        var service = new OrganizationService(null!, null!, null!, null!, null!, null!, null!);
+
+        var ex = await Assert.ThrowsAsync<SupportModeActionException>(() =>
+            service.CreateAsync(new CreateOrganizationDto { Name = "Customer Co Two" }, "usr-support", viaSupport: true));
+
+        Assert.Contains("Support → Create company", ex.Message);
+    }
 }

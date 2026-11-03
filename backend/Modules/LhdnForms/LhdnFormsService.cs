@@ -152,7 +152,8 @@ public class LhdnFormsService : ILhdnFormsService
         var perMonth = new LhdnFormMonthPcb?[12];
         foreach (var month in row?.Months ?? [])
         {
-            var receipt = annual.Receipts.GetValueOrDefault(month.Month);
+            // The receipt of the run this person was paid in that month.
+            var receipt = month.Receipt ?? annual.Receipts.GetValueOrDefault(month.Month);
             perMonth[month.Month - 1] = new LhdnFormMonthPcb
             {
                 Month = month.Month, Mtd = month.Pcb, Cp38 = month.Cp38, Zakat = month.Zakat,

@@ -8,6 +8,8 @@ import {
   attachOvertimeAfterFiles,
   createOvertime,
   getMyOvertime,
+  getMyOvertimeTypes,
+  MY_OVERTIME_TYPES_PATH,
   OVERTIME_FILE_ACCEPT,
   OVERTIME_MAX_FILES,
   removeOvertimeAttachment,
@@ -18,6 +20,7 @@ import {
 import { OvertimeFileList } from "./OvertimeFileList";
 import { useConfirm } from "@/shared/components/ConfirmDialog";
 import { OtRatePreview } from "./OtRatePreview";
+import { formatMultiplier } from "../lib/ot-rate";
 import { OvertimeStatusBadge } from "./OvertimeStatusBadge";
 import {
   overtimeMatchesStatus,
@@ -305,6 +308,11 @@ function OvertimeCard({
       </div>
 
       <div>
+        {request.overtimeTypeName ? (
+          <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.16em] text-primary">
+            {request.overtimeTypeName}
+          </p>
+        ) : null}
         <p className="line-clamp-2 text-sm font-semibold leading-5 text-foreground">{request.reason}</p>
 
         <div className="mt-3 space-y-2.5">
@@ -370,6 +378,9 @@ function OvertimeCard({
   );
 }
 
+// The overtime-type picker's "none picked": payroll sorts the hours by the calendar.
+const AUTOMATIC = "automatic";
+
 function NewOvertimeModal({
   projects,
   projectsLoading,
@@ -387,6 +398,12 @@ function NewOvertimeModal({
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [reason, setReason] = useState("");
+  // The company's own overtime types this person may pick. Most companies
+  // have none, and then the field isn't shown at all.
+  const typesQuery = useCachedQuery(MY_OVERTIME_TYPES_PATH, getMyOvertimeTypes);
+  const ownTypes = typesQuery.data ?? [];
+  const [typeId, setTypeId] = useState(AUTOMATIC);
+  const pickedType = ownTypes.find((t) => t.id === typeId);
   // Picked but not yet uploaded; uploaded together on submit.
   const [beforeFiles, setBeforeFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
@@ -417,6 +434,7 @@ function NewOvertimeModal({
         startAt: `${workDate}T${startTime}:00`,
         endAt: `${workDate}T${endTime}:00`,
         reason: reason.trim(),
+        overtimeTypeId: pickedType?.id,
         beforeAttachments,
       });
       onCreated(request);
@@ -510,10 +528,38 @@ function NewOvertimeModal({
             </label>
           </div>
 
-          <OtRatePreview
-            workDate={workDate}
-            projectId={projectId === NO_PROJECT ? undefined : projectId}
-          />
+          {ownTypes.length > 0 ? (
+            <label className="grid gap-1.5">
+              <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                Overtime type
+              </span>
+              <Select value={typeId} onValueChange={setTypeId}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={AUTOMATIC}>Automatic (by the calendar)</SelectItem>
+                  {ownTypes.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name} ({formatMultiplier(t.multiplier)})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+          ) : null}
+
+          {pickedType ? (
+            <p className="rounded-2xl bg-surface-low px-4 py-3 text-sm text-muted-foreground">
+              Paid as <span className="font-semibold text-foreground">{pickedType.name}</span>:{" "}
+              overtime hours {formatMultiplier(pickedType.multiplier)}.
+            </p>
+          ) : (
+            <OtRatePreview
+              workDate={workDate}
+              projectId={projectId === NO_PROJECT ? undefined : projectId}
+            />
+          )}
 
           <label className="grid gap-1.5">
             <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Reason</span>

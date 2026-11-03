@@ -221,7 +221,7 @@ internal sealed class FakeOrganizationService : IOrganizationService
     public Task<OrganizationDto?> GetByIdAsync(string organizationId) =>
         Task.FromResult<OrganizationDto?>(_organization.Id == organizationId ? _organization : null);
 
-    public Task<OrganizationDto> CreateAsync(CreateOrganizationDto dto, string ownerUserId, bool viaSso = false) =>
+    public Task<OrganizationDto> CreateAsync(CreateOrganizationDto dto, string ownerUserId, bool viaSso = false, bool viaSupport = false) =>
         throw new NotImplementedException();
 
     public Task<OrganizationDto?> UpdateAsync(string organizationId, UpdateOrganizationDto dto) =>

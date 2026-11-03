@@ -8,6 +8,7 @@ import {
 } from "@/features/payroll/api";
 import { rmWithUnit } from "@/features/payroll/lib/payroll-format";
 import { useBodyScrollLock } from "@/shared/lib/use-body-scroll-lock";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/components/ui/select";
 
 export type SalaryClassification =
   | { kind: "CORRECTION" }
@@ -123,17 +124,18 @@ export function SalaryChangeDialog({
                 </label>
                 <label className="block">
                   <span className="text-xs font-semibold text-muted-foreground">Reason</span>
-                  <select
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value as SalaryChangeReason)}
-                    className={input}
-                  >
-                    {SALARY_CHANGE_REASONS.map((r) => (
-                      <option key={r} value={r}>
-                        {SALARY_CHANGE_REASON_LABELS[r]}
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={reason} onValueChange={(next) => setReason(next as SalaryChangeReason)}>
+                    <SelectTrigger className="mt-1 h-11 rounded-xl" aria-label="Reason">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SALARY_CHANGE_REASONS.map((r) => (
+                        <SelectItem key={r} value={r}>
+                          {SALARY_CHANGE_REASON_LABELS[r]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </label>
               </div>
               <label className="block">

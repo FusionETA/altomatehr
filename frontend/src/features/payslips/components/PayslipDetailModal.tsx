@@ -87,14 +87,24 @@ export function PayslipDetailModal({
               {payslip.skbbkEmployee > 0 ? (
                 <Row label="SKBBK" value={payslip.skbbkEmployee} />
               ) : null}
-              {/* Includes Additional PCB — withheld and filed as PCB. */}
-              <Row label="PCB (tax)" value={payslip.pcb + payslip.voluntaryPcb} />
+              {/* Includes Additional PCB — withheld and filed as PCB. PCB the
+                  company pays for them isn't taken from their pay. */}
+              <Row
+                label="PCB (tax)"
+                value={payslip.pcb - payslip.pcbBorneByEmployer + payslip.voluntaryPcb}
+              />
               {payslip.cp38 > 0 ? <Row label="CP38" value={payslip.cp38} /> : null}
               {payslip.zakat > 0 ? <Row label="Zakat" value={payslip.zakat} /> : null}
               {payslip.totalDeductions > 0 ? (
                 <Row label="Other deductions" value={payslip.totalDeductions} />
               ) : null}
             </Group>
+
+            {payslip.pcbBorneByEmployer > 0 ? (
+              <Group title="Paid by your employer">
+                <Row label="PCB (tax)" value={payslip.pcbBorneByEmployer} />
+              </Group>
+            ) : null}
 
             {/* The named lines behind those totals — "Allowances RM 500" is not
                 an answer to "what was the RM 500 for". */}

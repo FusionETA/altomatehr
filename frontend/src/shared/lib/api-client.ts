@@ -151,12 +151,40 @@ function validationMessages(errors: unknown): string[] {
   );
 }
 
+// The server can close a session outright — a 401 carrying one of these
+// codes (a company deactivated by support) — which no refresh would fix.
+// The app listens, and signs the person out or moves them on, with the message.
+const SESSION_CLOSED_CODES = ["company_deactivated"];
+type SessionClosedListener = (message: string) => void;
+const sessionClosedListeners = new Set<SessionClosedListener>();
+
+export function onSessionClosed(listener: SessionClosedListener): () => void {
+  sessionClosedListeners.add(listener);
+  return () => sessionClosedListeners.delete(listener);
+}
+
+async function sessionClosedMessage(res: Response): Promise<string | null> {
+  try {
+    const body = (await res.clone().json()) as { code?: unknown; error?: unknown };
+    if (typeof body.code !== "string" || !SESSION_CLOSED_CODES.includes(body.code)) return null;
+    return typeof body.error === "string" ? body.error : "Your session has ended.";
+  } catch {
+    return null;
+  }
+}
+
 // Sends, and on a 401 refreshes once and sends again. `send` is a thunk so
 // the retry rebuilds its headers with the NEW token rather than replaying
 // the expired one.
 async function withRefresh(path: string, send: () => Promise<Response>): Promise<Response> {
   const res = await send();
   if (res.status !== 401 || isAuthPath(path)) return res;
+
+  const closed = await sessionClosedMessage(res);
+  if (closed !== null) {
+    sessionClosedListeners.forEach((listener) => listener(closed));
+    return res;
+  }
 
   return (await refreshAccessToken()) ? send() : res;
 }
@@ -246,7 +274,9 @@ async function requestBlob(path: string): Promise<Blob> {
 // A download: the bytes plus the filename the server chose. Kept separate from
 // apiGetBlob because a file the user saves needs a name, and only the
 // Content-Disposition header knows it.
-export type ApiFile = { blob: Blob; fileName: string };
+// `headers` is there for the few downloads that report more than the file
+// (a zip naming what it left out); saving ignores it.
+export type ApiFile = { blob: Blob; fileName: string; headers?: Headers };
 
 // `body` turns this into a POST: some downloads are built from input too large
 // or too structured for a query string (the CP8D converter posts a whole table
@@ -284,6 +314,7 @@ async function requestFile(
   return {
     blob: await res.blob(),
     fileName: parseFileName(res.headers.get("Content-Disposition")) ?? fallbackName,
+    headers: res.headers,
   };
 }
 
@@ -333,6 +364,38 @@ export async function apiOpenStream(path: string, signal: AbortSignal): Promise<
 
   if (!res.ok || !res.body) {
     throw new ApiError(`GET ${path} failed: ${res.status}`, res.status);
+  }
+
+  return res;
+}
+
+// POSTs a JSON body and opens the streamed (SSE) answer — for a request whose
+// response arrives in parts. Same token, refresh-and-retry and error handling
+// as apiPost; reading the stream is the caller's.
+export async function apiPostStream(path: string, body: unknown): Promise<Response> {
+  const res = await withRefresh(path, () =>
+    fetch(`${API_URL}${path}`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
+      body: JSON.stringify(body),
+    }),
+  );
+
+  if (!res.ok || !res.body) {
+    let data: unknown;
+    let msg = `POST ${path} failed: ${res.status}`;
+    try {
+      data = await res.json();
+      msg = getErrorMessage(data, msg);
+    } catch {
+      /* body wasn't JSON */
+    }
+    throw new ApiError(msg, res.status, data);
   }
 
   return res;

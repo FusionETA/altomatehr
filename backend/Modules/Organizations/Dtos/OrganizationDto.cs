@@ -24,6 +24,11 @@ public class OrganizationDto
     public string ClaimSettlementRoute { get; set; } = "XERO_BILL";
     public string XeroBillStage { get; set; } = "AwaitingPayment";
 
+    // Whether Xero is connected — any member can read it (unlike the Xero
+    // status endpoint), so screens can call the claim accounts "Chart of
+    // accounts" with Xero and "Claim item types" without.
+    public bool XeroConnected { get; set; }
+
     // The line the attendance performance report measures supervisors against.
     public int SupervisorSlaMinutes { get; set; } = 60;
 

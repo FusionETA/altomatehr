@@ -2,7 +2,14 @@ import { useEffect, useState } from "react";
 import { Building2, CircleCheck, Info, Link2, LoaderCircle, TriangleAlert, Unplug } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useBodyScrollLock } from "@/shared/lib/use-body-scroll-lock";
-import { disconnectXero, getXeroConnectUrl, getXeroStatus, type XeroStatus } from "../api";
+import {
+  cancelXeroOrgChoice,
+  chooseXeroOrg,
+  disconnectXero,
+  getXeroConnectUrl,
+  getXeroStatus,
+  type XeroStatus,
+} from "../api";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { xeroCallbackOutcome, xeroCallbackRefusal } from "@/shared/lib/xero-callback";
 
@@ -31,6 +38,7 @@ export function XeroConnectionCard() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pickedOrg, setPickedOrg] = useState<string | null>(null);
   // Captured at app boot, before this ever rendered — see xero-callback.ts.
   const callback = xeroCallbackOutcome;
   // Why a refused connect was refused, when the server said.
@@ -64,6 +72,24 @@ export function XeroConnectionCard() {
     }
   }
 
+  // A sign-in that came back with several organisations: connect the one
+  // picked, or drop the sign-in.
+  async function answerOrgChoice(tenantId: string | null) {
+    setBusy(true);
+    setError(null);
+    try {
+      if (tenantId) await chooseXeroOrg(tenantId);
+      else await cancelXeroOrgChoice();
+      setPickedOrg(null);
+      await statusQuery.refresh();
+    } catch (e: unknown) {
+      setError(message(e, "Could not connect that Xero organisation."));
+      await statusQuery.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function confirmDisconnect() {
     setBusy(true);
     setError(null);
@@ -81,6 +107,25 @@ export function XeroConnectionCard() {
   const connected = status?.connected === true;
   // Connected but dead: the row is still there, the tokens are not usable.
   const needsReconnect = connected && status?.needsReconnect === true;
+  // The owner is set to their own Xero app and AltomateHR hasn't added it yet.
+  const blocked = status?.connectBlocked === true;
+  // AltomateHR switched Xero off for this company: no Connect, no Reconnect.
+  const disabled = status?.xeroDisabled === true;
+  const moveApp = connected && !needsReconnect && status?.reconnectToMoveApp === true;
+  const orgChoice = status?.pendingChoice?.length ? status.pendingChoice : null;
+
+  function headline() {
+    if (needsReconnect && disabled)
+      return "This connection has stopped working, and Xero is switched off for your company. Disconnect it, or contact AltomateHR if you need Xero.";
+    if (needsReconnect)
+      return "This connection has stopped working. Reconnect to resume pushing claims and syncing accounts.";
+    if (connected)
+      return "Connected for this company. Xero owns the chart of accounts and projects while it is.";
+    if (disabled) return "Xero isn't switched on for your company. Contact AltomateHR if you need it.";
+    if (blocked)
+      return "Xero isn't set up for your company yet. Contact AltomateHR to finish setting up your company's Xero app.";
+    return "Connect Xero to push approved claims as bills and import the chart of accounts.";
+  }
 
   return (
     <section className={CARD}>
@@ -91,18 +136,17 @@ export function XeroConnectionCard() {
             Xero connection
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            {needsReconnect
-              ? "This connection has stopped working. Reconnect to resume pushing claims and syncing accounts."
-              : connected
-                ? "Connected for this company. Xero owns the chart of accounts and projects while it is."
-                : "Connect Xero to push approved claims as bills and import the chart of accounts."}
+            {headline()}
           </p>
+          {status?.ownApp && !blocked ? (
+            <p className="mt-1 text-xs font-semibold text-muted-foreground">Uses your company's own Xero app.</p>
+          ) : null}
         </div>
 
-        {status !== null && !connected ? (
+        {status !== null && !connected && !disabled && !orgChoice ? (
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || blocked}
             onClick={startConnect}
             className="inline-flex h-11 shrink-0 items-center gap-2 rounded-2xl bg-primary px-5 text-sm font-bold text-primary-foreground shadow-sm transition hover:opacity-90 disabled:opacity-50"
           >
@@ -120,6 +164,54 @@ export function XeroConnectionCard() {
             <p className="mt-1 text-muted-foreground">
               Sync accounts and projects to pull them in — Xero owns both lists from now on.
             </p>
+          </div>
+        </div>
+      ) : null}
+
+      {/* The Xero app is connected to many organisations (one shared with
+          another product), so Xero re-approved them all and can't say which
+          is this company's. Asked here instead of guessed. */}
+      {orgChoice ? (
+        <div className="mt-4 rounded-2xl border border-primary/25 bg-primary/5 p-4 text-sm">
+          <p className="font-semibold text-foreground">Which Xero organisation is this company?</p>
+          <p className="mt-1 text-muted-foreground">
+            Xero returned {orgChoice.length} organisations for that sign-in. Pick this company&apos;s own
+            one — organisations already connected to another company in AltomateHR aren&apos;t listed.
+          </p>
+          <div className="mt-3 max-h-64 space-y-1 overflow-y-auto">
+            {orgChoice.map((org) => (
+              <label
+                key={org.tenantId}
+                className="flex cursor-pointer items-center gap-2 rounded-xl px-2 py-1.5 transition hover:bg-card"
+              >
+                <input
+                  type="radio"
+                  name="xero-org-choice"
+                  checked={pickedOrg === org.tenantId}
+                  onChange={() => setPickedOrg(org.tenantId)}
+                />
+                <span className="text-foreground">{org.tenantName}</span>
+              </label>
+            ))}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy || !pickedOrg}
+              onClick={() => void answerOrgChoice(pickedOrg)}
+              className="inline-flex h-10 items-center gap-2 rounded-2xl bg-primary px-4 text-sm font-bold text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
+            >
+              {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+              Connect this organisation
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void answerOrgChoice(null)}
+              className="inline-flex h-10 items-center rounded-2xl border border-border bg-card px-4 text-sm font-semibold text-foreground transition hover:bg-muted disabled:opacity-50"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       ) : null}
@@ -154,7 +246,7 @@ export function XeroConnectionCard() {
         </div>
       ) : null}
 
-      {needsReconnect ? (
+      {needsReconnect && !disabled ? (
         <div className="mt-4 flex gap-3 rounded-2xl border border-amber-300/50 bg-amber-50/70 p-4 text-sm dark:bg-amber-500/10">
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
           <div>
@@ -162,6 +254,22 @@ export function XeroConnectionCard() {
             <p className="mt-1 text-amber-900/90 dark:text-amber-200/90">
               Xero has expired or revoked this connection, so claims cannot be pushed and accounts
               cannot sync. Nothing is lost — press Reconnect and sign in to Xero again.
+            </p>
+          </div>
+        </div>
+      ) : null}
+
+      {moveApp ? (
+        <div className="mt-4 flex gap-3 rounded-2xl border border-primary/25 bg-primary/5 p-4 text-sm">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <div>
+            <p className="font-semibold text-foreground">Reconnect when convenient</p>
+            <p className="mt-1 text-muted-foreground">
+              {status?.ownApp
+                ? "Your company now has its own Xero app."
+                : "Your company has moved to AltomateHR's shared Xero app."}{" "}
+              The current connection keeps working; press Reconnect and sign in to Xero once to move
+              it across. Your bills, files and records in Xero stay as they are.
             </p>
           </div>
         </div>
@@ -191,15 +299,17 @@ export function XeroConnectionCard() {
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={startConnect}
-              className="inline-flex h-10 items-center gap-1.5 rounded-full border border-border/70 bg-card px-4 text-xs font-bold text-muted-foreground shadow-sm transition hover:text-foreground disabled:opacity-50"
-            >
-              <Link2 className="h-3.5 w-3.5" />
-              Reconnect
-            </button>
+            {disabled ? null : (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={startConnect}
+                className="inline-flex h-10 items-center gap-1.5 rounded-full border border-border/70 bg-card px-4 text-xs font-bold text-muted-foreground shadow-sm transition hover:text-foreground disabled:opacity-50"
+              >
+                <Link2 className="h-3.5 w-3.5" />
+                Reconnect
+              </button>
+            )}
             <button
               type="button"
               disabled={busy}

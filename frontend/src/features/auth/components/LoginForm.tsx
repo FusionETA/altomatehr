@@ -4,13 +4,20 @@ import { login, type AuthResponse } from "../api";
 import { ForgotPasswordForm } from "./ForgotPasswordForm";
 import { ssoLinkExpired } from "../lib/sso-outcome";
 
-export function LoginForm({ onSuccess }: { onSuccess: (res: AuthResponse) => void }) {
+export function LoginForm({
+  onSuccess,
+  notice = null,
+}: {
+  onSuccess: (res: AuthResponse) => void;
+  // Why they're here, when the app signed them out (e.g. company deactivated).
+  notice?: string | null;
+}) {
   // Empty, not seeded with the demo account. A prefilled password is one
   // Enter away from signing a real user in as someone else, and it shipped a
   // working credential in the bundle.
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(notice);
   const [loading, setLoading] = useState(false);
   const [forgot, setForgot] = useState(false);
 

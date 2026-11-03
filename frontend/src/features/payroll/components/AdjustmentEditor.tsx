@@ -67,15 +67,18 @@ export function AdjustmentEditor({
   const [otNormal, setOtNormal] = useState("");
   const [otRest, setOtRest] = useState("");
   const [otPublic, setOtPublic] = useState("");
+  // The company's own overtime types: type id → typed hours.
+  const [otCustom, setOtCustom] = useState<Record<string, string>>({});
 
   // Typing ANY overtime figure replaces all three approved ones (see
   // PayrollOvertimeHours on the server) — a blank box then pays 0, not the
   // approved hours, so its placeholder has to say 0 too.
-  const otTyped = [otNormal, otRest, otPublic].some((v) => Number(v) > 0);
+  const otTyped = [otNormal, otRest, otPublic, ...Object.values(otCustom)].some((v) => Number(v) > 0);
   const [workedHours, setWorkedHours] = useState("");
   const [expectedHours, setExpectedHours] = useState("");
   const [basicOverride, setBasicOverride] = useState("");
   const [unpaidDays, setUnpaidDays] = useState("");
+  const [hrdfLevy, setHrdfLevy] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
   const [overrides, setOverrides] = useState<Record<string, FixedAllowanceOverride>>({});
@@ -97,6 +100,9 @@ export function AdjustmentEditor({
         setOtNormal(saved?.otNormalHours ? String(saved.otNormalHours) : "");
         setOtRest(saved?.otRestHours ? String(saved.otRestHours) : "");
         setOtPublic(saved?.otPublicHours ? String(saved.otPublicHours) : "");
+        setOtCustom(
+          Object.fromEntries(Object.entries(saved?.otCustomHours ?? {}).map(([id, h]) => [id, String(h)])),
+        );
         setNotes(saved?.notes ?? "");
         setOverrides(saved?.fixedAllowanceOverrides ?? {});
 
@@ -104,6 +110,7 @@ export function AdjustmentEditor({
         setExpectedHours(saved?.expectedHours == null ? "" : String(saved.expectedHours));
         setBasicOverride(saved?.basicPayOverride == null ? "" : String(saved.basicPayOverride));
         setUnpaidDays(saved?.unpaidLeaveDays == null ? "" : String(saved.unpaidLeaveDays));
+        setHrdfLevy(saved?.hrdfLevy == null ? "" : String(saved.hrdfLevy));
 
         setLines(
           (saved?.manualLineItems ?? []).map((item, index) => ({
@@ -126,20 +133,25 @@ export function AdjustmentEditor({
   const monthly = context?.salaryType === "MONTHLY";
   const editable = context?.editable ?? false;
 
-  // Approved overtime requests for the period, by day type — what generation
-  // pays when all three OT fields are left blank.
-  const approvedOt = {
-    normal: context?.approvedOtNormalHours ?? 0,
-    rest: context?.approvedOtRestHours ?? 0,
-    publicHoliday: context?.approvedOtPublicHours ?? 0,
+  // One box per overtime type: the three built in, then the company's own.
+  // Approved hours are what generation pays when every box is left blank.
+  const otBoxes =
+    context?.overtimeTypes && context.overtimeTypes.length > 0
+      ? context.overtimeTypes
+      : [
+          { key: "normalDay", name: "Normal day", builtIn: true, multiplier: 0, approvedHours: context?.approvedOtNormalHours ?? 0 },
+          { key: "restDay", name: "Rest day", builtIn: true, multiplier: 0, approvedHours: context?.approvedOtRestHours ?? 0 },
+          { key: "publicHoliday", name: "Public holiday", builtIn: true, multiplier: 0, approvedHours: context?.approvedOtPublicHours ?? 0 },
+        ];
+  const builtInBox: Record<string, [string, (v: string) => void]> = {
+    normalDay: [otNormal, setOtNormal],
+    restDay: [otRest, setOtRest],
+    publicHoliday: [otPublic, setOtPublic],
   };
-  const hasApprovedOt = approvedOt.normal + approvedOt.rest + approvedOt.publicHoliday > 0;
-  const approvedOtSummary = [
-    approvedOt.normal > 0 ? `${hoursLabel(approvedOt.normal)} normal day` : null,
-    approvedOt.rest > 0 ? `${hoursLabel(approvedOt.rest)} rest day` : null,
-    approvedOt.publicHoliday > 0 ? `${hoursLabel(approvedOt.publicHoliday)} public holiday` : null,
-  ]
-    .filter(Boolean)
+  const hasApprovedOt = otBoxes.some((b) => b.approvedHours > 0);
+  const approvedOtSummary = otBoxes
+    .filter((b) => b.approvedHours > 0)
+    .map((b) => `${hoursLabel(b.approvedHours)} ${b.name.toLowerCase()}`)
     .join(" · ");
   const otPlaceholder = (approved: number) =>
     otTyped || approved <= 0 ? "0" : String(Number(approved.toFixed(2)));
@@ -194,11 +206,18 @@ export function AdjustmentEditor({
     const expected = expectedHours.trim() === "" ? null : Number(expectedHours);
     const basic = basicOverride.trim() === "" ? null : Number(basicOverride);
     const unpaid = unpaidDays.trim() === "" ? null : Number(unpaidDays);
+    // Blank = computed; any amount (0 included) is the final levy.
+    const levy = hrdfLevy.trim() === "" ? null : Number(hrdfLevy);
 
     const body: SavePayrollRunAdjustment = {
       otNormalHours: Number(otNormal) || 0,
       otRestHours: Number(otRest) || 0,
       otPublicHours: Number(otPublic) || 0,
+      otCustomHours: Object.fromEntries(
+        Object.entries(otCustom)
+          .map(([id, v]) => [id, Number(v) || 0] as const)
+          .filter(([, h]) => h > 0),
+      ),
       manualLineItems: lines
         // A row the admin added and never filled in is not an instruction to
         // pay zero — it is an abandoned row, so it is dropped rather than
@@ -220,6 +239,7 @@ export function AdjustmentEditor({
       // Only monthly salaries are docked by the day; hourly staff are paid
       // for the hours they worked.
       unpaidLeaveDays: monthly ? unpaid : null,
+      hrdfLevy: levy,
       notes: notes.trim() || null,
     };
 
@@ -438,10 +458,39 @@ export function AdjustmentEditor({
               </Block>
             ) : null}
 
+            {/* ── Employer HRDF levy ─────────────────────────────────── */}
+            <Block
+              title="Employer HRDF levy"
+              hint="What the company pays HRD Corp for this person this month. Normally computed: the levy rate × their HRDF wages, for Malaysian citizens. Type an amount to use it instead — it is the final figure. Employer cost only; it doesn't change their pay."
+            >
+              <div className="w-44">
+                <label className={LABEL} htmlFor="adjHrdf">
+                  Levy (RM)
+                </label>
+                <input
+                  id="adjHrdf"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className={INPUT}
+                  disabled={!editable}
+                  value={hrdfLevy}
+                  placeholder={context.computedHrdfLevy == null ? "Computed" : rm(context.computedHrdfLevy)}
+                  onChange={(e) => setHrdfLevy(e.target.value)}
+                />
+              </div>
+              <p className={`${HINT} mt-2`}>
+                {context.computedHrdfLevy == null
+                  ? "Leave blank to use the computed levy (its figure shows here once payroll is up to date)."
+                  : `Leave blank to use the computed levy (RM ${rm(context.computedHrdfLevy)}, shown greyed).`}{" "}
+                Re-run payroll after changing it.
+              </p>
+            </Block>
+
             {/* ── Overtime ───────────────────────────────────────────── */}
             <Block
               title="Overtime"
-              hint="Approved overtime requests are paid automatically. Type hours only to correct them. The multipliers come from the employee's policy (or the Employment Act floor when they have none)."
+              hint="Approved overtime requests are paid automatically. Type hours only to correct them. Each type pays the employee's policy rate, or the company's (System Settings → Work Schedule → Overtime types)."
             >
               {/* Typed hours are silently ignored when the policy banks OT as
                   time off — paying cash for hours already credited as leave
@@ -451,31 +500,24 @@ export function AdjustmentEditor({
                 <div className={`${WARN_PANEL} mb-3`}>{context.overtimeDisabledReason}</div>
               ) : null}
 
-              <div className="grid grid-cols-3 gap-3">
-                <Hours
-                  id="otNormal"
-                  label="Normal day"
-                  value={otNormal}
-                  onChange={setOtNormal}
-                  placeholder={otPlaceholder(context.approvedOtNormalHours)}
-                  disabled={!editable || !context.cashOvertime}
-                />
-                <Hours
-                  id="otRest"
-                  label="Rest day"
-                  value={otRest}
-                  onChange={setOtRest}
-                  placeholder={otPlaceholder(context.approvedOtRestHours)}
-                  disabled={!editable || !context.cashOvertime}
-                />
-                <Hours
-                  id="otPublic"
-                  label="Public holiday"
-                  value={otPublic}
-                  onChange={setOtPublic}
-                  placeholder={otPlaceholder(context.approvedOtPublicHours)}
-                  disabled={!editable || !context.cashOvertime}
-                />
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {otBoxes.map((box) => {
+                  const [value, setValue] = builtInBox[box.key] ?? [
+                    otCustom[box.key] ?? "",
+                    (v: string) => setOtCustom((cur) => ({ ...cur, [box.key]: v })),
+                  ];
+                  return (
+                    <Hours
+                      key={box.key}
+                      id={`ot-${box.key}`}
+                      label={box.multiplier > 0 ? `${box.name} (${Number(box.multiplier.toFixed(2))}×)` : box.name}
+                      value={value}
+                      onChange={setValue}
+                      placeholder={otPlaceholder(box.approvedHours)}
+                      disabled={!editable || !context.cashOvertime}
+                    />
+                  );
+                })}
               </div>
 
               {/* Where the payslip's OT will come from, in words. Generation
@@ -486,7 +528,7 @@ export function AdjustmentEditor({
                 <p className={`${HINT} mt-2`}>
                   {otTyped
                     ? hasApprovedOt
-                      ? `Your figures replace the approved overtime (${approvedOtSummary}). Clear all three to pay the approved hours instead.`
+                      ? `Your figures replace the approved overtime (${approvedOtSummary}). Clear every box to pay the approved hours instead.`
                       : "Your figures are what will be paid."
                     : hasApprovedOt
                       ? `Approved overtime this month: ${approvedOtSummary}. Leave these blank to pay it.`

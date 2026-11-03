@@ -23,7 +23,7 @@
   jane@example.com). Never a real key, organization, person or figure.
 
   Source: backend/Modules/Overtime/OvertimeController.cs, OvertimeService.cs,
-  OtRateService.cs, OvertimePhotoStorage.cs, Dtos/OvertimeDtos.cs,
+  OtRateService.cs, OvertimeTypeService.cs, Dtos/OvertimeTypeDtos.cs, OvertimePhotoStorage.cs, Dtos/OvertimeDtos.cs,
   Dtos/BulkApproveOvertimeDto.cs, Entities/OvertimeRequest.cs,
   Entities/OvertimeAttachment.cs, Entities/OvertimeEnums.cs.
 -->
@@ -119,11 +119,12 @@
             <tr><td><code>id</code></td><td>string</td><td>Request id.</td></tr>
             <tr><td><code>employeeId</code></td><td>string</td><td>The employee's <strong>user id</strong> (the id from <code>/employees</code>), not the payroll profile id.</td></tr>
             <tr><td><code>employeeEmail</code></td><td>string | null</td><td>Filled only by <a href="#get-overtime-team">/overtime/team</a> and <a href="#get-overtime-all">/overtime/all</a>; null on every other endpoint.</td></tr>
-            <tr><td><code>employeeName</code></td><td>string | null</td><td>The person's name from the directory; null when none is set or on the endpoints above that don't fill it.</td></tr>
+            <tr><td><code>employeeName</code></td><td>string | null</td><td>The person's name from the directory, with the <a href="employees.html">nickname</a> appended, <code>"Name (Nickname)"</code>, when one is set; null when no name is set or on the endpoints above that don't fill it. <code>reviewerName</code> follows the same rule.</td></tr>
             <tr><td><code>projectId</code></td><td>string | null</td><td>The project the overtime was worked on, if any.</td></tr>
             <tr><td><code>workDate</code></td><td>string</td><td>The day worked, <code>"yyyy-MM-dd"</code>.</td></tr>
             <tr><td><code>startAt</code>, <code>endAt</code></td><td>string (ISO 8601, UTC)</td><td>When the overtime started and ended.</td></tr>
             <tr><td><code>requestedMinutes</code></td><td>integer</td><td>Minutes claimed.</td></tr>
+            <tr><td><code>overtimeTypeId</code>, <code>overtimeTypeName</code></td><td>string | null</td><td>One of the company's own <a href="policies.html#overtime-types">overtime types</a> the employee picked on the request, with its name as it is called now (also for an archived type). Both null when none was picked ("automatic"): payroll then sorts the hours into normal day, rest day or public holiday by the calendar. <code>overtimeTypeName</code> is null if the type no longer resolves.</td></tr>
             <tr><td><code>reason</code></td><td>string</td><td>The employee's reason.</td></tr>
             <tr><td><code>beforePhotoUrl</code></td><td>string</td><td>The first before-work file. Kept for older clients; read <code>beforeAttachments</code> instead.</td></tr>
             <tr><td><code>afterPhotoUrl</code></td><td>string | null</td><td>The first after-work file, null until one is attached. Kept for older clients; read <code>afterAttachments</code> instead.</td></tr>
@@ -149,6 +150,8 @@
   "startAt": "2025-03-10T10:00:00.0000000Z",
   "endAt": "2025-03-10T12:00:00.0000000Z",
   "requestedMinutes": 120,
+  "overtimeTypeId": "ot_type_123",
+  "overtimeTypeName": "Night shift",
   "reason": "Late delivery to site",
   "beforePhotoUrl": "/overtime/photos/20250310100000-ab12cd34.jpg",
   "afterPhotoUrl": "/overtime/photos/20250310120000-ef56ab78.jpg",
@@ -273,6 +276,10 @@
           policy</strong> and a Monday–Friday working week, not any particular person's. It
           can't be pointed at an employee.
         </div>
+        <div class="callout warn">
+          <strong>Removed field.</strong> <code>inShiftMultiplier</code> is no longer returned.
+          The in-shift premium no longer exists, so read only <code>outOfShiftMultiplier</code>.
+        </div>
         <h3>Request</h3>
         <div class="table-wrap">
           <table>
@@ -289,20 +296,61 @@
             <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
               <tr><td><code>dayType</code></td><td>string</td><td><code>"NORMAL_DAY"</code>, <code>"REST_DAY"</code> or <code>"PUBLIC_HOLIDAY"</code>. A public holiday that falls on a rest day is <code>"PUBLIC_HOLIDAY"</code> (the higher premium wins).</td></tr>
-              <tr><td><code>outOfShiftMultiplier</code></td><td>number | null</td><td>Multiplier for hours worked beyond the regular shift. Null when OT doesn't pay a cash premium (see <code>reason</code>).</td></tr>
-              <tr><td><code>inShiftMultiplier</code></td><td>number | null</td><td>Premium for hours worked <em>within</em> the regular shift on a rest day or public holiday. Always null on a normal day, where those hours are ordinary pay.</td></tr>
-              <tr><td><code>reason</code></td><td>string</td><td>Plain-English explanation, including why both multipliers are null: no policy resolved, OT disabled on the policy, or OT banked as time off instead of paid.</td></tr>
+              <tr><td><code>outOfShiftMultiplier</code></td><td>number | null</td><td>The multiplier that day's overtime is paid at: the policy's own for that day type, or else the company's. Null when OT doesn't pay a cash premium (see <code>reason</code>).</td></tr>
+              <tr><td><code>reason</code></td><td>string</td><td>Plain-English explanation, including why <code>outOfShiftMultiplier</code> is null: no policy resolved, OT disabled on the policy, or OT banked as time off instead of paid.</td></tr>
             </tbody>
           </table>
         </div>
 <pre><code>{
   "dayType": "REST_DAY",
   "outOfShiftMultiplier": 2.0,
-  "inShiftMultiplier": 1.0,
   "reason": "Rest day (outside the employee's working days)."
 }</code></pre>
 <pre><code>curl "https://&lt;api-host&gt;/overtime/rate?date=2025-03-09&amp;projectId=prj_123" \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+    </section>
+
+    <section class="section" id="types">
+      <h2>Overtime types</h2>
+
+      <section class="endpoint" id="get-overtime-types">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/overtime/types</span>
+          <span class="tag scope">overtime:read</span>
+        </div>
+        <p>
+          The company's own overtime types an employee may pick on a request, each at what
+          their policy pays for it. Leaving the type off a request ("automatic") is always an
+          option, and the three built-in types (normal day, rest day, public holiday) are never
+          listed: they are chosen by the calendar. To manage the types themselves, see
+          <a href="policies.html#overtime-types">Overtime types</a> on the Policies page.
+        </p>
+        <div class="callout warn">
+          As with <a href="#get-overtime-rate">GET /overtime/rate</a>, "the caller" is an
+          employee and a key isn't one: with a key you get what the <strong>company's default
+          policy</strong> offers, not any particular person's list.
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>An array, in the order the company set its types up. Empty when there are none, or when the policy banks overtime as time off or switches it off (no cash multiplier would apply).</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>id</code></td><td>string</td><td>Overtime type id: what <code>overtimeTypeId</code> takes when a request is filed.</td></tr>
+              <tr><td><code>name</code></td><td>string</td><td></td></tr>
+              <tr><td><code>multiplier</code></td><td>number</td><td>What this policy pays: its own multiplier for the type, or else the company's.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>[
+  { "id": "ot_type_123", "name": "Night shift", "multiplier": 1.25 }
+]</code></pre>
+<pre><code>curl https://&lt;api-host&gt;/overtime/types \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+        <h3>Errors</h3>
+        <p><code>403</code> — the key lacks <code>overtime:read</code>, or the plan lacks the <code>overtime</code> module.</p>
       </section>
     </section>
 
@@ -335,7 +383,8 @@
         <div class="callout">
           Things that bite: the request must already have an after-work file; the decision
           notifies the employee; and a final approval marks any generated payroll draft that
-          covers the work date's month as stale, so regenerate it before submitting that run.
+          covers the work date's month as stale, so regenerate it before submitting that run. When the month
+          has several runs, only those that could hold that employee are marked.
           <code>reviewerId</code> is set on every step, not only the last.
         </div>
 <pre><code>curl -X POST https://&lt;api-host&gt;/overtime/ot_123/approve \
@@ -515,6 +564,13 @@
         <code>POST /overtime/{id}/after-photo</code>, <code>DELETE /overtime/{id}/after-photo</code>,
         <code>DELETE /overtime/{id}/attachments/{attachmentId}</code> and
         <code>POST /overtime/{id}/cancel</code>.
+      </p>
+      <p>
+        Filing a request takes an optional <code>overtimeTypeId</code> (max 40 chars; an id from
+        <a href="#get-overtime-types">GET /overtime/types</a>, left out for automatic). It is
+        listed here only because it is part of that people-only call; a key cannot send it. A
+        person who picks a type their policy doesn't offer gets
+        <code>400</code> <code>{ "message": "That overtime type isn't available to you. Pick another, or leave it on automatic." }</code>.
       </p>
     </section>
 

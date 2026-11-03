@@ -137,10 +137,15 @@ fact is why:
   of order. Submitting February before January freezes February's PCB, EPF and
   SOCSO against a zero year-to-date, and submitting January afterwards cannot go
   back and fix it. Both the "January is still a draft" and the "there is no
-  January at all" cases are refused; an org's genuine first run is not.
+  January at all" cases are refused; an org's genuine first run is not. The
+  order is PER PERSON: only a previous-month run sharing someone with this
+  one has to be submitted first (see "Several runs in a month").
 - **Getting out cascades.** Reverting a month also reverts every later SUBMITTED
-  month in the same year, because their YTD-cumulative figures were computed off
-  it. `GetRevertImpactAsync` names them for the confirm dialog first.
+  run in the same year that shares any of its people, because their
+  YTD-cumulative figures were computed off it. `GetRevertImpactAsync` names
+  them for the confirm dialog first. IMPORTED months are never in the cascade
+  (their figures were typed in, not computed off this one), can't be reverted
+  themselves, and can't be generated — re-importing is how one is corrected.
 
 A status change never touches `LastMutatedAt` — submitting a run does not make
 its payslips any fresher.
@@ -187,6 +192,12 @@ does the loading.
   `{id}_{name}_{MM-YYYY}.pdf`) and the edge-case field rules (untrimmed EPF
   number, null-coalescing SOCSO id, its tax-ref normaliser) are ported as
   they were, deliberately — "tidying" one changes what gets filed.
+- **A named run's files carry its name.** A month with several runs must
+  never hand out two files with the same name, so a run's `Name` (letters and
+  digits only — `PayrollPeriodLabel.FileTag`) is added before the extension:
+  `Payroll_Summary_January_2026_Workers.pdf`, and with no separator on the
+  all-alphanumeric CP39 name. An unnamed first run keeps exactly the old
+  names. The Maybank batch ID adds `R{RunNumber}` for a month's later runs.
 - **A missing IC is a refusal, not an exception.** It is an admin's data
   problem with a specific fix, so it returns a message naming the person and
   the controller answers 409.
@@ -295,15 +306,53 @@ rebate beside self-paid zakat (`OffsetsPcb`).
   granted figure in `PcbTaxableAmount`; the YTD read uses it, so an
   over-claim does not relieve all year or eat its group's limit.
 
+## Several runs in a month
+
+A month can be split into runs — one per staff group — each prepared,
+approved, filed and paid on its own. The one rule that never bends: **a person
+is in at most one run a month**, enforced in the database by unique
+(org, year, month, employee) indexes on `Payslip` and `PayrollRunMember`
+(each row carries its own `PeriodYear`/`PeriodMonth` for this).
+
+- **At most one run a month is unnamed**; the others carry a `Name`, unique in
+  the month — and so is its file tag (`NameClash`: "Team 1" and "Team-1" both
+  file as Team1). Each has a `RunNumber` (unique per month in the database).
+  `PayrollPeriodLabel.ForRun` gives "October 2026 – Workers". `POST
+  /payroll/runs` without a name while the month has an unnamed run is still
+  the 409 it always was — ABPay relies on that, and can recreate its own run
+  after deleting it beside named ones.
+- **A run's people** are its roster plus its payslips (someone on the roster
+  but skipped, e.g. not joined yet, is still its); a run with neither (only
+  ever a month's sole run) is everyone. People taken by other runs when a
+  picker run is made are stored as unticked, so deleting the other run never
+  moves them in on a re-run. A run and its roster are saved together
+  (`TryAddWithRosterAsync`). Adding a second run
+  first writes the existing runs' people into their rosters
+  (`PinRosterAsync`), then drops anyone taken from the new one; the picker
+  shows them greyed (`TakenByRunLabel`). Generation leaves out anyone another
+  run that month holds, whatever this run's roster says.
+- **Month-wide rules are per person**: submission order and the revert
+  cascade (overlap of people), loan paid/locked (the borrower's payslip),
+  re-run flags for one person's leave/OT (runs whose roster holds them), PCB
+  2(II) receipts (the person's own run). EA/CP8D readiness counts a month only
+  once **every** run in it is submitted.
+- **The month as a whole** is read-only: `GET /payroll/runs/month/{y}/{m}/summary`
+  merges every run's rows into one summary, watermarked while any run is not
+  approved. Nothing is filed from it.
+- **YTD import stays one run a month**: it only ever touches the month's
+  IMPORTED run, and skips a month with any computed run.
+
 ## Loans
 
 `PayrollLoans` (pure) + `EmployeeLoanService`. The schedule is POSITIONAL —
-installment i is start + i months — and an installment is PAID when its month
-has a SUBMITTED run. Nothing records payments, which is why reverting a month
-un-pays it for free, and why every change below keeps money tied to its month.
+installment i is start + i months — and an installment is PAID when the
+BORROWER'S own payslip for that month is on a SUBMITTED run (another staff
+group's approved run that month says nothing about them). Nothing records
+payments, which is why reverting a month un-pays it for free, and why every
+change below keeps money tied to its month.
 
-- **Locked months never change.** A month with a SUBMITTED or
-  PENDING_APPROVAL run is locked (`FirstEditableIndex`). A started loan cannot
+- **Locked months never change.** A month where the borrower's payslip is on a
+  SUBMITTED or PENDING_APPROVAL run is locked (`FirstEditableIndex`). A started loan cannot
   be re-termed wholesale; `Replan` keeps the locked prefix and re-spreads what
   is left (over N months, RM X a month, or typed month by month). Re-planning
   a started loan makes it CUSTOM.
@@ -333,8 +382,51 @@ per run by the admin. Two rules:
 
 Approved UNPAID leave is docked as its own `deduct_unpaid_leave` line (MONTHLY
 only) rather than by shrinking the salary, so the payslip says why. The divisor
-is the s.60I ordinary-rate basis — this is a rate question, so the org's
-CALENDAR/TWENTY_SIX setting DOES apply, unlike proration.
+is the month's CALENDAR days whatever the org's setting: leave without pay is an
+EA s.18A incomplete-month case, and s.18A overrides the s.60I ÷26. The
+CALENDAR/TWENTY_SIX setting still drives proration and the overtime rate. The
+run-adjustment form's preview and its typed-days cap use the same divisor.
+
+Unpaid leave decided AFTER its month was filed (approved late, cancelled or
+edited after it was docked) is settled on the person's next run of the same year
+— `UnpaidLeaveCarryForward`: an "approved late" deduction or a refund (arrears of
+wages), priced at THAT month's salary ÷ its calendar days.
+
+What each payslip docked is recorded per leave application and month in
+`UnpaidLeaveSettlement`. Generation writes them provisional; approval makes them
+final; a revert makes them provisional again; only final ones count. So drafts
+never see each other's settlements, and a settled application that is still
+approved with the same type and dates is never recounted — a later change to the
+leave type, work week or holidays can't re-price a filed month (a changed one
+gets a fresh 0-day record even when its days don't move). An approved unpaid
+leave with no record in a month whose payslip `TracksUnpaidLeave` wasn't docked
+there, so it's owed — approved late, or moved in / made unpaid by an admin edit
+(which doesn't touch `DecidedAt`). A payslip from before the records existed
+only has `DecidedAt` to go on: owed only if approved after it was generated, and
+its cancellations aren't refunded automatically. Reverting a month also sends
+later runs awaiting approval back to draft, needing a re-run. Imported months and months with unpaid days typed on the run are
+never revisited. Approving a run, or a change to unpaid leave, marks later
+drafts of the year stale (`MarkLaterDraftsAsync`, drafts only).
+
+## PCB borne by employer
+
+With the profile's `PcbBorneByEmployer` on, PCB is worked out exactly as usual —
+no gross-up in the month (LHDN PR 3/2024 §6.1: the tax is a perquisite of the
+FOLLOWING year) — but stays out of net pay and joins the company's cost
+(`Payslip.PcbBorneByEmployer` records the amount; it's still inside `Pcb`, the
+CP39 file and the YTD). The person's first run of the next year (January, or
+their first month paid) adds last year's total as `bik_tax_borne_by_employer`:
+non-cash, taxed as additional remuneration, no EPF/SOCSO/EIS, Form EA B1(d).
+`wages_tax_borne_by_employer` is NOT that line — it stays CASH, because v1 had
+admins enter the borne tax by hand with it and old payslips must read the same.
+The Xero journal debits it to the optional "PCB borne by employer" account,
+falling back to Salary. CP38, zakat and voluntary PCB stay the employee's.
+
+The perquisite crosses the year boundary, which the YTD rules don't: approving
+or reverting a run with borne PCB marks next year's drafts stale
+(`MarkDraftsOfYearAsync`), and a run can't be reverted while a next-year run
+holding the same people is pending or approved. Imported months never count
+as borne (the file doesn't say who paid); the YTD preview warns.
 
 ## One formula, one implementation
 

@@ -15,6 +15,11 @@ public class PayrollRunAdjustmentRepository : IPayrollRunAdjustmentRepository
             .Where(a => a.PayrollRunId == payrollRunId)
             .ToListAsync();
 
+    public Task<List<PayrollRunAdjustment>> GetForRunsAsync(IReadOnlyCollection<string> payrollRunIds) =>
+        _db.PayrollRunAdjustments
+            .Where(a => payrollRunIds.Contains(a.PayrollRunId))
+            .ToListAsync();
+
     public Task<PayrollRunAdjustment?> GetAsync(string payrollRunId, string employeeProfileId) =>
         _db.PayrollRunAdjustments.FirstOrDefaultAsync(
             a => a.PayrollRunId == payrollRunId && a.EmployeeProfileId == employeeProfileId);
@@ -36,12 +41,14 @@ public class PayrollRunAdjustmentRepository : IPayrollRunAdjustmentRepository
         existing.OtNormalHours = adjustment.OtNormalHours;
         existing.OtRestHours = adjustment.OtRestHours;
         existing.OtPublicHours = adjustment.OtPublicHours;
+        existing.OtCustomHoursJson = adjustment.OtCustomHoursJson;
         existing.ManualLineItemsJson = adjustment.ManualLineItemsJson;
         existing.FixedAllowanceOverridesJson = adjustment.FixedAllowanceOverridesJson;
         existing.WorkedHours = adjustment.WorkedHours;
         existing.ExpectedHours = adjustment.ExpectedHours;
         existing.BasicPayOverride = adjustment.BasicPayOverride;
         existing.UnpaidLeaveDays = adjustment.UnpaidLeaveDays;
+        existing.HrdfLevy = adjustment.HrdfLevy;
         existing.Notes = adjustment.Notes;
         existing.UpdatedAt = now;
 

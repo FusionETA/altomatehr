@@ -862,9 +862,16 @@ public class ClaimsService : IClaimsService
 
         var result = new TabularImportResult();
         var employees = await _employees.GetSnapshotAsync();
+        // Two accounts can share a code (a starter claim item type archived when
+        // Xero's own came in): prefer the live one, then the one Xero has.
         var accountIdsByCode = (await _accounts.GetAllAsync())
             .GroupBy(a => a.Code.Trim(), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.First().Id, StringComparer.OrdinalIgnoreCase);
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderBy(a => a.IsArchived)
+                    .ThenBy(a => string.IsNullOrWhiteSpace(a.XeroAccountId))
+                    .First().Id,
+                StringComparer.OrdinalIgnoreCase);
 
         var existing = await _repo.GetAllAsync();
         var seenNumbers = existing
@@ -1622,9 +1629,11 @@ public class ClaimsService : IClaimsService
         foreach (var claim in claims)
         {
             claim.EmployeeEmail = directory.EmailOf(claim.EmployeeId);
-            claim.EmployeeName = string.IsNullOrWhiteSpace(directory.NameOf(claim.EmployeeId))
+            // On screen, so with the nickname ("Ahmad (Mat)") — EmployeeName
+            // is display-only (NotMapped); the claims files keep NameOf.
+            claim.EmployeeName = string.IsNullOrWhiteSpace(directory.DisplayNameOf(claim.EmployeeId))
                 ? null
-                : directory.NameOf(claim.EmployeeId).Trim();
+                : directory.DisplayNameOf(claim.EmployeeId).Trim();
             if (claim.Status != ClaimStatus.PENDING) continue;
 
             var approvers = approversByKey.GetValueOrDefault(

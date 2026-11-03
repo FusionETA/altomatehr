@@ -307,11 +307,13 @@ public class PayrollAdjustmentImportService : IPayrollAdjustmentImportService
                 OtNormalHours = existing?.OtNormalHours ?? 0m,
                 OtRestHours = existing?.OtRestHours ?? 0m,
                 OtPublicHours = existing?.OtPublicHours ?? 0m,
+                OtCustomHours = existing?.OtCustomHours ?? [],
                 FixedAllowanceOverrides = existing?.FixedAllowanceOverrides ?? [],
                 WorkedHours = existing?.WorkedHours,
                 ExpectedHours = existing?.ExpectedHours,
                 BasicPayOverride = existing?.BasicPayOverride,
                 UnpaidLeaveDays = existing?.UnpaidLeaveDays,
+                HrdfLevy = existing?.HrdfLevy,
                 Notes = existing?.Notes,
                 ManualLineItems = lines ?? [],
             };

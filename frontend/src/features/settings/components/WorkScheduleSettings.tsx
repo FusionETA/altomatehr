@@ -32,6 +32,7 @@ import {
 import { Skeleton, SkeletonPanel } from "@/shared/components/Skeleton";
 import { TablePager } from "@/shared/components/TablePager";
 import { usePaged } from "@/shared/lib/use-paged";
+import { OvertimeTypesSettings } from "./OvertimeTypesSettings";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
@@ -88,6 +89,8 @@ export function WorkScheduleSettings() {
       <ScheduleCard />
       <HolidaysCard />
       <CalendarCard />
+      {/* What overtime pays on each kind of day the cards above define. */}
+      <OvertimeTypesSettings />
     </fieldset>
   );
 }

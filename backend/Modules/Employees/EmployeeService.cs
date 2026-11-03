@@ -155,6 +155,7 @@ public class EmployeeService : IEmployeeService
                 ? dto.EmployeeNumber.Trim()
                 : OrgRoles.IsOnPayroll(role) ? await NextEmployeeNumberAsync() : null,
             JobTitle = string.IsNullOrWhiteSpace(dto.JobTitle) ? null : dto.JobTitle.Trim(),
+            Nickname = string.IsNullOrWhiteSpace(dto.Nickname) ? null : dto.Nickname.Trim(),
         };
         await _memberships.AddAsync(membership);   // StampTenant sets OrganizationId = the active org
 
@@ -205,6 +206,41 @@ public class EmployeeService : IEmployeeService
             // here would roll a successful create into a 500.
             return false;
         }
+    }
+
+    // Send the welcome email again — the hire who was added without it ticked,
+    // or who lost it. Unlike the create path, this one reports a failed send:
+    // sending is the whole action, so there's no success to protect.
+    public async Task<SetPasswordResult> ResendWelcomeAsync(string userId)
+    {
+        var membership = await _memberships.GetForUserInCurrentOrgAsync(userId);
+        if (membership is null) return new SetPasswordResult(false, null);   // → 404
+        var user = await _users.GetByIdAsync(userId);
+        if (user is null) return new SetPasswordResult(false, null);
+
+        var profile = await _profiles.GetByUserAsync(userId);
+        if (profile?.IsArchived == true)
+            return new SetPasswordResult(false, "This employee has left. Restore them before sending the welcome email.");
+
+        // Describe the house rule only while it still opens the account. Once
+        // they've changed it (or an admin set one), the rule would send them to
+        // a password that no longer works.
+        var houseRule = DefaultPassword.For(user.Email, profile?.DateOfBirth);
+        var mode = houseRule is not null && PasswordHasher.Verify(houseRule, user.PasswordHash)
+            ? WelcomeEmail.PasswordMode.Default
+            : WelcomeEmail.PasswordMode.Reminder;
+
+        if (!await TrySendWelcomeAsync(user, mode))
+            return new SetPasswordResult(false, "The email couldn't be sent. Try again in a few minutes.");
+
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.EmployeeWelcomeResend,
+            $"Resent the welcome email to {user.Email}.",
+            TargetType: "Employee",
+            TargetId: user.Id,
+            Metadata: new { TargetEmail = user.Email }));
+
+        return new SetPasswordResult(true, null);
     }
 
     // Names the change rather than saying "updated": a feed of twenty identical
@@ -275,6 +311,31 @@ public class EmployeeService : IEmployeeService
             var existing = await _users.GetByEmailAsync(newEmail);
             if (existing is not null && existing.Id != id)
                 return new EmployeeSaveResult(false, null, "That email is already in use.");
+
+            // Re-sending the same address (the edit form always sends it) is
+            // not a change, and must not trip the guard below.
+            var current = await _users.GetByIdAsync(id);
+            if (current is not null && !string.Equals(current.Email, newEmail, StringComparison.OrdinalIgnoreCase))
+            {
+                // Changing someone's login email, then resetting the password,
+                // is signing in as them — so the same rules as setting their
+                // password: an Owner's only through support, an Admin's only by
+                // the Owner. Your own is yours to change.
+                var self = string.Equals(id, _currentUser.UserId, StringComparison.Ordinal);
+                if (!self && !_currentUser.IsSupport)
+                {
+                    if (string.Equals(membership.Role, OrgRoles.Owner, StringComparison.OrdinalIgnoreCase))
+                        return new EmployeeSaveResult(false, null,
+                            "An owner's login email can't be changed from here. Contact support.");
+                    if (OrgRoles.IsAdministrative(membership.Role)
+                        && !string.Equals(_currentUser.Role, OrgRoles.Owner, StringComparison.OrdinalIgnoreCase))
+                        return new EmployeeSaveResult(false, null,
+                            "Only the organization's owner can change an admin's login email.");
+                }
+
+                if (await LoginEmailRule.RefusalAsync(_memberships, _currentUser, id) is { } refusal)
+                    return new EmployeeSaveResult(false, null, refusal);
+            }
         }
 
         // Name and email live on the global User. Patch semantics: null → leave
@@ -316,6 +377,11 @@ public class EmployeeService : IEmployeeService
         if (dto.JobTitle is not null)
         {
             membership.JobTitle = dto.JobTitle.Trim() is { Length: > 0 } title ? title : null;
+        }
+
+        if (dto.Nickname is not null)
+        {
+            membership.Nickname = dto.Nickname.Trim() is { Length: > 0 } nick ? nick : null;
         }
 
         // Setting or correcting the join date changes how much pro-rated leave
@@ -443,6 +509,7 @@ public class EmployeeService : IEmployeeService
         Role = m.Role,
         EmployeeNumber = m.EmployeeNumber,
         JobTitle = m.JobTitle,
+        Nickname = m.Nickname,
         OtTimeBalanceMin = m.OtTimeBalanceMin,
         PolicyId = m.PolicyId,
         ShiftId = m.ShiftId,

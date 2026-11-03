@@ -8,10 +8,10 @@ namespace AltomateHR.Api.Modules.Policies;
 
 [ApiController]
 [Route("policies")]
-// Changing a policy — or which one is the default, which decides the policy of
-// everyone without one — reaches every employee on it, and moves who is in a
-// policy-limited admin's scope. So writes need every employee in scope.
-[AltomateHR.Api.Modules.Organizations.RequireFullEmployeeScope]
+// Who may do what is the service's (PolicyService / AdminAccess): every admin
+// edits the policies their employee scope covers; creating, archiving and the
+// default — which reach the whole company — are the Owner's. Policies isn't a
+// per-admin grant (OrgModules.GrantableModules), so this checks the plan only.
 [RequireModule(OrgModules.Policies)]
 [Authorize(Roles = "Admin,Owner")]   // policies are an admin/owner concern
 public class PoliciesController : ControllerBase
@@ -25,46 +25,47 @@ public class PoliciesController : ControllerBase
     [ModuleGrantExempt]
     [RequireScope("policies:read")]
     [HttpGet]
-    public async Task<IActionResult> GetAll() => Ok(await _policies.GetAllAsync());
+    public async Task<IActionResult> GetAll() => Ok(await _policies.GetVisibleAsync());
 
     [RequireScope("policies:write")]
     [HttpPost]
     public async Task<IActionResult> Create(SavePolicyDto dto)
     {
-        var result = await _policies.CreateAsync(dto);
-        return result.Ok ? Ok(result.Policy) : BadRequest(new { message = result.Error });
+        return ToResponse(await _policies.CreateAsync(dto));
     }
 
     [RequireScope("policies:write")]
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(string id, SavePolicyDto dto)
     {
-        var result = await _policies.UpdateAsync(id, dto);
-        if (!result.Ok && result.Error is null) return NotFound();
-        return result.Ok ? Ok(result.Policy) : BadRequest(new { message = result.Error });
+        return ToResponse(await _policies.UpdateAsync(id, dto));
     }
 
     [RequireScope("policies:write")]
     [HttpPost("{id}/default")]
     public async Task<IActionResult> SetDefault(string id)
     {
-        var policy = await _policies.SetDefaultAsync(id);
-        return policy is null ? NotFound() : Ok(policy);
+        return ToResponse(await _policies.SetDefaultAsync(id));
     }
 
     [RequireScope("policies:write")]
     [HttpPost("{id}/archive")]
     public async Task<IActionResult> Archive(string id)
     {
-        var policy = await _policies.SetArchivedAsync(id, true);
-        return policy is null ? NotFound() : Ok(policy);
+        return ToResponse(await _policies.SetArchivedAsync(id, true));
     }
 
     [RequireScope("policies:write")]
     [HttpPost("{id}/restore")]
     public async Task<IActionResult> Restore(string id)
     {
-        var policy = await _policies.SetArchivedAsync(id, false);
-        return policy is null ? NotFound() : Ok(policy);
+        return ToResponse(await _policies.SetArchivedAsync(id, false));
     }
+
+    private IActionResult ToResponse(PolicySaveResult result) =>
+        result.Ok ? Ok(result.Policy)
+        : result.Forbidden ? StatusCode(StatusCodes.Status403Forbidden,
+            new { error = new { status = 403, message = result.Error } })
+        : result.Error is null ? NotFound()
+        : BadRequest(new { message = result.Error });
 }

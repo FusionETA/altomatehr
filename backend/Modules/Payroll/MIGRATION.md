@@ -499,9 +499,9 @@ HOURLY employee a confident zero is a zero payslip.
 
 Unpaid leave is docked as its own `deduct_unpaid_leave` line for MONTHLY staff
 (never HOURLY — they are paid for hours worked, so the absence is already
-absent). `PayPeriod.UnpaidLeaveDeduction` uses the s.60I basis: what one day of
-pay is WORTH is a rate question, so the org's CALENDAR/TWENTY_SIX setting
-legitimately applies here, unlike s.18A proration.
+absent). `PayPeriod.UnpaidLeaveDeduction` divides by the month's CALENDAR days:
+leave without pay is an EA s.18A incomplete-month case, and s.18A overrides the
+s.60I ÷26, so the org's CALENDAR/TWENTY_SIX setting does not reach it.
 
 ### Deliberately deferred out of phase 5
 

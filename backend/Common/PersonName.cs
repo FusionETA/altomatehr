@@ -14,4 +14,16 @@ public static class PersonName
         if (!string.IsNullOrWhiteSpace(email)) return email.Trim();
         return fallback;
     }
+
+    // "Ahmad bin Ali (Mat)": the legal name with the nickname beside it, for
+    // screens. Just the name when there's no nickname or it adds nothing.
+    // Never for a payslip, statutory file, form or letter — those take the
+    // legal name alone.
+    public static string WithNickname(string name, string? nickname)
+    {
+        var nick = nickname?.Trim();
+        return string.IsNullOrEmpty(nick) || string.Equals(nick, name.Trim(), StringComparison.OrdinalIgnoreCase)
+            ? name
+            : $"{name} ({nick})";
+    }
 }

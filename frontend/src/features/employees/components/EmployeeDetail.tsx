@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { ArrowRightLeft, Copy, KeyRound } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowRightLeft, Copy, KeyRound, Mail } from "lucide-react";
 import { SetPasswordDialog } from "./SetPasswordDialog";
 import { TransferDialog } from "./TransferDialog";
 import { DuplicateDialog } from "./DuplicateDialog";
@@ -7,6 +7,7 @@ import { SalaryChangeDialog, salaryText, type SalaryClassification } from "./Sal
 import { SalaryHistoryDialog } from "./SalaryHistoryDialog";
 import { ArrowLeft, Check, CircleAlert, History, LoaderCircle, Plus, Trash2 } from "lucide-react";
 import { UnsavedChangesBar } from "@/shared/components/UnsavedChangesBar";
+import { useConfirm } from "@/shared/components/ConfirmDialog";
 import {
   CHILD_ABILITY,
   CHILD_ABILITY_LABELS,
@@ -41,6 +42,7 @@ import {
   parseChildRelief,
   parseFixedAllowances,
   parsePreviousEmployerItems,
+  resendWelcomeEmail,
   saveEmployeeProfile,
   serializeList,
   toUpdateEmployee,
@@ -160,6 +162,7 @@ type Placement = {
   email: string;
   employeeNumber: string;
   jobTitle: string;
+  nickname: string;
   joinDate: string;
 };
 
@@ -184,11 +187,17 @@ function withRecommendedSocso(p: EmployeeProfile): EmployeeProfile {
 export function EmployeeDetail({
   employee,
   policies,
+  initialSection,
+  focusField,
   onBack,
   onSaved,
 }: {
   employee: Employee;
   policies: Policy[];
+  /** Open on this section — a link to one field (see lib/profile-link.ts). */
+  initialSection?: SectionId;
+  /** Scroll to and focus this field (its Field label) once the profile loads. */
+  focusField?: string;
   onBack: () => void;
   onSaved: (updated: Employee) => void;
 }) {
@@ -197,6 +206,9 @@ export function EmployeeDetail({
   const [askingSalary, setAskingSalary] = useState(false);
   const [salaryHistoryOpen, setSalaryHistoryOpen] = useState(false);
   const [passwordSetFor, setPasswordSetFor] = useState<string | null>(null);
+  const [confirm, confirmDialog] = useConfirm();
+  const [sendingWelcome, setSendingWelcome] = useState(false);
+  const [welcomeSentFor, setWelcomeSentFor] = useState<string | null>(null);
   // Transfer to another company. Options carry where this admin can move the
   // person and any transfer already queued; null = not loaded or unavailable,
   // which simply hides the action.
@@ -212,8 +224,23 @@ export function EmployeeDetail({
   // and after a transfer.
   const [history, setHistory] = useState<EmploymentPeriod[] | null>(null);
   const [historyReload, setHistoryReload] = useState(0);
-  const [section, setSection] = useState<SectionId>("personal");
+  const [section, setSection] = useState<SectionId>(initialSection ?? "personal");
   const [profile, setProfile] = useState<EmployeeProfile | null>(null);
+  // Followed a link to one field: bring it into view and put the cursor in
+  // it, once, after the profile (and so the section) has rendered.
+  const focusedField = useRef(false);
+  useEffect(() => {
+    if (!focusField || !profile || focusedField.current) return;
+    focusedField.current = true;
+    requestAnimationFrame(() => {
+      const field = document.querySelector<HTMLElement>(`[data-field="${CSS.escape(focusField)}"]`);
+      if (!field) return;
+      field.scrollIntoView({ block: "center", behavior: "smooth" });
+      field
+        .querySelector<HTMLElement>("input, textarea, button[role=combobox]")
+        ?.focus({ preventScroll: true });
+    });
+  }, [focusField, profile]);
   // The last-saved state, to tell "changed" from "loaded".
   const [baseline, setBaseline] = useState<EmployeeProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -264,6 +291,7 @@ export function EmployeeDetail({
     email: employee.email,
     employeeNumber: employee.employeeNumber ?? "",
     jobTitle: employee.jobTitle ?? "",
+    nickname: employee.nickname ?? "",
     joinDate: employee.joinDate?.slice(0, 10) ?? "",
   };
   const [placement, setPlacement] = useState<Placement>(initialPlacement);
@@ -342,6 +370,25 @@ export function EmployeeDetail({
     transferOptions.targets.some((t) => !t.employeeActiveHere) &&
     !transferOptions.pending &&
     !["owner", "admin"].includes(employee.role?.toLowerCase() ?? "");
+
+  async function handleResendWelcome() {
+    const ok = await confirm({
+      title: "Resend welcome email?",
+      message: `${employee.name || employee.email} gets an email at ${employee.email} with where to sign in and how their password works. It never includes the password itself.`,
+      confirmLabel: "Send email",
+    });
+    if (!ok) return;
+    setSendingWelcome(true);
+    setError(null);
+    try {
+      await resendWelcomeEmail(employee.id);
+      setWelcomeSentFor(employee.id);
+    } catch (e) {
+      setError(message(e, "Could not send the welcome email."));
+    } finally {
+      setSendingWelcome(false);
+    }
+  }
 
   async function handleCancelTransfer(transferId: string) {
     setCancellingTransfer(true);
@@ -815,6 +862,7 @@ export function EmployeeDetail({
         email: placement.email.trim() || employee.email,
         employeeNumber: placement.employeeNumber.trim(),
         jobTitle: placement.jobTitle.trim(),
+        nickname: placement.nickname.trim(),
         joinDate: blank(placement.joinDate),
       });
       // The whole profile goes back: PUT replaces the record, so a partial
@@ -904,9 +952,15 @@ export function EmployeeDetail({
           while scrolling a long section. */}
       <section className={`${CARD} p-5 sm:p-6`}>
         <div className="flex flex-wrap items-center gap-4">
-          <div className="min-w-0 flex-1 basis-full sm:basis-0">
+          {/* The floor makes the actions wrap to a new line once they no
+              longer fit beside the name, instead of squeezing it to nothing. */}
+          <div className="min-w-0 flex-1 basis-full sm:min-w-[16rem] sm:basis-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="truncate text-lg font-black text-foreground sm:text-xl">{name}</h2>
+              <h2 className="truncate text-lg font-black text-foreground sm:text-xl">
+                {placement.nickname.trim() && placement.nickname.trim().toLowerCase() !== name.toLowerCase()
+                  ? `${name} (${placement.nickname.trim()})`
+                  : name}
+              </h2>
               {placement.employeeNumber.trim() ? (
                 <span className="text-sm font-semibold text-muted-foreground">
                   {placement.employeeNumber}
@@ -963,6 +1017,20 @@ export function EmployeeDetail({
               {passwordSetFor === employee.id ? "Password updated" : "Set password"}
             </button>
           ) : null}
+
+          {/* For the hire who was added without the welcome email ticked, or
+              lost it. The server picks the wording: the birthday rule while
+              that password still works, otherwise Forgot password. */}
+          <button
+            type="button"
+            onClick={() => void handleResendWelcome()}
+            disabled={sendingWelcome || !profile || profile.isArchived}
+            title={profile?.isArchived ? "Restore this employee before sending the welcome email." : undefined}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border/70 bg-card px-3.5 py-1.5 text-xs font-bold text-foreground transition hover:bg-muted disabled:opacity-50"
+          >
+            {sendingWelcome ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+            {welcomeSentFor === employee.id ? "Welcome email sent" : "Resend welcome email"}
+          </button>
 
           {/* Beside Set password for the same reason: it acts on the whole
               person, not on one section. Only for staff (admins are separate
@@ -1095,6 +1163,15 @@ export function EmployeeDetail({
                     <Text
                       value={placement.name}
                       onChange={(v) => setPlacement((p) => ({ ...p, name: v ?? "" }))}
+                    />
+                  </Field>
+                  <Field
+                    label="Nickname"
+                    hint="What colleagues call them. Shown beside the full name across the app; payslips, statutory files and letters keep the full name."
+                  >
+                    <Text
+                      value={placement.nickname}
+                      onChange={(v) => setPlacement((p) => ({ ...p, nickname: v ?? "" }))}
                     />
                   </Field>
                   <Field label="Email">
@@ -1924,7 +2001,7 @@ export function EmployeeDetail({
                   </Field>
                   <Toggle
                     label="PCB borne by employer"
-                    hint="The company pays the tax instead of deducting it."
+                    hint="The company pays this person's PCB: it's no longer taken from their net pay, and their first payslip next year adds it as a taxable perquisite."
                     checked={profile.pcbBorneByEmployer}
                     onChange={(v) => set("pcbBorneByEmployer", v)}
                   />
@@ -2675,6 +2752,8 @@ export function EmployeeDetail({
           }}
         />
       ) : null}
+
+      {confirmDialog}
     </div>
   );
 }

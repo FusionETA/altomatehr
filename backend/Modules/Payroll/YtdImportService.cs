@@ -169,6 +169,22 @@ public class YtdImportService : IYtdImportService
             c => $"Column '{c}' was not recognised and will be ignored."));
         warnings.AddRange(matchWarnings);
 
+        // The file says what PCB was paid, not who paid it, so imported months
+        // never count as PCB borne by the employer — next year's perquisite
+        // (LHDN PR 3/2024 §6.1) would leave them out without a word.
+        var borne = matched
+            .Where(m => m.Profile.PcbBorneByEmployer && m.Parsed.Months.Sum(mo => mo.Pcb) > 0m)
+            .Select(m => m.ProfileName)
+            .ToList();
+        if (borne.Count > 0)
+        {
+            warnings.Add(
+                "PCB borne by employer is on for: " + string.Join(", ", borne)
+                + $". Imported months aren't counted as PCB the company paid, so their first {year + 1} run "
+                + $"won't add these months' PCB as a perquisite. If the company paid it, add it on that run as "
+                + "\"Tax Borne by Employer – previous year\".");
+        }
+
         // Months that already have a COMPUTED run are the dangerous case:
         // importing over one would replace payroll this system produced with
         // figures typed into a spreadsheet.
@@ -260,7 +276,7 @@ public class YtdImportService : IYtdImportService
 
         foreach (var (month, entries) in byMonth.OrderBy(kv => kv.Key))
         {
-            var run = await _runs.GetByPeriodAsync(year, month);
+            var run = await ImportedRunAsync(year, month);
 
             if (run is null)
             {
@@ -454,6 +470,12 @@ public class YtdImportService : IYtdImportService
 
     // Months that already carry payroll THIS SYSTEM produced. Never
     // overwritten — see ImportAsync.
+    // The month's imported run, if any. History imports stay one run a month;
+    // a month with a computed run is blocked before this is asked.
+    private async Task<PayrollRun?> ImportedRunAsync(int year, int month) =>
+        (await _runs.GetForPeriodAsync(year, month))
+            .FirstOrDefault(r => r.Source == PayrollRunSource.IMPORTED);
+
     private async Task<List<int>> BlockedMonthsAsync(int year) =>
         [.. (await _runs.GetAllAsync())
             .Where(r => r.PeriodYear == year && r.Source == PayrollRunSource.COMPUTED)
@@ -470,7 +492,7 @@ public class YtdImportService : IYtdImportService
         var lost = new SortedDictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
         foreach (var month in months)
         {
-            var run = await _runs.GetByPeriodAsync(year, month);
+            var run = await ImportedRunAsync(year, month);
             if (run is null) continue;
             var keep = matched
                 .Where(m => m.Parsed.Months.Any(mo => mo.Month == month))
@@ -579,6 +601,8 @@ public class YtdImportService : IYtdImportService
         {
             PayrollRunId = run.Id,
             EmployeeProfileId = employee.Profile.Id,
+            PeriodYear = run.PeriodYear,
+            PeriodMonth = run.PeriodMonth,
             UserId = employee.Profile.UserId,
             SnapshotName = employee.Name,
             SnapshotEmployeeNumber = employee.EmployeeNumber,

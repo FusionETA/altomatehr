@@ -30,6 +30,9 @@ namespace AltomateHR.Api.Migrations
                     b.Property<bool>("AllowMileageClaim")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<bool>("ArchivedByXeroConnect")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -42,6 +45,9 @@ namespace AltomateHR.Api.Migrations
                         .HasColumnType("tinyint(1)");
 
                     b.Property<bool>("IsCustom")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("IsDefault")
                         .HasColumnType("tinyint(1)");
 
                     b.Property<bool>("IsSelectable")
@@ -97,10 +103,17 @@ namespace AltomateHR.Api.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("varchar(255)");
 
+                    b.Property<string>("ActingUserId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
                     b.Property<bool>("Active")
                         .HasColumnType("tinyint(1)");
 
                     b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("ExpiresAt")
                         .HasColumnType("datetime(6)");
 
                     b.Property<DateTime?>("LastUsedAt")
@@ -1567,6 +1580,10 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(300)
                         .HasColumnType("varchar(300)");
 
+                    b.Property<string>("Nickname")
+                        .HasMaxLength(60)
+                        .HasColumnType("varchar(60)");
+
                     b.Property<string>("OrganizationId")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -1608,6 +1625,137 @@ namespace AltomateHR.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("OrganizationMemberships");
+                });
+
+            modelBuilder.Entity("AltomateHR.Api.Modules.Fah.Entities.FahAttachment", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("ConversationId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("varchar(160)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("varchar(10)");
+
+                    b.Property<string>("MediaType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("ModelFileId")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<int>("Pages")
+                        .HasColumnType("int");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("TableJson")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Text")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "UserId", "ConversationId");
+
+                    b.ToTable("FahAttachments");
+                });
+
+            modelBuilder.Entity("AltomateHR.Api.Modules.Fah.Entities.FahConversation", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<int>("AttachmentCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("AttachmentPages")
+                        .HasColumnType("int");
+
+                    b.Property<long>("CacheReadTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("CacheWriteTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("FilesExpireAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<long>("InputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("MessagesJson")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<long>("OutputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("PendingJson")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("varchar(120)");
+
+                    b.Property<DateTime?>("TurnStartedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "UserId", "UpdatedAt");
+
+                    b.ToTable("FahConversations");
                 });
 
             modelBuilder.Entity("AltomateHR.Api.Modules.Holidays.Entities.Holiday", b =>
@@ -1982,6 +2130,17 @@ namespace AltomateHR.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<DateTime?>("DeactivatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("DeactivatedBy")
+                        .HasMaxLength(160)
+                        .HasColumnType("varchar(160)");
+
+                    b.Property<string>("DeactivatedReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
                     b.Property<string>("DefaultCurrency")
                         .IsRequired()
                         .HasMaxLength(3)
@@ -2048,6 +2207,10 @@ namespace AltomateHR.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
+
+                    b.Property<string>("XeroOwnerUserId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
 
                     b.HasKey("Id");
 
@@ -2152,6 +2315,10 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("varchar(40)");
 
+                    b.Property<string>("OvertimeTypeId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
                     b.Property<string>("ProjectId")
                         .HasMaxLength(40)
                         .HasColumnType("varchar(40)");
@@ -2196,6 +2363,49 @@ namespace AltomateHR.Api.Migrations
                     b.HasIndex("Status", "WorkDate");
 
                     b.ToTable("OvertimeRequests");
+                });
+
+            modelBuilder.Entity("AltomateHR.Api.Modules.Overtime.Entities.OvertimeType", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<decimal>("Multiplier")
+                        .HasPrecision(4, 2)
+                        .HasColumnType("decimal(4,2)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("varchar(60)");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "Kind");
+
+                    b.ToTable("OvertimeTypes");
                 });
 
             modelBuilder.Entity("AltomateHR.Api.Modules.Partners.Entities.ApiClient", b =>
@@ -2570,6 +2780,10 @@ namespace AltomateHR.Api.Migrations
                     b.Property<DateTime?>("LastMutatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("Name")
+                        .HasMaxLength(60)
+                        .HasColumnType("varchar(60)");
+
                     b.Property<string>("OrganizationId")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -2586,6 +2800,9 @@ namespace AltomateHR.Api.Migrations
                         .HasColumnType("int");
 
                     b.Property<int>("PeriodYear")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RunNumber")
                         .HasColumnType("int");
 
                     b.Property<string>("ScopeExcludedProfileIdsJson")
@@ -2673,6 +2890,10 @@ namespace AltomateHR.Api.Migrations
                         .HasPrecision(14, 2)
                         .HasColumnType("decimal(14,2)");
 
+                    b.Property<decimal>("TotalPcbBorneByEmployer")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("decimal(14,2)");
+
                     b.Property<decimal>("TotalWagesSubjectToHrdf")
                         .HasPrecision(14, 2)
                         .HasColumnType("decimal(14,2)");
@@ -2710,7 +2931,7 @@ namespace AltomateHR.Api.Migrations
 
                     b.HasIndex("OrganizationId", "Status");
 
-                    b.HasIndex("OrganizationId", "PeriodYear", "PeriodMonth")
+                    b.HasIndex("OrganizationId", "PeriodYear", "PeriodMonth", "RunNumber")
                         .IsUnique();
 
                     b.ToTable("PayrollRuns");
@@ -2741,6 +2962,10 @@ namespace AltomateHR.Api.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
+                    b.Property<decimal?>("HrdfLevy")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("decimal(10,2)");
+
                     b.Property<string>("ManualLineItemsJson")
                         .IsRequired()
                         .HasColumnType("longtext");
@@ -2752,6 +2977,10 @@ namespace AltomateHR.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("varchar(40)");
+
+                    b.Property<string>("OtCustomHoursJson")
+                        .IsRequired()
+                        .HasColumnType("longtext");
 
                     b.Property<decimal>("OtNormalHours")
                         .HasPrecision(8, 2)
@@ -2862,9 +3091,18 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("varchar(40)");
 
+                    b.Property<int>("PeriodMonth")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PeriodYear")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
 
                     b.HasIndex("PayrollRunId", "EmployeeProfileId")
+                        .IsUnique();
+
+                    b.HasIndex("OrganizationId", "PeriodYear", "PeriodMonth", "EmployeeProfileId")
                         .IsUnique();
 
                     b.ToTable("PayrollRunMembers");
@@ -3017,6 +3255,10 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("varchar(40)");
 
+                    b.Property<string>("OtCustomJson")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
                     b.Property<decimal>("OtNormalHours")
                         .HasPrecision(8, 2)
                         .HasColumnType("decimal(8,2)");
@@ -3046,12 +3288,22 @@ namespace AltomateHR.Api.Migrations
                         .HasPrecision(12, 2)
                         .HasColumnType("decimal(12,2)");
 
+                    b.Property<decimal>("PcbBorneByEmployer")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
                     b.Property<string>("PcbCalculationJson")
                         .HasColumnType("longtext");
 
                     b.Property<decimal>("PcbNormal")
                         .HasPrecision(12, 2)
                         .HasColumnType("decimal(12,2)");
+
+                    b.Property<int>("PeriodMonth")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PeriodYear")
+                        .HasColumnType("int");
 
                     b.Property<int>("ProratedDays")
                         .HasColumnType("int");
@@ -3146,6 +3398,9 @@ namespace AltomateHR.Api.Migrations
                     b.Property<int>("TotalWorkingDays")
                         .HasColumnType("int");
 
+                    b.Property<bool>("TracksUnpaidLeave")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<decimal?>("UnpaidLeaveDays")
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
@@ -3177,6 +3432,9 @@ namespace AltomateHR.Api.Migrations
                     b.HasIndex("PayrollRunId", "EmployeeProfileId")
                         .IsUnique();
 
+                    b.HasIndex("OrganizationId", "PeriodYear", "PeriodMonth", "EmployeeProfileId")
+                        .IsUnique();
+
                     b.ToTable("Payslips");
                 });
 
@@ -3188,6 +3446,16 @@ namespace AltomateHR.Api.Migrations
                     b.Property<decimal>("Amount")
                         .HasPrecision(12, 2)
                         .HasColumnType("decimal(12,2)");
+
+                    b.Property<decimal?>("CarriedDays")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<int?>("CarriedFromMonth")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("CarriedFromYear")
+                        .HasColumnType("int");
 
                     b.Property<string>("Category")
                         .HasMaxLength(60)
@@ -3315,6 +3583,72 @@ namespace AltomateHR.Api.Migrations
                     b.ToTable("SalaryChanges");
                 });
 
+            modelBuilder.Entity("AltomateHR.Api.Modules.Payroll.Entities.UnpaidLeaveSettlement", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<decimal>("Days")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<string>("EmployeeProfileId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<bool>("Final")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("LeaveApplicationId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime>("LeaveEndDate")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("LeaveStartDate")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("LeaveTypeId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("PayrollRunId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("PayslipId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<int>("PeriodMonth")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PeriodYear")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PayrollRunId");
+
+                    b.HasIndex("OrganizationId", "PeriodYear");
+
+                    b.ToTable("UnpaidLeaveSettlements");
+                });
+
             modelBuilder.Entity("AltomateHR.Api.Modules.Policies.Entities.EmployeePolicy", b =>
                 {
                     b.Property<string>("Id")
@@ -3384,23 +3718,15 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 
-                    b.Property<decimal>("OtRateNormalDay")
+                    b.Property<decimal?>("OtRateNormalDay")
                         .HasPrecision(4, 2)
                         .HasColumnType("decimal(4,2)");
 
-                    b.Property<decimal>("OtRatePublicHoliday")
+                    b.Property<decimal?>("OtRatePublicHoliday")
                         .HasPrecision(4, 2)
                         .HasColumnType("decimal(4,2)");
 
-                    b.Property<decimal>("OtRatePublicHolidayInShift")
-                        .HasPrecision(4, 2)
-                        .HasColumnType("decimal(4,2)");
-
-                    b.Property<decimal>("OtRateRestDay")
-                        .HasPrecision(4, 2)
-                        .HasColumnType("decimal(4,2)");
-
-                    b.Property<decimal>("OtRateRestDayInShift")
+                    b.Property<decimal?>("OtRateRestDay")
                         .HasPrecision(4, 2)
                         .HasColumnType("decimal(4,2)");
 
@@ -3478,6 +3804,41 @@ namespace AltomateHR.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("PolicyLeaveEntitlements");
+                });
+
+            modelBuilder.Entity("AltomateHR.Api.Modules.Policies.Entities.PolicyOvertimeRate", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<decimal?>("Multiplier")
+                        .HasPrecision(4, 2)
+                        .HasColumnType("decimal(4,2)");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("OvertimeTypeId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("PolicyId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PolicyId", "OvertimeTypeId")
+                        .IsUnique();
+
+                    b.ToTable("PolicyOvertimeRates");
                 });
 
             modelBuilder.Entity("AltomateHR.Api.Modules.Projects.Entities.Project", b =>
@@ -3890,6 +4251,46 @@ namespace AltomateHR.Api.Migrations
                     b.ToTable("TeamMemberships");
                 });
 
+            modelBuilder.Entity("AltomateHR.Api.Modules.Xero.Entities.XeroApp", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("ClientId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
+                    b.Property<string>("ClientSecretProtected")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("IsShared")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<bool>("UsedByAnotherProduct")
+                        .HasColumnType("tinyint(1)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("XeroApps");
+                });
+
             modelBuilder.Entity("AltomateHR.Api.Modules.Xero.Entities.XeroConnection", b =>
                 {
                     b.Property<string>("Id")
@@ -3959,6 +4360,10 @@ namespace AltomateHR.Api.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("XeroAppId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("OrganizationId")
@@ -3989,6 +4394,12 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("varchar(40)");
 
+                    b.Property<DateTime?>("PendingChoiceExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("PendingChoiceProtected")
+                        .HasColumnType("longtext");
+
                     b.Property<string>("ReturnUrl")
                         .HasMaxLength(1000)
                         .HasColumnType("varchar(1000)");
@@ -4006,12 +4417,50 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("varchar(40)");
 
+                    b.Property<string>("XeroAppId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("State")
                         .IsUnique();
 
                     b.ToTable("XeroOAuthStates");
+                });
+
+            modelBuilder.Entity("AltomateHR.Api.Modules.Xero.Entities.XeroOwnerSetting", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("Choice")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("OwnerUserId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("XeroAppId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerUserId")
+                        .IsUnique();
+
+                    b.ToTable("XeroOwnerSettings");
                 });
 #pragma warning restore 612, 618
         }

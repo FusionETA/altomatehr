@@ -112,7 +112,7 @@ public class StatutoryFileService : IStatutoryFileService
 
         return RefuseUnlessApproved(payload.Run)
                ?? RefuseIfImported(payload.Run)
-               ?? render(payload);
+               ?? Tagged(render(payload), payload.Run);
     }
 
     // ─── Documents ──────────────────────────────────────────────────────
@@ -186,7 +186,7 @@ public class StatutoryFileService : IStatutoryFileService
             }
         }
 
-        var fileName = $"Payslips_{model.Run.PeriodYear}_{model.Run.PeriodMonth:D2}_All.zip";
+        var fileName = $"Payslips_{model.Run.PeriodYear}_{model.Run.PeriodMonth:D2}{RunTag(model.Run)}_All.zip";
         return new StatutoryFileResult(true, fileName, buffer.ToArray(), "application/zip", null);
     }
 
@@ -208,20 +208,70 @@ public class StatutoryFileService : IStatutoryFileService
         if (RefuseUnlessApproved(model.Run) is { Error: { } refusal })
             return new PayrollBundleResult(false, null, null, [], new Dictionary<string, string>(), refusal);
 
+        var (content, included, skipped) =
+            await ZipAsync(BundleDocuments, document => RenderBundleDocumentAsync(document, runId, paymentDate));
+
+        var fileName = $"payroll-{model.Run.PeriodYear}-{model.Run.PeriodMonth:D2}{RunTag(model.Run)}.zip";
+        return new PayrollBundleResult(true, fileName, content, included, skipped, null);
+    }
+
+    // The uploads KWSP, PERKESO and LHDN take, in the order of the download
+    // window's Statutory section.
+    private static readonly string[] StatutoryDocuments = ["epf", "socso-eis", "socso-eis-skbbk", "pcb"];
+
+    public Task<PayrollBundleResult> RenderStatutoryBundleAsync(string runId) =>
+        RenderZipOfAsync(runId, StatutoryDocuments, "Statutory",
+            "None of the statutory files could be produced for this run. Each file's reason is listed with it.");
+
+    // The two line-item reports travel together: whoever reads one wants the
+    // other. A run with no allowances (or no deductions) zips the one it has.
+    private static readonly string[] LineReportDocuments = ["allowances", "deductions"];
+
+    public Task<PayrollBundleResult> RenderLineReportsZipAsync(string runId) =>
+        RenderZipOfAsync(runId, LineReportDocuments, "Allowance_Deduction_Reports",
+            "No allowances on this run, and no deductions other than EPF, SOCSO, EIS and PCB.");
+
+    // A zip of some of the run's documents, gated once up front like the
+    // bundle: four copies of "not approved" (or "imported") say nothing the
+    // first one didn't. `emptyError` is the answer when none could be made —
+    // a zip with nothing in it would read as a download that worked.
+    private async Task<PayrollBundleResult> RenderZipOfAsync(
+        string runId, IEnumerable<string> documents, string fileStem, string emptyError)
+    {
+        var model = await LoadDocumentAsync(runId);
+        if (model is null)
+            return new PayrollBundleResult(false, null, null, [], new Dictionary<string, string>(), null);
+
+        if ((RefuseUnlessApproved(model.Run) ?? RefuseIfImported(model.Run)) is { Error: { } refusal })
+            return new PayrollBundleResult(false, null, null, [], new Dictionary<string, string>(), refusal);
+
+        var (content, included, skipped) =
+            await ZipAsync(documents, document => RenderBundleDocumentAsync(document, runId, null));
+
+        if (included.Count == 0)
+            return new PayrollBundleResult(false, null, null, included, skipped, emptyError);
+
+        return new PayrollBundleResult(true, $"{fileStem}_{MonthYear(model.Run)}.zip", content, included, skipped, null);
+    }
+
+    // Each document into the zip under its own file name. One document failing
+    // must not cost the others — an org with no payor account still needs its
+    // statutory files — so a failure is recorded against it and skipped.
+    private static async Task<(byte[] Content, List<string> Included, Dictionary<string, string> Skipped)> ZipAsync(
+        IEnumerable<string> documents, Func<string, Task<StatutoryFileResult>> render)
+    {
         var included = new List<string>();
         var skipped = new Dictionary<string, string>(StringComparer.Ordinal);
 
         using var buffer = new MemoryStream();
         using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
         {
-            foreach (var document in BundleDocuments)
+            foreach (var document in documents)
             {
-                // One document failing must not cost the other five. An org
-                // with no payor account still needs its statutory files.
                 StatutoryFileResult result;
                 try
                 {
-                    result = await RenderBundleDocumentAsync(document, runId, paymentDate);
+                    result = await render(document);
                 }
                 catch (Exception ex)
                 {
@@ -242,8 +292,7 @@ public class StatutoryFileService : IStatutoryFileService
             }
         }
 
-        var fileName = $"payroll-{model.Run.PeriodYear}-{model.Run.PeriodMonth:D2}.zip";
-        return new PayrollBundleResult(true, fileName, buffer.ToArray(), included, skipped, null);
+        return (buffer.ToArray(), included, skipped);
     }
 
     private Task<StatutoryFileResult> RenderBundleDocumentAsync(
@@ -283,6 +332,62 @@ public class StatutoryFileService : IStatutoryFileService
         var fileName = $"Payroll_Summary_{MonthYear(summary.Run)}{UnapprovedSuffix(summary.Run)}.xlsx";
         return new StatutoryFileResult(
             true, fileName, PayrollSummaryXlsx.Render(summary), PayrollSummaryXlsx.ContentType, null);
+    }
+
+    public async Task<StatutoryFileResult> RenderMonthSummaryAsync(int year, int month, bool xlsx)
+    {
+        // Imported history was never computed here, so it has no summary.
+        var runs = (await _runs.GetForPeriodAsync(year, month))
+            .Where(r => r.Source != Entities.PayrollRunSource.IMPORTED)
+            .ToList();
+        if (runs.Count == 0) return NotFound();
+
+        var summaries = new List<PayrollDocumentModel>();
+        foreach (var run in runs)
+        {
+            var (summary, _) = await LoadSummaryAsync(run.Id);
+            if (summary is not null) summaries.Add(summary);   // a run not yet run adds nothing
+        }
+        if (summaries.Count == 0)
+        {
+            return StatutoryFileResult.Refused(
+                "Run payroll on at least one of this month's runs before downloading its summary.");
+        }
+
+        // The month as one run: as approved as its least-approved run, so a
+        // month with a draft in it is watermarked as one.
+        var status = runs.Any(r => r.Status == Entities.PayrollRunStatus.DRAFT)
+            ? Entities.PayrollRunStatus.DRAFT
+            : runs.Any(r => r.Status == Entities.PayrollRunStatus.PENDING_APPROVAL)
+                ? Entities.PayrollRunStatus.PENDING_APPROVAL
+                : Entities.PayrollRunStatus.SUBMITTED;
+        var month1 = new Entities.PayrollRun
+        {
+            Id = string.Empty,
+            OrganizationId = runs[0].OrganizationId,
+            PeriodYear = year,
+            PeriodMonth = month,
+            Status = status,
+            SubmittedAt = status == Entities.PayrollRunStatus.SUBMITTED ? runs.Max(r => r.SubmittedAt) : null,
+        };
+
+        var combined = summaries[0] with
+        {
+            Run = month1,
+            PeriodLabel = $"{PayrollPeriodLabel.For(year, month)} – all runs",
+            StatusLabel = StatusLabel(status),
+            Rows = [.. summaries.SelectMany(s => s.Rows)
+                .OrderBy(r => r.EmployeeCode, StringComparer.InvariantCulture)],
+            LineItems = summaries.SelectMany(s => s.LineItems)
+                .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal),
+        };
+
+        var fileName = $"Payroll_Summary_{MonthYear(month1)}_All_Runs{UnapprovedSuffix(month1)}";
+        return xlsx
+            ? new StatutoryFileResult(true, fileName + ".xlsx", PayrollSummaryXlsx.Render(combined),
+                PayrollSummaryXlsx.ContentType, null)
+            : new StatutoryFileResult(true, fileName + ".pdf", PayrollSummaryPdf.Render(combined),
+                PayrollSummaryPdf.ContentType, null);
     }
 
     // The summary's model (with every payslip's line items and the generated
@@ -400,7 +505,8 @@ public class StatutoryFileService : IStatutoryFileService
             .ToArray());
         var name = System.Text.RegularExpressions.Regex.Replace(kept, @"\s+", " ").Trim().TrimEnd('.');
         if (name.Length > 80) name = name[..80].TrimEnd();
-        return $"ABPay {(name.Length == 0 ? "Company" : name)} {run.PeriodYear}-{run.PeriodMonth:D2}.xlsx";
+        return $"ABPay {(name.Length == 0 ? "Company" : name)} {run.PeriodYear}-{run.PeriodMonth:D2}"
+               + (PayrollPeriodLabel.FileTag(run) is { Length: > 0 } tag ? $" {tag}" : "") + ".xlsx";
     }
 
     public Task<StatutoryFileResult> RenderAllowanceReportXlsxAsync(string runId) =>
@@ -498,7 +604,9 @@ public class StatutoryFileService : IStatutoryFileService
         string runId,
         DateTime? paymentDate,
         string? recipientReference = null,
-        HlbChannel? channel = null)
+        HlbChannel? channel = null,
+        string? tapeId = null,
+        bool idCheck = false)
     {
         var model = await LoadDocumentAsync(runId);
         if (model is null) return NotFound();
@@ -540,7 +648,7 @@ public class StatutoryFileService : IStatutoryFileService
                       + "in Payroll Settings → Company Info, or pick \"Other\" if yours isn't listed.");
         }
 
-        return format switch
+        return Tagged(format switch
         {
             PayrollFileFormat.PbEcpXlsx =>
                 PayrollBankFileXlsx.Render(model, valueDate, settings.EcpPayorAccountNo),
@@ -569,10 +677,16 @@ public class StatutoryFileService : IStatutoryFileService
                     + "company uses to submit bulk payroll."),
             },
 
+            // OCBC Velocity GIRO. Tape ID and the ID check are per file; the
+            // reference falls back to "SALARY <MON> <YEAR>" when left blank.
+            PayrollFileFormat.OcbcVelocityGiroTxt =>
+                PayrollBankFileOcbc.RenderGiroTxt(
+                    model, valueDate, settings.EcpPayorAccountNo, tapeId, idCheck, recipientReference),
+
             _ => StatutoryFileResult.Refused(
                 $"The upload file for {settings.PayrollBankName} isn't available yet. Use the "
                 + "Payment Schedule PDF for now — it lists every account and amount."),
-        };
+        }, model.Run);
     }
 
     private static DateTime LastDayOfPeriod(Entities.PayrollRun run) =>
@@ -580,9 +694,32 @@ public class StatutoryFileService : IStatutoryFileService
 
     private static StatutoryFileResult NotFound() => new(false, null, null, null, null);
 
-    // The previous system's names: "Payroll_Summary_January_2026.pdf".
+    // The previous system's names: "Payroll_Summary_January_2026.pdf" — with
+    // the run's name after it when the month has several runs
+    // ("Payroll_Summary_January_2026_Workers.pdf").
     private static string MonthYear(Entities.PayrollRun run) =>
-        $"{System.Globalization.CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(run.PeriodMonth)}_{run.PeriodYear}";
+        $"{System.Globalization.CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(run.PeriodMonth)}_{run.PeriodYear}"
+        + RunTag(run);
+
+    // "_Workers" for a named (or later) run; empty for an unnamed first run,
+    // so a month with one run keeps exactly the names it always had.
+    private static string RunTag(Entities.PayrollRun run) =>
+        PayrollPeriodLabel.FileTag(run) is { Length: > 0 } tag ? $"_{tag}" : string.Empty;
+
+    // A renderer's file with the run's name added before the extension, so
+    // two runs in a month never hand out the same file name. A name made only
+    // of letters and digits (the CP39 file — LHDN's e-PCB refuses anything
+    // else) gets the tag with no separator.
+    private static StatutoryFileResult Tagged(StatutoryFileResult result, Entities.PayrollRun run)
+    {
+        var tag = PayrollPeriodLabel.FileTag(run);
+        if (!result.Ok || result.FileName is not { } name || tag.Length == 0) return result;
+
+        var dot = name.LastIndexOf('.');
+        var (stem, ext) = dot < 0 ? (name, "") : (name[..dot], name[dot..]);
+        var separator = stem.All(char.IsAsciiLetterOrDigit) ? "" : "_";
+        return result with { FileName = $"{stem}{separator}{tag}{ext}" };
+    }
 
     // {employeeId}_{name}_{MM-YYYY}.pdf, the previous system's pattern, off the
     // payslip's SNAPSHOT identity as it did — so the file an employee was
@@ -645,7 +782,7 @@ public class StatutoryFileService : IStatutoryFileService
         {
             Payslip = row.Payslip,
             OrganizationName = model.OrganizationName,
-            PeriodLabel = model.PeriodLabel,
+            PeriodLabel = PayrollPeriodLabel.For(model.Run.PeriodYear, model.Run.PeriodMonth),
             IssueDate = model.IssueDate,
             Ytd = ytd.GetValueOrDefault(row.Payslip.EmployeeProfileId) ?? new PayslipYtdSummary(),
             LineItems = lineItems.GetValueOrDefault(row.Payslip.Id) ?? [],
@@ -672,7 +809,9 @@ public class StatutoryFileService : IStatutoryFileService
             // statutory document; the org's own name is the fallback.
             OrganizationName = FirstNonBlank(
                 payload.CompanyInfo?.EmployerName, org?.Name) ?? string.Empty,
-            PeriodLabel = PayrollPeriodLabel.For(payload.Run.PeriodYear, payload.Run.PeriodMonth),
+            // "October 2026 – Workers" on the run's documents. A payslip is
+            // still labelled by month (BuildPayslipModel).
+            PeriodLabel = PayrollPeriodLabel.ForRun(payload.Run),
             StatusLabel = StatusLabel(payload.Run.Status),
             IssueDate = LastDayOfPeriod(payload.Run),
             Rows = payload.Rows,

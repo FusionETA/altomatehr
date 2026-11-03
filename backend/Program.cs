@@ -32,6 +32,7 @@ using AltomateHR.Api.Modules.Realtime;
 using AltomateHR.Api.Modules.Shifts;
 using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Modules.Xero;
+using AltomateHR.Api.Modules.Fah;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -87,6 +88,9 @@ builder.Services.AddCors(options =>
                   "http://127.0.0.1:5173")
               .AllowAnyHeader()
               .AllowAnyMethod()
+              // A download's file name, and what a zip left out, are headers
+              // the browser hides from a cross-origin page unless named here.
+              .WithExposedHeaders("Content-Disposition", "X-Bundle-Skipped", "X-Bundle-File-Count")
               .AllowCredentials()));   // allow the browser to send/receive cookies cross-origin
 
 // Database (EF Core + Pomelo/MySQL). Connection string from user-secrets — never committed.
@@ -165,6 +169,7 @@ builder.Services.AddAuthorization(options =>
         policy.Requirements.Add(new SuperadminRequirement()));
 });
 builder.Services.AddSingleton<ISuperadminRegistry, SuperadminRegistry>();
+builder.Services.AddSingleton<IAiActorRegistry, AiActorRegistry>();
 builder.Services.AddSingleton<IAuthorizationHandler, SuperadminAuthorizationHandler>();
 
 // Rate limiting protects auth endpoints from brute-force guessing.
@@ -222,6 +227,31 @@ builder.Services.AddRateLimiter(options =>
                 AutoReplenishment = true,
             }));
 
+    // FAH, the assistant: every message is a paid model call, often several.
+    options.AddPolicy("fah", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: GetClientPartitionKey(httpContext, "fah"),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 15,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            }));
+
+    // Files attached in FAH: a message can carry five, so more room than
+    // "fah" — still capped, as each image or PDF is stored with the provider.
+    options.AddPolicy("fah-files", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: GetClientPartitionKey(httpContext, "fah-files"),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            }));
+
     // "Write with AI" for document templates — also paid per request, and a
     // drafting session is a handful of turns, not dozens.
     options.AddPolicy("ai-documents", httpContext =>
@@ -250,6 +280,9 @@ builder.Services.AddRateLimiter(options =>
 // Multi-tenancy + request context (ICurrentUser reads the JWT via IHttpContextAccessor)
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
+// Acting as the same person in another of their companies (FAH's cross-company changes).
+builder.Services.AddScoped<CompanyPrincipal>();
+builder.Services.AddScoped<ICompanyScopes, CompanyScopes>();
 
 // Realtime (SSE). The HUB is a singleton because it holds open connections,
 // which outlive the request that opened them; the service around it is scoped
@@ -300,6 +333,10 @@ builder.Services.AddScoped<IOvertimePhotoStorage, OvertimePhotoStorage>();
 builder.Services.AddScoped<IOvertimeService, OvertimeService>();
 builder.Services.AddScoped<IOtRateService, OtRateService>();
 builder.Services.AddScoped<IApprovedOvertimeService, ApprovedOvertimeService>();
+builder.Services.AddScoped<IOvertimeTypeRepository, OvertimeTypeRepository>();
+builder.Services.AddScoped<IOvertimeTypeService, OvertimeTypeService>();
+builder.Services.AddScoped<AltomateHR.Api.Modules.Policies.IPolicyOvertimeRateRepository,
+    AltomateHR.Api.Modules.Policies.PolicyOvertimeRateRepository>();
 builder.Services.AddScoped<IHolidayRepository, HolidayRepository>();
 builder.Services.AddScoped<IHolidayService, HolidayService>();
 builder.Services.AddScoped<IEmployeePolicyRepository, EmployeePolicyRepository>();
@@ -333,6 +370,7 @@ builder.Services.AddScoped<IPayrollRunAdjustmentService, PayrollRunAdjustmentSer
 builder.Services.AddScoped<IPayrollAdjustmentImportService, PayrollAdjustmentImportService>();
 builder.Services.AddScoped<IPayrollRunClaimRepository, PayrollRunClaimRepository>();
 builder.Services.AddScoped<IPayrollRunMemberRepository, PayrollRunMemberRepository>();
+builder.Services.AddScoped<IUnpaidLeaveSettlementRepository, UnpaidLeaveSettlementRepository>();
 builder.Services.AddScoped<IPayrollRunClaimService, PayrollRunClaimService>();
 builder.Services.AddScoped<IStatutoryFileService, StatutoryFileService>();
 builder.Services.AddScoped<ITp1FormService, Tp1FormService>();
@@ -358,6 +396,20 @@ builder.Services.AddScoped<ITeamService, TeamService>();
 builder.Services.AddScoped<IApproverPositions, ApproverPositions>();
 builder.Services.AddScoped<IXeroRepository, XeroRepository>();
 builder.Services.AddScoped<IXeroService, XeroService>();
+builder.Services.AddScoped<IXeroAppRepository, XeroAppRepository>();
+builder.Services.AddScoped<IXeroAppResolver, XeroAppResolver>();
+builder.Services.AddScoped<IXeroAppsService, XeroAppsService>();
+
+// FAH, the in-app assistant: the model, the MCP server it reaches AltomateHR through, its chats.
+builder.Services.Configure<FahOptions>(builder.Configuration.GetSection("Fah"));
+builder.Services.AddHttpClient<IMcpClient, McpClient>(
+    http => http.Timeout = TimeSpan.FromSeconds(60));
+builder.Services.AddScoped<IFahModel, ClaudeFahModel>();
+builder.Services.AddScoped<IFahRepository, FahRepository>();
+builder.Services.AddScoped<IFahAttachmentRepository, FahAttachmentRepository>();
+builder.Services.AddScoped<IFahImportService, FahImportService>();
+builder.Services.AddScoped<IFahCompanyChanges, FahCompanyChanges>();
+builder.Services.AddScoped<IFahService, FahService>();
 builder.Services.AddScoped<IProjectTrackingScope, ProjectTrackingScope>();
 // Same instance behind the narrow upload port the storage classes take.
 builder.Services.AddScoped<IXeroFileUploader>(sp => sp.GetRequiredService<IXeroService>());
@@ -370,6 +422,7 @@ builder.Services.AddScoped<IOrgAdminService, OrgAdminService>();
 builder.Services.AddScoped<IPartnerIdentityService, PartnerIdentityService>();
 builder.Services.AddHttpClient<IXeroClient, XeroClient>();
 builder.Services.AddScoped<IReceiptOcrService, ReceiptOcrService>();
+builder.Services.AddScoped<IMileageScanService, MileageScanService>();
 builder.Services.AddHttpClient<IGeminiClient, GeminiClient>();
 builder.Services.AddHttpClient<IPublicHolidaySource, PublicHolidaySource>();
 
@@ -425,6 +478,7 @@ builder.Services.AddScoped<IClaimsService, ClaimsService>();
 builder.Services.AddScoped<IAdminOverviewService, AdminOverviewService>();
 builder.Services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
 builder.Services.AddScoped<IApiKeyService, ApiKeyService>();
+builder.Services.AddScoped<IActingKeyService, ActingKeyService>();
 
 // API monitoring: one row per request, queued by the middleware and saved by the
 // writer in batches; the cleanup worker enforces the retention window.
@@ -438,6 +492,25 @@ builder.Services.AddScoped<AltomateHR.Api.Modules.ApiMonitoring.IApiMonitoringSe
     AltomateHR.Api.Modules.ApiMonitoring.ApiMonitoringService>();
 builder.Services.AddHostedService<AltomateHR.Api.Modules.ApiMonitoring.Cron.ApiRequestLogWriterBackgroundService>();
 builder.Services.AddHostedService<AltomateHR.Api.Modules.ApiMonitoring.Cron.ApiRequestLogCleanupBackgroundService>();
+
+// Whether a company is deactivated: read on every request, so cached briefly.
+builder.Services.AddMemoryCache();
+builder.Services.AddScoped<AltomateHR.Api.Modules.Organizations.IOrganizationStatus,
+    AltomateHR.Api.Modules.Organizations.OrganizationStatus>();
+
+// Team chat: sign-ins and new companies posted to the team's Bitrix group.
+// Quiet unless Bitrix:WebhookUrl (a secret) and Bitrix:DialogId are both set.
+builder.Services.Configure<AltomateHR.Api.Modules.TeamChat.TeamChatOptions>(
+    builder.Configuration.GetSection(AltomateHR.Api.Modules.TeamChat.TeamChatOptions.SectionName));
+builder.Services.AddSingleton<AltomateHR.Api.Modules.TeamChat.ITeamChatQueue,
+    AltomateHR.Api.Modules.TeamChat.TeamChatQueue>();
+builder.Services.AddScoped<AltomateHR.Api.Modules.TeamChat.ITeamChatAlerts,
+    AltomateHR.Api.Modules.TeamChat.TeamChatAlerts>();
+// No request logging: the webhook's token is in the URL path, which the
+// default HttpClient logs would write out on every message.
+builder.Services.AddHttpClient<AltomateHR.Api.Modules.TeamChat.IBitrixClient,
+    AltomateHR.Api.Modules.TeamChat.BitrixClient>().RemoveAllLoggers();
+builder.Services.AddHostedService<AltomateHR.Api.Modules.TeamChat.Cron.TeamChatSenderBackgroundService>();
 builder.Services.AddScoped<IApiClientRepository, ApiClientRepository>();
 builder.Services.AddScoped<IPartnerAuthStore, PartnerAuthStore>();
 builder.Services.AddScoped<IPartnerAuthService, PartnerAuthService>();
@@ -535,9 +608,11 @@ app.UseCors("frontend");
 app.UseRateLimiter();
 app.UseAuthentication();   // WHO are you?  (JWT or wp_live_ key) — MUST be before UseAuthorization
 app.UseAuthorization();    // WHAT may you do?  ([Authorize] is enforced here)
+app.UseMiddleware<AltomateHR.Api.Modules.Organizations.CompanyDeactivatedMiddleware>();  // a deactivated company is closed to everyone in it
 app.UseMiddleware<AltomateHR.Api.Modules.Auth.FormerEmployeeReadOnlyMiddleware>();
 app.UseMiddleware<AltomateHR.Api.Modules.Employees.EmployeeScopeMiddleware>();  // a policy-limited admin sees only their employees  // a former employer's company is view-only
 app.UseMiddleware<ApiKeyAuditMiddleware>();  // audit + LastUsedAt for wp_live_ traffic (after the endpoint)
+app.UseMiddleware<ActingKeyWriteAllowlistMiddleware>();  // FAH keys change data only through FAH's own routes (refusals still audited above)
 app.MapControllers();
 
 // `dotnet run -- dump-chains <path>` writes every COMPUTED approval chain and

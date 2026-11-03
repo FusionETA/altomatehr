@@ -12,14 +12,20 @@ import { DrawerPortal } from "./DrawerPortal";
 // looking at the same shape.
 export function PayslipDrawer({
   payslip,
+  nonCash,
   onClose,
 }: {
   payslip: Payslip;
+  // Benefit-in-kind category codes: never in gross, so not listed as earnings.
+  nonCash: Set<string>;
   onClose: () => void;
 }) {
+  const isNonCash = (item: Payslip["lineItems"][number]) =>
+    item.kind === "ALLOWANCE" && item.category !== null && nonCash.has(item.category);
   const earnings = payslip.lineItems.filter(
-    (item) => item.kind === "ALLOWANCE" || item.kind === "REIMBURSEMENT",
+    (item) => (item.kind === "ALLOWANCE" || item.kind === "REIMBURSEMENT") && !isNonCash(item),
   );
+  const benefits = payslip.lineItems.filter(isNonCash);
   // Additional PCB is already inside the PCB / MTD row below, so its line is
   // not listed again.
   const deductions = payslip.lineItems.filter(
@@ -33,7 +39,8 @@ export function PayslipDrawer({
     { label: "SOCSO (employee)", value: payslip.socsoEmployee },
     { label: "EIS (employee)", value: payslip.eisEmployee },
     { label: "SKBBK", value: payslip.skbbkEmployee },
-    { label: "PCB / MTD", value: payslip.pcb + payslip.voluntaryPcb },
+    // PCB the company pays is listed under "Paid by the employer" instead.
+    { label: "PCB / MTD", value: payslip.pcb - payslip.pcbBorneByEmployer + payslip.voluntaryPcb },
     { label: "CP38", value: payslip.cp38 },
     { label: "Zakat", value: payslip.zakat },
   ].filter((row) => row.value > 0);
@@ -107,7 +114,11 @@ export function PayslipDrawer({
             the employee declares. Kept apart so nobody adds it to the net. */}
         {payslip.totalBenefitsInKind > 0 ? (
           <Section title="Benefits in kind">
-            <Row label="Reportable, not paid in cash" value={payslip.totalBenefitsInKind} />
+            {benefits.length > 0 ? (
+              benefits.map((item) => <Row key={item.id} label={item.label} value={item.amount} />)
+            ) : (
+              <Row label="Reportable, not paid in cash" value={payslip.totalBenefitsInKind} />
+            )}
           </Section>
         ) : null}
 
@@ -115,6 +126,9 @@ export function PayslipDrawer({
           <Row label="EPF (employer)" value={payslip.epfEmployer} />
           <Row label="SOCSO (employer)" value={payslip.socsoEmployer} />
           <Row label="EIS (employer)" value={payslip.eisEmployer} />
+          {payslip.pcbBorneByEmployer > 0 ? (
+            <Row label="PCB / MTD (paid by employer)" value={payslip.pcbBorneByEmployer} />
+          ) : null}
           {payslip.hrdf > 0 ? <Row label="HRD Corp levy" value={payslip.hrdf} /> : null}
           <Row label="Total cost to employer" value={payslip.totalCostToEmployer} total />
         </Section>

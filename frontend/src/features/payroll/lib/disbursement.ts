@@ -9,7 +9,8 @@ export type PayrollFileFormat =
   | "PbEcpXlsx"
   | "MbbM2eTxt"
   | "CimbBizChannelXlsx"
-  | "HlbConnect";
+  | "HlbConnect"
+  | "OcbcVelocityGiroTxt";
 
 // Stored when the company banks somewhere no upload file is generated for.
 // Deliberately distinct from null: null means nobody has configured this yet,
@@ -43,6 +44,11 @@ export const DISBURSEMENT_BANKS: {
     value: "Hong Leong Bank Berhad",
     label: "Hong Leong Bank (incl. Hong Leong Islamic)",
     format: "HlbConnect",
+  },
+  {
+    value: "OCBC Bank (Malaysia) Berhad",
+    label: "OCBC (incl. OCBC Al-Amin)",
+    format: "OcbcVelocityGiroTxt",
   },
   { value: OTHER_BANK, label: "Other bank (no upload file)", format: null },
 ];

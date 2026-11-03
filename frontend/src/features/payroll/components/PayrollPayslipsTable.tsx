@@ -288,7 +288,7 @@ export function PayrollPayslipsTable({
         <dl className="grid gap-x-8 gap-y-2.5 rounded-2xl border border-border/60 bg-muted/20 px-4 py-3.5 text-xs sm:grid-cols-2 lg:grid-cols-3">
           <Summary label="Employees paid" value={String(payslips.length)} />
           <Summary label="Total net pay" value={rm(totals.net)} />
-          <Summary label="Total PCB payment" value={rm(totals.pcb + totals.cp38)} />
+          <Summary label="Total PCB payment" value={rm(totals.pcb + totals.pcbBorne + totals.cp38)} />
           <Summary
             label="Total EPF payment"
             value={rm(totals.epfEmp + totals.epfEr)}
@@ -311,7 +311,7 @@ export function PayrollPayslipsTable({
         </dl>
       </div>
 
-      {open ? <PayslipDrawer payslip={open} onClose={() => setOpen(null)} /> : null}
+      {open ? <PayslipDrawer payslip={open} nonCash={nonCash} onClose={() => setOpen(null)} /> : null}
     </section>
   );
 }
@@ -490,8 +490,17 @@ function Row({
 
       <td className={`${CELL} font-semibold text-foreground`}>{rm(payslip.grossShown)}</td>
 
-      {/* Includes Additional PCB — withheld and filed as PCB. */}
-      <td className={`${CELL} ${EMP_TINT}`}>{rm(payslip.pcb + payslip.voluntaryPcb)}</td>
+      {/* What came out of their pay, so gross − these columns = net.
+          Includes Additional PCB — withheld and filed as PCB. PCB the company
+          pays for them is noted under it; it's in the cost, not the net. */}
+      <td className={`${CELL} ${EMP_TINT}`}>
+        {rm(payslip.pcb - payslip.pcbBorneByEmployer + payslip.voluntaryPcb)}
+        {payslip.pcbBorneByEmployer > 0 ? (
+          <span className="block text-[10px] font-normal text-muted-foreground">
+            + {rm(payslip.pcbBorneByEmployer)} paid by employer
+          </span>
+        ) : null}
+      </td>
       <td className={`${CELL} ${EMP_TINT}`}>{rm(payslip.epfEmployee)}</td>
       <td className={`${CELL} ${EMP_TINT}`}>{rm(payslip.socsoEmployee)}</td>
       <td className={`${CELL} ${EMP_TINT}`}>{rm(payslip.eisEmployee)}</td>
@@ -529,6 +538,7 @@ function breakdown(
       payslip.otNormalHours > 0 && `${payslip.otNormalHours} normal`,
       payslip.otRestHours > 0 && `${payslip.otRestHours} rest`,
       payslip.otPublicHours > 0 && `${payslip.otPublicHours} PH`,
+      ...(payslip.otCustom ?? []).map((c) => `${c.hours} ${c.name}`),
     ].filter(Boolean);
 
     items.push({
@@ -572,7 +582,9 @@ function sum(payslips: Payslip[]) {
       gross: acc.gross + p.grossShown,
       net: acc.net + p.netPay,
       cost: acc.cost + p.totalCostToEmployer,
-      pcb: acc.pcb + p.pcb + p.voluntaryPcb,
+      // From the employees' pay; PCB the company paid is kept apart.
+      pcb: acc.pcb + p.pcb - p.pcbBorneByEmployer + p.voluntaryPcb,
+      pcbBorne: acc.pcbBorne + p.pcbBorneByEmployer,
       cp38: acc.cp38 + p.cp38,
       zakat: acc.zakat + p.zakat,
       epfEmp: acc.epfEmp + p.epfEmployee,
@@ -586,7 +598,7 @@ function sum(payslips: Payslip[]) {
       bik: acc.bik + p.totalBenefitsInKind,
     }),
     {
-      gross: 0, net: 0, cost: 0, pcb: 0, cp38: 0, zakat: 0,
+      gross: 0, net: 0, cost: 0, pcb: 0, pcbBorne: 0, cp38: 0, zakat: 0,
       epfEmp: 0, epfEr: 0, socsoEmp: 0, socsoEr: 0,
       eisEmp: 0, eisEr: 0, skbbk: 0, hrdf: 0, bik: 0,
     },

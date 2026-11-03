@@ -185,6 +185,84 @@ public class EmployeeServiceTests
         Assert.True(result.Ok);
     }
 
+    // A login email signs the person in to every company they belong to. An
+    // admin here may change it for someone who is only in this company...
+    [Fact]
+    public async Task An_admin_can_change_the_email_of_someone_only_in_this_company()
+    {
+        var service = MakeService(out _, out _, out var users);
+
+        var result = await service.UpdateAsync("usr-emp", new UpdateEmployeeDto
+        {
+            Role = "Employee", Email = "renamed@altomate.com",
+        });
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal("renamed@altomate.com", users.Single(u => u.Id == "usr-emp").Email);
+    }
+
+    // ...but not when the login also opens a company the caller doesn't own:
+    // that would hand the other company's access to whoever owns the new address.
+    [Fact]
+    public async Task An_admin_cannot_change_the_email_of_a_login_shared_with_another_company()
+    {
+        var service = MakeService(out var memberships, out _, out var users);
+        memberships.Add(new OrganizationMembership { OrganizationId = "org-2", UserId = "usr-emp", Role = "Admin" });
+
+        var refused = await service.UpdateAsync("usr-emp", new UpdateEmployeeDto
+        {
+            Role = "Employee", Email = "mine@attacker.com",
+        });
+        Assert.False(refused.Ok);
+        Assert.Contains("support", refused.Error);
+        Assert.Equal("employee@altomate.com", users.Single(u => u.Id == "usr-emp").Email);
+
+        // The edit form always sends the email back; the same address isn't a change.
+        var unchanged = await service.UpdateAsync("usr-emp", new UpdateEmployeeDto
+        {
+            Role = "Employee", Email = "employee@altomate.com", JobTitle = "Lead",
+        });
+        Assert.True(unchanged.Ok, unchanged.Error);
+    }
+
+    // Changing a login email then resetting the password is signing in as
+    // that person: an Admin can't do it to another Admin or to the Owner.
+    [Theory]
+    [InlineData("Admin")]
+    [InlineData("Owner")]
+    public async Task An_admin_cannot_change_another_admin_s_or_the_owner_s_email(string role)
+    {
+        var service = MakeService(out var memberships, out _, out var users);
+        users.Add(User("usr-top", "top@altomate.com"));
+        memberships.Add(Membership("usr-top", role));
+
+        var result = await service.UpdateAsync("usr-top", new UpdateEmployeeDto
+        {
+            Role = role, Email = "taken-over@attacker.com",
+        });
+
+        Assert.False(result.Ok);
+        Assert.Contains("login email", result.Error);
+        Assert.Equal("top@altomate.com", users.Single(u => u.Id == "usr-top").Email);
+    }
+
+    // An owner of every other company the login opens may change it.
+    [Fact]
+    public async Task The_owner_of_the_other_company_can_change_a_shared_login_s_email()
+    {
+        var service = MakeService(out var memberships, out _, out var users);
+        memberships.Add(new OrganizationMembership { OrganizationId = "org-2", UserId = "usr-emp", Role = "Admin" });
+        memberships.Add(new OrganizationMembership { OrganizationId = "org-2", UserId = "usr-admin", Role = "Owner" });
+
+        var result = await service.UpdateAsync("usr-emp", new UpdateEmployeeDto
+        {
+            Role = "Employee", Email = "renamed@altomate.com",
+        });
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal("renamed@altomate.com", users.Single(u => u.Id == "usr-emp").Email);
+    }
+
     // Setting an admin's password is signing in as them — only the Owner may.
     [Fact]
     public async Task An_admin_cannot_set_another_admin_s_password()
@@ -337,6 +415,80 @@ public class EmployeeServiceTests
         Assert.True(string.IsNullOrEmpty(users.Single(u => u.Id == "usr-emp").PasswordHash));
     }
 
+    // Resending explains the house rule only while it still opens the account.
+    [Fact]
+    public async Task ResendWelcome_DescribesTheHousePasswordWhileItStillWorks()
+    {
+        var email = new CapturingEmailSender();
+        var service = MakeService(out _, out var profiles, out var users, new FakeApproverPositions(), email: email);
+        profiles.Add(new EmployeeProfile { UserId = "usr-emp", DateOfBirth = new DateTime(1990, 11, 23) });
+        users.Single(u => u.Id == "usr-emp").PasswordHash = PasswordHasher.HashBcrypt("employee@altomate.com1123");
+
+        var result = await service.ResendWelcomeAsync("usr-emp");
+
+        Assert.True(result.Ok, result.Error);
+        var sent = Assert.Single(email.Sent);
+        Assert.Equal("employee@altomate.com", sent.To);
+        Assert.Contains("birthday", sent.Html);
+    }
+
+    // Once they've changed it, the rule would send them to a dead password.
+    [Fact]
+    public async Task ResendWelcome_PointsAtForgotPasswordOnceThePasswordChanged()
+    {
+        var email = new CapturingEmailSender();
+        var service = MakeService(out _, out var profiles, out var users, new FakeApproverPositions(), email: email);
+        profiles.Add(new EmployeeProfile { UserId = "usr-emp", DateOfBirth = new DateTime(1990, 11, 23) });
+        users.Single(u => u.Id == "usr-emp").PasswordHash = PasswordHasher.HashBcrypt("something-they-chose");
+
+        var result = await service.ResendWelcomeAsync("usr-emp");
+
+        Assert.True(result.Ok, result.Error);
+        var sent = Assert.Single(email.Sent);
+        Assert.Contains("Forgot password", sent.Html);
+        Assert.DoesNotContain("birthday", sent.Html);
+    }
+
+    [Fact]
+    public async Task ResendWelcome_RefusesSomeoneWhoHasLeft()
+    {
+        var email = new CapturingEmailSender();
+        var service = MakeService(out _, out var profiles, out _, new FakeApproverPositions(), email: email);
+        profiles.Add(new EmployeeProfile { UserId = "usr-emp", IsArchived = true });
+
+        var result = await service.ResendWelcomeAsync("usr-emp");
+
+        Assert.False(result.Ok);
+        Assert.Contains("left", result.Error);
+        Assert.Empty(email.Sent);
+    }
+
+    // Sending is the whole action here, so a failed send is reported.
+    [Fact]
+    public async Task ResendWelcome_ReportsAFailedSend()
+    {
+        var email = new CapturingEmailSender { Deliver = false };
+        var service = MakeService(out _, out _, out _, new FakeApproverPositions(), email: email);
+
+        var result = await service.ResendWelcomeAsync("usr-emp");
+
+        Assert.False(result.Ok);
+        Assert.Contains("couldn't be sent", result.Error);
+    }
+
+    [Fact]
+    public async Task ResendWelcome_TreatsSomeoneOutsideTheOrgAsNotFound()
+    {
+        var email = new CapturingEmailSender();
+        var service = MakeService(out _, out _, out _, new FakeApproverPositions(), email: email);
+
+        var result = await service.ResendWelcomeAsync("usr-stranger");
+
+        Assert.False(result.Ok);
+        Assert.Null(result.Error);
+        Assert.Empty(email.Sent);
+    }
+
     private static EmployeeService MakeService(out List<OrganizationMembership> memberships) =>
         MakeService(out memberships, out _);
 
@@ -355,7 +507,8 @@ public class EmployeeServiceTests
         out List<EmployeeProfile> profiles,
         out List<User> users,
         FakeApproverPositions positions,
-        AltomateHR.Api.Modules.Organizations.IModuleAccessService? access = null)
+        AltomateHR.Api.Modules.Organizations.IModuleAccessService? access = null,
+        CapturingEmailSender? email = null)
     {
         users = new List<User>
         {
@@ -377,7 +530,7 @@ public class EmployeeServiceTests
             new FakeLeaveService(),
             new FakeAuditService(),
             new StubCurrentUser(),
-            new CapturingEmailSender(),
+            email ?? new CapturingEmailSender(),
             new FakeOrgRepositoryForWelcome(),
             positions,
             Options.Create(new PortalOptions()),

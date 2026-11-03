@@ -22,4 +22,21 @@ public static class PayrollPeriodLabel
         month is < 1 or > 12
             ? $"{year}-{month:D2}"
             : $"{CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(month)} {year}";
+
+    // A run's own label: "October 2026 – Workers", or just the month for a
+    // run without a name. Shown wherever runs of one month sit side by side.
+    public static string ForRun(Entities.PayrollRun run) =>
+        string.IsNullOrWhiteSpace(run.Name)
+            ? For(run.PeriodYear, run.PeriodMonth)
+            : $"{For(run.PeriodYear, run.PeriodMonth)} – {run.Name}";
+
+    // The run's name for a file name: letters and digits only (LHDN's e-PCB
+    // refuses anything else), or "Run2" for an unnamed later run. Empty for
+    // an unnamed first run, whose files keep the names they always had.
+    public static string FileTag(Entities.PayrollRun run)
+    {
+        var tag = new string((run.Name ?? string.Empty).Where(char.IsAsciiLetterOrDigit).ToArray());
+        if (tag.Length > 30) tag = tag[..30];
+        return tag.Length > 0 ? tag : run.RunNumber > 1 ? $"Run{run.RunNumber}" : string.Empty;
+    }
 }

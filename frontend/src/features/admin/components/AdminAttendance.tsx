@@ -402,7 +402,7 @@ export function AdminAttendance() {
       new Map(
         (employeesQuery.data ?? [])
           .filter((e) => e.name.trim().length > 0)
-          .map((e) => [e.id, e.name] as const),
+          .map((e) => [e.id, personName(e.name, e.email, undefined, e.nickname)] as const),
       ),
     [employeesQuery.data],
   );
@@ -2511,6 +2511,7 @@ function EmployeeDetail({
                   <div className="min-w-0">
                     <p className="text-sm font-semibold tabular-nums text-foreground">
                       {dateLabel(request.workDate.slice(0, 10))} · {formatMinutes(request.requestedMinutes)}
+                      {request.overtimeTypeName ? ` · ${request.overtimeTypeName}` : ""}
                     </p>
                     <p className="truncate text-xs text-muted-foreground" title={request.reason}>
                       {request.reason}
@@ -2684,7 +2685,7 @@ function OvertimeTab({
 
 function otSubtitle(r: OvertimeRequest, projectNames: Map<string, string>): string {
   const project = r.projectId ? projectNames.get(r.projectId) : null;
-  return [project, r.reason].filter(Boolean).join(" · ") || "—";
+  return [project, r.overtimeTypeName, r.reason].filter(Boolean).join(" · ") || "—";
 }
 
 // One of the two OT photos. The photos are behind auth, so they open through

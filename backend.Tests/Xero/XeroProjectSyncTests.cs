@@ -149,9 +149,9 @@ internal sealed class FakeXeroProjectsClient : IXeroClient
         Task.FromResult(new List<XeroCurrencyResponse>());
     public Task<List<XeroAccountResponse>> GetAccountsAsync(string a, string t) =>
         Task.FromResult(new List<XeroAccountResponse>());
-    public string BuildAuthorizationUrl(string state) => throw new NotSupportedException();
-    public Task<XeroTokenResponse> ExchangeCodeAsync(string code) => throw new NotSupportedException();
-    public Task<XeroTokenResponse> RefreshTokenAsync(string r) => throw new NotSupportedException();
+    public string BuildAuthorizationUrl(XeroAppCredentials app, string state) => throw new NotSupportedException();
+    public Task<XeroTokenResponse> ExchangeCodeAsync(XeroAppCredentials app, string code) => throw new NotSupportedException();
+    public Task<XeroTokenResponse> RefreshTokenAsync(XeroAppCredentials app, string r) => throw new NotSupportedException();
     public Task<List<XeroTenantResponse>> GetTenantsAsync(string a) => throw new NotSupportedException();
 
     // Revocations asked for; FailRevoke makes Xero refuse.

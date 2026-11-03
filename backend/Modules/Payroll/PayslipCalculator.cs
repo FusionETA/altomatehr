@@ -93,6 +93,17 @@ public static class PayslipCalculator
         public decimal DefaultEpfEmployeeRate { get; init; } = 11m;
         public bool HrdfEnabled { get; init; }
         public decimal? HrdfRate { get; init; }
+        // Entered on the run: replaces the computed levy outright (see
+        // PayrollRunAdjustment.HrdfLevy). Null = compute it.
+        public decimal? HrdfOverride { get; init; }
+
+        // The company pays this person's PCB instead of deducting it (the
+        // profile's "PCB borne by employer"). PCB is worked out exactly as
+        // usual — no gross-up in the month (LHDN PR 3/2024 §6.1: the tax is a
+        // perquisite of the FOLLOWING year, added on that year's first run) —
+        // but it stays out of net pay and joins the company's cost. CP38,
+        // zakat and voluntary PCB are still the employee's.
+        public bool PcbBorneByEmployer { get; init; }
 
         // Auto-apply the RM 350 PERKESO relief inside PCB. Off means the
         // employee claims it themselves at year end instead.
@@ -108,6 +119,9 @@ public static class PayslipCalculator
         public decimal OtNormalHours { get; init; }
         public decimal OtRestHours { get; init; }
         public decimal OtPublicHours { get; init; }
+
+        // The company's own overtime types, each at its policy multiplier.
+        public IReadOnlyList<CustomOvertime> OtCustom { get; init; } = [];
 
         // Effective daily hours for the monthly→hourly conversion. Null falls
         // back to OvertimePay's standard day.
@@ -214,6 +228,7 @@ public static class PayslipCalculator
         public required decimal OtNormalHours { get; init; }
         public required decimal OtRestHours { get; init; }
         public required decimal OtPublicHours { get; init; }
+        public IReadOnlyList<PayslipOvertimeLine> OtCustom { get; init; } = [];
         public required decimal OtPay { get; init; }
         public required decimal TotalAllowances { get; init; }
         public required decimal TotalReimbursements { get; init; }
@@ -250,6 +265,10 @@ public static class PayslipCalculator
         public required decimal GrossPay { get; init; }
         public required decimal NetPay { get; init; }
         public required decimal TotalCostToEmployer { get; init; }
+
+        // The PCB the company paid instead of deducting it; 0 unless the
+        // employee's PCB is borne by the employer.
+        public decimal PcbBorneByEmployer { get; init; }
 
         public required IReadOnlyList<LineItem> LineItems { get; init; }
         public required EpfRatesSnapshot EpfRates { get; init; }
@@ -314,7 +333,13 @@ public static class PayslipCalculator
         var otPay = OvertimePay.Calculate(
             hourlyRate,
             input.OtNormalHours, input.OtRestHours, input.OtPublicHours,
-            input.OtRateNormal, input.OtRateRest, input.OtRatePublicHoliday);
+            input.OtRateNormal, input.OtRateRest, input.OtRatePublicHoliday,
+            input.OtCustom.Select(c => (c.Hours, c.Multiplier)));
+        var otCustom = input.OtCustom
+            .Where(c => c.Hours > 0m)
+            .Select(c => new PayslipOvertimeLine(
+                c.TypeId, c.Name, c.Hours, c.Multiplier, Money.Round2(c.Hours * hourlyRate * c.Multiplier)))
+            .ToList();
 
         // 4. Fixed adjustments. Each row can land in six wage bases at once, and
         //    the category's flags are the only thing that decides which.
@@ -499,7 +524,12 @@ public static class PayslipCalculator
         var hrdfWage = hrdfActive
             ? Money.Round2(Math.Max(0m, proratedPay + buckets.HrdfBase))
             : 0m;
-        var hrdf = hrdfActive ? Money.Round2(hrdfWage * hrdfRate / 100m) : 0m;
+        // An amount entered on the run is the final answer — it replaces the
+        // formula whatever the rate or citizenship says. The HRDF wage stays the
+        // statutory one, for the levy return.
+        var hrdf = input.HrdfOverride is { } enteredLevy
+            ? Money.Round2(Math.Max(0m, enteredLevy))
+            : hrdfActive ? Money.Round2(hrdfWage * hrdfRate / 100m) : 0m;
 
         // 9. Gross, net, cost to employer.
         //
@@ -515,10 +545,14 @@ public static class PayslipCalculator
         // above has already lowered `pcb` to what the employee actually pays, so
         // neither is subtracted twice. SKBBK is employee-only, which is why it
         // appears here but not in the employer's cost below.
+        // PCB borne by the employer is still withheld and remitted (CP39), but
+        // from the company's pocket: out of the employee's deductions, into
+        // its cost.
+        var bornePcb = input.PcbBorneByEmployer ? pcb : 0m;
         var netPay = Money.Round2(
             grossPay
             - epf.Employee - socso.Employee - eis.Employee - socso.EmployeeSkbbk
-            - totalDeductions - pcb);
+            - totalDeductions - (pcb - bornePcb));
 
         // What the company actually pays out: gross plus its own contributions,
         // less any deduction it keeps (a loan or other debt recovered from pay,
@@ -526,7 +560,7 @@ public static class PayslipCalculator
         // PCB to LHDN, zakat to the zakat centre — are still paid out, so they
         // stay in. Matches PayrollPanda's cost for the same payslip.
         var totalCostToEmployer = Money.Round2(
-            grossPay + epf.Employer + socso.Employer + eis.Employer + hrdf
+            grossPay + epf.Employer + socso.Employer + eis.Employer + hrdf + bornePcb
             - buckets.RetainedDeductions);
 
         return new Result
@@ -544,6 +578,7 @@ public static class PayslipCalculator
             OtNormalHours = input.OtNormalHours,
             OtRestHours = input.OtRestHours,
             OtPublicHours = input.OtPublicHours,
+            OtCustom = otCustom,
             OtPay = otPay,
             TotalAllowances = buckets.Allowances,
             TotalReimbursements = totalReimbursements,
@@ -574,6 +609,7 @@ public static class PayslipCalculator
             GrossPay = grossPay,
             NetPay = netPay,
             TotalCostToEmployer = totalCostToEmployer,
+            PcbBorneByEmployer = bornePcb,
 
             LineItems = lineItems,
             EpfRates = SnapshotEpfRates(
@@ -1042,3 +1078,7 @@ public static class PayslipCalculator
     private static decimal Lookup(IReadOnlyDictionary<string, decimal> map, string key) =>
         map.TryGetValue(key, out var value) ? value : 0m;
 }
+
+// One of the company's own overtime types for this payslip: its hours and the
+// multiplier the person's policy pays.
+public sealed record CustomOvertime(string TypeId, string Name, decimal Hours, decimal Multiplier);

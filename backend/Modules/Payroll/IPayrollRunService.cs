@@ -20,7 +20,7 @@ public interface IPayrollRunService
     // so the admin can scope a new draft before creating it.
     // year/month: the period being started. Someone archived is still listed
     // when their last day falls in or after it — they are owed that month.
-    Task<PayrollRunPickerDto> GetPickerAsync(int? year = null, int? month = null);
+    Task<PayrollRunPickerDto> GetPickerAsync(int? year = null, int? month = null, string? exceptRunId = null);
 
     // Start a run for a period. There can only be one per period, so a second
     // attempt is a conflict rather than a second run.

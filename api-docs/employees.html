@@ -109,6 +109,7 @@
               <tr><td><code>role</code></td><td>string</td><td><code>Employee</code>, <code>Supervisor</code>, <code>Admin</code> or <code>Owner</code> — in this org.</td></tr>
               <tr><td><code>employeeNumber</code></td><td>string | null</td><td>Staff/payroll number in this org.</td></tr>
               <tr><td><code>jobTitle</code></td><td>string | null</td><td></td></tr>
+              <tr><td><code>nickname</code></td><td>string | null</td><td>What colleagues call them in this org, e.g. <code>"JT"</code>. Per company (it belongs to the membership, not the user). <code>name</code> above stays the legal name; other endpoints that return a display name append the nickname as <code>"Name (Nickname)"</code>.</td></tr>
               <tr><td><code>joinDate</code></td><td>string (date) | null</td><td>First day of work in this org.</td></tr>
               <tr><td><code>otTimeBalanceMin</code></td><td>number</td><td>Banked overtime time-off, in minutes.</td></tr>
               <tr><td><code>policyId</code></td><td>string | null</td><td>Leave/attendance policy, if not the org default.</td></tr>
@@ -145,6 +146,7 @@
               <tr><td><code>name</code></td><td>string</td><td>Only for a new account</td><td>Max 160 chars. Ignored when reusing an existing identity.</td></tr>
               <tr><td><code>employeeNumber</code></td><td>string</td><td>No</td><td>Max 40 chars. Payroll's statutory files key on it. When blank, an <code>Employee</code> or <code>Supervisor</code> is assigned the next number in the company's own pattern (see <a href="#next-number">GET /employees/next-number</a>); an <code>Admin</code> or <code>Owner</code> gets none, as they are not on payroll.</td></tr>
               <tr><td><code>jobTitle</code></td><td>string</td><td>No</td><td>Max 120 chars.</td></tr>
+              <tr><td><code>nickname</code></td><td>string</td><td>No</td><td>Max 60 chars. Trimmed; blank is stored as none. Applies to this company only, even when the email already belongs to someone at another company.</td></tr>
               <tr><td><code>joinDate</code></td><td>string (date)</td><td>No</td><td>Drives pro-rated leave accrual.</td></tr>
               <tr><td><code>role</code></td><td>string</td><td>Yes</td><td>One of <code>Employee</code>, <code>Supervisor</code>, <code>Admin</code>, <code>Owner</code> (case-insensitive). Defaults to <code>Employee</code> if omitted.</td></tr>
               <tr><td><code>policyId</code></td><td>string</td><td>No</td><td>Max 40 chars.</td></tr>
@@ -216,9 +218,9 @@
         <p>Change a member's role, supervisor-layer placement, or roster basics. <code>{id}</code> is the user id.</p>
         <div class="callout">
           <strong>Patch semantics, not replace:</strong> <code>null</code> on
-          <code>name</code>, <code>email</code>, <code>employeeNumber</code>, <code>jobTitle</code>
-          or <code>joinDate</code> means "leave unchanged" — omit a field rather than send
-          <code>null</code> to clear it. <code>employeeNumber</code>/<code>jobTitle</code> accept
+          <code>name</code>, <code>email</code>, <code>employeeNumber</code>, <code>jobTitle</code>,
+          <code>nickname</code> or <code>joinDate</code> means "leave unchanged" — omit a field rather than send
+          <code>null</code> to clear it. <code>employeeNumber</code>/<code>jobTitle</code>/<code>nickname</code> accept
           <code>""</code> to clear them on purpose. <code>joinDate</code> needs
           <code>clearJoinDate: true</code> to be cleared, since <code>null</code> there is
           "unchanged". <code>role</code>, <code>policyId</code>/<code>shiftId</code> and
@@ -230,9 +232,10 @@
             <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
             <tbody>
               <tr><td><code>name</code></td><td>string | null</td><td>No</td><td>Max 160 chars. <code>null</code> = unchanged.</td></tr>
-              <tr><td><code>email</code></td><td>string | null</td><td>No</td><td>Max 120 chars. <code>null</code> = unchanged; rejected if another user already has it.</td></tr>
+              <tr><td><code>email</code></td><td>string | null</td><td>No</td><td>Max 120 chars. <code>null</code> = unchanged; rejected if another user already has it. Sending the member's current address is not a change. Changing it is further restricted &mdash; see <a href="#update-employee-email">Changing the login email</a>.</td></tr>
               <tr><td><code>employeeNumber</code></td><td>string | null</td><td>No</td><td>Max 40 chars. <code>null</code> = unchanged, <code>""</code> = clear.</td></tr>
               <tr><td><code>jobTitle</code></td><td>string | null</td><td>No</td><td>Max 120 chars. <code>null</code> = unchanged, <code>""</code> = clear.</td></tr>
+              <tr><td><code>nickname</code></td><td>string | null</td><td>No</td><td>Max 60 chars. <code>null</code> = unchanged, <code>""</code> = clear.</td></tr>
               <tr><td><code>joinDate</code></td><td>string (date) | null</td><td>No</td><td><code>null</code> = unchanged. Recomputes pro-rated leave accrual when it actually changes.</td></tr>
               <tr><td><code>clearJoinDate</code></td><td>boolean</td><td>No</td><td>Default <code>false</code>. Wins over <code>joinDate</code>.</td></tr>
               <tr><td><code>role</code></td><td>string</td><td>Yes</td><td>One of <code>Employee</code>, <code>Supervisor</code>, <code>Admin</code>, <code>Owner</code>. Always replaced — resend the current value to leave it as is.</td></tr>
@@ -249,10 +252,35 @@
           <table>
             <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
             <tbody>
-              <tr><td><code>400</code></td><td>Bad role, duplicate email, or demoting someone who still has people routing approvals to them</td><td><code>{ "error": "…" }</code></td></tr>
+              <tr><td><code>400</code></td><td>Bad role, duplicate email, an email change that is refused (<a href="#update-employee-email">below</a>), or demoting someone who still has people routing approvals to them</td><td><code>{ "error": "…" }</code></td></tr>
               <tr><td><code>404</code></td><td><code>{id}</code> is not a member of this organization</td><td>empty</td></tr>
             </tbody>
           </table>
+        </div>
+        <h3 id="update-employee-email">Changing the login email</h3>
+        <p>
+          A login email belongs to the person, not to the company: it signs them in to <em>every</em>
+          company they are a member of, and anyone who controls the address can reset the password. So
+          an email <strong>change</strong> (a different address from the one on file, ignoring case) is
+          refused with <code>400</code> <code>{ "error": "…" }</code> when any of these hold. Re-sending
+          the current address is always fine.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>When</th><th><code>error</code></th></tr></thead>
+            <tbody>
+              <tr><td>The target's role in this company is <code>Owner</code></td><td><code>"An owner's login email can't be changed from here. Contact support."</code></td></tr>
+              <tr><td>The target is an <code>Admin</code> and the caller is not the Owner</td><td><code>"Only the organization's owner can change an admin's login email."</code></td></tr>
+              <tr><td>The person's login is also a member of another company the caller does not own</td><td><code>"This person's login is also used in a company you don't own, so its email can't be changed from here. Ask Altomate support to change it."</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout warn">
+          <strong>For an API key this means:</strong> a key acts as an Admin and owns no company, so it can
+          change the email only of an <code>Employee</code> or <code>Supervisor</code> whose login belongs to
+          this company alone. It can never change an Admin's or the Owner's email, nor the email of someone
+          who also belongs to another company. Everything else in the request (name, role, and so on) is
+          still applied normally when you leave <code>email</code> out or unchanged.
         </div>
 <pre><code>curl -X PUT https://&lt;api-host&gt;/employees/usr_123 \
   -H "Authorization: Bearer wp_live_xxx" \
@@ -482,7 +510,7 @@
               <tr><td><code>specialTaxScheme</code></td><td>string | null</td><td><code>RETURNING_EXPERT</code>, <code>KNOWLEDGE_WORKER</code> or <code>C_SUITE</code> — the three 15% flat-tax approvals.</td></tr>
               <tr><td><code>specialTaxFrom</code> / <code>specialTaxTo</code></td><td>string (date) | null</td><td>Stored as the first of the month; ignored unless <code>specialTaxScheme</code> is set.</td></tr>
               <tr><td><code>incomeTaxNumber</code></td><td>string | null</td><td></td></tr>
-              <tr><td><code>pcbBorneByEmployer</code></td><td>boolean</td><td>Default <code>false</code>.</td></tr>
+              <tr><td><code>pcbBorneByEmployer</code></td><td>boolean</td><td>Default <code>false</code>. When on, the company pays this person's PCB: it is still calculated, remitted and counted in year-to-date, but stays out of net pay (<code>pcbBorneByEmployer</code> on the payslip), and the year's total is added as a taxable perquisite on their first payroll run of the next year. See <a href="payroll-runs.html#pcb-borne">PCB borne by the employer</a>.</td></tr>
               <tr><td><code>ssfwNumber</code></td><td>string | null</td><td></td></tr>
               <tr><td><code>workPermitNumber</code></td><td>string | null</td><td>Max 40 characters. A foreign worker's Immigration work permit (PLKS) number &mdash; a separate document from <code>ssfwNumber</code>.</td></tr>
               <tr><td><code>workPermitExpiry</code></td><td>string (date) | null</td><td>When the work permit lapses. Stored date-only: any time part you send is dropped. <code>null</code> clears it. Meaningful for foreign workers only.</td></tr>
@@ -898,6 +926,7 @@
               <tr><td>Employee No</td><td>Yes</td><td>Can't be erased.</td></tr>
               <tr><td>Date of Birth</td><td>Yes</td><td>First password = email + birthday as <code>MMDD</code>.</td></tr>
               <tr><td>Job Title, Join Date, Policy, Shift</td><td>No</td><td>Policy/Shift are matched by <strong>name</strong>, not id.</td></tr>
+              <tr><td>Nickname</td><td>No</td><td>Aliases: <code>preferred name</code>, <code>known as</code>, <code>nick name</code>. Longer text is cut to 60 characters. In the template and the export, in the "Employee" group beside Name. A blank cell clears an existing nickname when <code>blankCells</code> is <code>Erase</code>; with <code>Keep</code> it's left alone.</td></tr>
               <tr><td>Salary Type, Contribute to EPF, Contribute to EIS</td><td>Default applies</td><td>Can't be erased (reset to their default instead: <code>MONTHLY</code> / <code>Yes</code> / <code>Yes</code>).</td></tr>
             </tbody>
           </table>

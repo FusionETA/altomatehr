@@ -45,11 +45,12 @@ public class OrganizationsController : ControllerBase
         var mine = await access.GetAccessAsync();
         return Ok(new ModuleAccessDto
         {
-            All = OrgModules.AllModules,
+            All = OrgModules.GrantableModules,
             Enabled = enabled,
             Levels = enabled.ToDictionary(m => m, mine.LevelFor, StringComparer.OrdinalIgnoreCase),
             CanChangeSettings = mine.CanChangeSettings,
             AllEmployees = mine.HasFullEmployeeScope,
+            ManagesAllPolicies = mine.ManagesAllPolicies,
         });
     }
 
@@ -76,6 +77,19 @@ public class OrganizationsController : ControllerBase
         {
             return BadRequest(new { message = ex.Message });
         }
+    }
+
+    // PUT /organizations/admins/{userId} — change an Admin's name and login
+    // email. Owners only. Both are on the person's account, so they change in
+    // every company that person belongs to.
+    [Authorize(Roles = "Owner")]
+    [HumanOnly]
+    [HttpPut("admins/{userId}")]
+    public async Task<IActionResult> UpdateAdminDetails(string userId, UpdateAdminDetailsDto dto)
+    {
+        var (notFound, error, admin) = await _organizations.UpdateAdminDetailsAsync(userId, dto);
+        if (notFound) return NotFound();
+        return error is null ? Ok(admin) : BadRequest(new { message = error });
     }
 
     // DELETE /organizations/admins/{userId} — remove an Admin from this company.
@@ -187,9 +201,10 @@ public class OrganizationsController : ControllerBase
         if (userId is null) return Unauthorized();
         try
         {
-            return Ok(await _organizations.CreateAsync(dto, userId, viaSso: _currentUser.IsSso));
+            return Ok(await _organizations.CreateAsync(
+                dto, userId, viaSso: _currentUser.IsSso, viaSupport: _currentUser.IsSupport));
         }
-        catch (SsoManagedActionException ex)
+        catch (Exception ex) when (ex is SsoManagedActionException or SupportModeActionException)
         {
             // { message }, as ChangePassword's SSO refusal — what the frontend's
             // api-client reads, so the reason reaches the screen.

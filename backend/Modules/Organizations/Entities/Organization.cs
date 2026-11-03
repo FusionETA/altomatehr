@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Claims.Entities;
 using AltomateHR.Api.Modules.Xero.Dtos;
@@ -23,6 +24,11 @@ public class Organization
     public decimal DefaultMileageRate { get; set; }
 
     public MileageUnit MileageUnit { get; set; } = MileageUnit.KM;
+
+    // Whose Xero app choice this company follows, when it has more than one
+    // owner (set by the superadmin). Null = the owner who joined first.
+    [MaxLength(40)]
+    public string? XeroOwnerUserId { get; set; }
 
     // How far (metres) from a project's geofence centre still counts as on-site.
     public int GeofenceRadiusMeters { get; set; } = 200;
@@ -92,6 +98,22 @@ public class Organization
     public string? LogoContentType { get; set; }
 
     public DateTime? LogoUpdatedAt { get; set; }
+
+    // ---- Deactivated by a Fusioneta superadmin ----
+    // Set = nobody can sign in to, switch into or call this company, and its
+    // people-facing automatic jobs skip it. Nothing is deleted: clearing it
+    // (reactivate) brings everything back. The reason is internal — the
+    // support page shows it; the company's own log never does.
+    public DateTime? DeactivatedAt { get; set; }
+
+    [MaxLength(500)]
+    public string? DeactivatedReason { get; set; }
+
+    [MaxLength(160)]
+    public string? DeactivatedBy { get; set; }
+
+    [NotMapped]  // computed, not a column
+    public bool IsDeactivated => DeactivatedAt is not null;
 
     public DateTime CreatedAt { get; set; }
 }

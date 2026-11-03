@@ -123,6 +123,10 @@ public class ChartOfAccountService : IChartOfAccountService
         if (account is null) return null;
 
         account.IsArchived = archived;
+        // Whatever the admin decides here, they now own this row: a Xero
+        // connect, sync or disconnect no longer archives or restores it.
+        account.IsDefault = false;
+        account.ArchivedByXeroConnect = false;
         await _repo.UpdateAsync(account);
 
         await _audit.WriteAsync(new AuditEvent(

@@ -41,6 +41,13 @@ public static class OrgModules
     public static readonly IReadOnlyList<string> AllModules =
         BaseModules.Concat(new[] { Claims, Attendance }).ToList();
 
+    // The modules the Owner grants per admin. Policies isn't one: every admin
+    // manages the policies their employee scope covers (all of them, for an
+    // admin who sees everyone), and only an Owner creates, archives or sets
+    // the default — see AdminAccess.ManagesAllPolicies.
+    public static readonly IReadOnlyList<string> GrantableModules =
+        AllModules.Where(m => m != Policies).ToList();
+
     public static readonly IReadOnlyList<string> AllAddons = AddonToModules.Keys.ToList();
 
     public static bool IsKnownModule(string m) => AllModules.Contains(m, StringComparer.OrdinalIgnoreCase);

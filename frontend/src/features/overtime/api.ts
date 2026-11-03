@@ -14,6 +14,10 @@ export type OvertimeRequest = {
   startAt: string;
   endAt: string;
   requestedMinutes: number;
+  // One of the company's own overtime types the employee picked; null =
+  // automatic (sorted by the calendar). The name is the type's current one.
+  overtimeTypeId?: string | null;
+  overtimeTypeName?: string | null;
   reason: string;
   // The first before/after file — kept for older rows. Read the lists below.
   beforePhotoUrl: string;
@@ -57,6 +61,8 @@ export type CreateOvertimeRequest = {
   startAt: string;
   endAt: string;
   reason: string;
+  // Leave out for automatic.
+  overtimeTypeId?: string;
   beforeAttachments: OvertimeAttachmentInput[];
 };
 
@@ -66,14 +72,20 @@ export type OtDayType = "NORMAL_DAY" | "REST_DAY" | "PUBLIC_HOLIDAY";
 // the employee's shift working days and the holiday calendar — never chosen by
 // the employee, so it can't disagree with what payroll will use.
 //
-// Both multipliers are null when no cash rate applies at all: OT switched off on
+// The multiplier is null when no cash rate applies at all: OT switched off on
 // the policy, or banked as time off instead of paid. `reason` explains which.
 export type OtRateResolution = {
   dayType: OtDayType;
   outOfShiftMultiplier: number | null;
-  inShiftMultiplier: number | null;
   reason: string;
 };
+
+// One of the company's own overtime types the caller may pick on a request,
+// at what their policy pays for it.
+export type PickableOvertimeType = { id: string; name: string; multiplier: number };
+
+export const MY_OVERTIME_TYPES_PATH = "/overtime/types";
+export const getMyOvertimeTypes = () => apiGet<PickableOvertimeType[]>(MY_OVERTIME_TYPES_PATH);
 
 export type UploadOvertimePhotoResponse = {
   photoUrl: string;

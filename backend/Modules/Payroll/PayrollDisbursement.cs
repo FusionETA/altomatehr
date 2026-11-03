@@ -14,6 +14,8 @@ public enum PayrollFileFormat
     // Hong Leong publishes TWO upload channels taking different files. The
     // admin picks at download time rather than nominating a portal here.
     HlbConnect,
+    // OCBC Velocity, payroll via GIRO (fixed-width TXT).
+    OcbcVelocityGiroTxt,
 }
 
 public static class PayrollDisbursement
@@ -36,6 +38,7 @@ public static class PayrollDisbursement
         ("CIMB Bank Berhad", "CIMB (incl. CIMB Islamic)", PayrollFileFormat.CimbBizChannelXlsx),
         ("Public Bank Berhad", "Public Bank (incl. Public Islamic)", PayrollFileFormat.PbEcpXlsx),
         ("Hong Leong Bank Berhad", "Hong Leong Bank (incl. Hong Leong Islamic)", PayrollFileFormat.HlbConnect),
+        ("OCBC Bank (Malaysia) Berhad", "OCBC (incl. OCBC Al-Amin)", PayrollFileFormat.OcbcVelocityGiroTxt),
         (OtherBank, "Other bank (no upload file)", null),
     ];
 

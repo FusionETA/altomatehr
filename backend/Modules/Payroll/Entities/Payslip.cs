@@ -28,6 +28,13 @@ public class Payslip : ITenantScoped
     [MaxLength(40)] public string PayrollRunId { get; set; } = string.Empty;
     [MaxLength(40)] public string EmployeeProfileId { get; set; } = string.Empty;
 
+    // The run's month, copied here so the database can hold the rule a month
+    // with several runs depends on: one payslip per person per month
+    // (unique on org + month + employee). Nobody is paid twice for a month,
+    // whichever run they are on.
+    public int PeriodYear { get; set; }
+    public int PeriodMonth { get; set; }
+
     // The user the profile belonged to. Kept so the employee portal can find its
     // own payslips (phase 8) without walking a profile that may since be gone.
     [MaxLength(40)] public string UserId { get; set; } = string.Empty;
@@ -79,6 +86,17 @@ public class Payslip : ITenantScoped
     [Precision(8, 2)] public decimal? ExpectedHours { get; set; }
     [Precision(5, 2)] public decimal? UnpaidLeaveDays { get; set; }
 
+    // Generated with UnpaidLeaveSettlement records: every unpaid leave this
+    // payslip docked is recorded, so one with no record wasn't docked. False
+    // on payslips from before the records existed. See UnpaidLeaveCarryForward.
+    public bool TracksUnpaidLeave { get; set; }
+
+    // The PCB the company paid instead of deducting it ("PCB borne by
+    // employer" was on for this month); 0 otherwise. Still inside `Pcb` and
+    // remitted with it, but not taken from net pay — and the year's total is
+    // added as a perquisite on the person's first run of the next year.
+    [Precision(12, 2)] public decimal PcbBorneByEmployer { get; set; }
+
     // ---- Earnings ----
 
     [Precision(12, 2)] public decimal BasicPay { get; set; }
@@ -87,6 +105,13 @@ public class Payslip : ITenantScoped
     [Precision(8, 2)] public decimal OtNormalHours { get; set; }
     [Precision(8, 2)] public decimal OtRestHours { get; set; }
     [Precision(8, 2)] public decimal OtPublicHours { get; set; }
+
+    // The company's CUSTOM overtime types paid this month, as a JSON array of
+    // `PayslipOvertimeLine` — name and multiplier SNAPSHOTTED, so renaming or
+    // re-rating a type later doesn't rewrite what this payslip says. Inside
+    // OtPay. Empty array, never null.
+    public string OtCustomJson { get; set; } = "[]";
+
     [Precision(12, 2)] public decimal OtPay { get; set; }
 
     [Precision(12, 2)] public decimal TotalAllowances { get; set; }

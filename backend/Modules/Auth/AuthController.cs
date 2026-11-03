@@ -33,7 +33,15 @@ public class AuthController : ControllerBase
     [EnableRateLimiting("auth-login")]
     public async Task<ActionResult<AuthResponseDto>> Login(LoginDto dto)
     {
-        var result = await _auth.LoginAsync(dto.Email, dto.Password);
+        AuthResult? result;
+        try
+        {
+            result = await _auth.LoginAsync(dto.Email, dto.Password);
+        }
+        catch (CompanyDeactivatedException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
+        }
         if (result is null)
             return Unauthorized(new { message = "Invalid credentials." });
 

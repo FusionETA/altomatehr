@@ -40,6 +40,11 @@ public interface IStatutoryFileService
     Task<StatutoryFileResult> RenderSummaryXlsxAsync(string runId) =>
         Task.FromResult(StatutoryFileResult.Refused("Not available."));
 
+    // The whole month — every run in it — as one summary, for checking a
+    // month split into several runs. Read-only: nothing is filed from it.
+    Task<StatutoryFileResult> RenderMonthSummaryAsync(int year, int month, bool xlsx) =>
+        Task.FromResult(StatutoryFileResult.Refused("Not available."));
+
     // Who is paid what, into which account — the sheet an approver checks
     // against the bank file before releasing it.
     Task<StatutoryFileResult> RenderPaymentSchedulePdfAsync(string runId);
@@ -86,11 +91,25 @@ public interface IStatutoryFileService
     // short file list.
     Task<PayrollBundleResult> RenderRunBundleAsync(string runId, DateTime? paymentDate);
 
+    // The four statutory uploads alone — EPF, both SOCSO/EIS layouts and PCB —
+    // in one zip, for the admin who files them all at month end. Same rules as
+    // the bundle above: a file that can't be produced (a missing field) is
+    // left out and named in `Skipped` with its reason. If none can be, the
+    // result is a refusal carrying every reason, not an empty zip.
+    Task<PayrollBundleResult> RenderStatutoryBundleAsync(string runId);
+
+    // The Allowance and Deduction reports in one zip, by the same rules. A
+    // run with only one of the two zips that one, naming the other in
+    // `Skipped`; with neither it is a refusal.
+    Task<PayrollBundleResult> RenderLineReportsZipAsync(string runId);
+
     Task<StatutoryFileResult> RenderBankFileAsync(
         string runId,
         DateTime? paymentDate,
         string? recipientReference = null,
-        HlbChannel? channel = null);
+        HlbChannel? channel = null,
+        string? tapeId = null,
+        bool idCheck = false);
 }
 
 // A zip, plus what did not make it in and why. Ok=false with Error → the whole

@@ -4,9 +4,12 @@ namespace AltomateHR.Api.Modules.Xero;
 
 public interface IXeroClient
 {
-    string BuildAuthorizationUrl(string state);
-    Task<XeroTokenResponse> ExchangeCodeAsync(string code);
-    Task<XeroTokenResponse> RefreshTokenAsync(string refreshToken);
+    // The three calls that identify the APP rather than a connection take its
+    // credentials: which app depends on the company (see IXeroAppResolver).
+    // Everything else only needs the connection's access token.
+    string BuildAuthorizationUrl(XeroAppCredentials app, string state);
+    Task<XeroTokenResponse> ExchangeCodeAsync(XeroAppCredentials app, string code);
+    Task<XeroTokenResponse> RefreshTokenAsync(XeroAppCredentials app, string refreshToken);
     Task<List<XeroTenantResponse>> GetTenantsAsync(string accessToken);
 
     // Removes this app's access to one Xero org — it disappears from the org's

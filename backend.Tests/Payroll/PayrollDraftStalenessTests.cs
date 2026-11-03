@@ -68,6 +68,31 @@ public class PayrollDraftStalenessTests : IDisposable
         Assert.Null((await Reload(empty.Id)).LastMutatedAt);
     }
 
+    // One person's leave or overtime: with several runs in the month, only
+    // the run that pays them is behind. A run without a chosen roster is for
+    // everyone, so it is flagged too.
+    [Fact]
+    public async Task MarkCovering_ForOnePerson_SkipsRunsWhoseRosterLeavesThemOut()
+    {
+        _db.EmployeeProfiles.AddRange(
+            new AltomateHR.Api.Modules.Employees.Entities.EmployeeProfile { Id = "emp-1", OrganizationId = "org-1", UserId = "usr-1" },
+            new AltomateHR.Api.Modules.Employees.Entities.EmployeeProfile { Id = "emp-2", OrganizationId = "org-1", UserId = "usr-2" });
+        var theirs = Run(9);
+        var others = Run(9);
+        var everyone = Run(9);
+        _db.PayrollRunMembers.AddRange(
+            new PayrollRunMember { OrganizationId = "org-1", PayrollRunId = theirs.Id, EmployeeProfileId = "emp-1" },
+            new PayrollRunMember { OrganizationId = "org-1", PayrollRunId = others.Id, EmployeeProfileId = "emp-2" });
+        await _db.SaveChangesAsync();
+
+        await _staleness.MarkDraftsCoveringAsync(
+            new DateTime(2026, 9, 10), new DateTime(2026, 9, 11), "usr-1");
+
+        Assert.NotNull((await Reload(theirs.Id)).LastMutatedAt);
+        Assert.Null((await Reload(others.Id)).LastMutatedAt);
+        Assert.NotNull((await Reload(everyone.Id)).LastMutatedAt);
+    }
+
     [Fact]
     public async Task MarkCovering_FlagsOnlyTheMonthsTheChangeTouches()
     {
@@ -83,6 +108,25 @@ public class PayrollDraftStalenessTests : IDisposable
         Assert.Null((await Reload(aug.Id)).LastMutatedAt);
         Assert.NotNull((await Reload(sep.Id)).LastMutatedAt);
         Assert.NotNull((await Reload(oct.Id)).LastMutatedAt);
+    }
+
+    // A filed month's unpaid leave is settled on a LATER run, so those drafts
+    // are behind too — drafts only: a filed later month settled nothing.
+    [Fact]
+    public async Task MarkLater_FlagsLaterDraftsOfTheYear_ButNotFiledOnes()
+    {
+        var sep = Run(9, PayrollRunStatus.SUBMITTED);
+        var oct = Run(10);
+        var nov = Run(11, PayrollRunStatus.SUBMITTED);
+        var dec = Run(12);
+        await _db.SaveChangesAsync();
+
+        await _staleness.MarkLaterDraftsAsync(new DateTime(2026, 9, 30));
+
+        Assert.Null((await Reload(sep.Id)).LastMutatedAt);
+        Assert.NotNull((await Reload(oct.Id)).LastMutatedAt);
+        Assert.Null((await Reload(nov.Id)).LastMutatedAt);
+        Assert.NotNull((await Reload(dec.Id)).LastMutatedAt);
     }
 
     [Fact]

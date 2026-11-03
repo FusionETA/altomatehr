@@ -51,6 +51,7 @@ export const ALLOWANCE_CATEGORIES: AdjustmentCategory[] = [
   { code: "bik_subsidised_loan", label: "Subsidised Loan Interest", group: "Benefits-in-kind / Perquisites" },
   { code: "bik_phone_pda_gift", label: "Gift of Phone / PDA (1 unit/category/year)", group: "Benefits-in-kind / Perquisites" },
   { code: "bik_other_exempt", label: "Other Tax Exempt Benefit", group: "Benefits-in-kind / Perquisites" },
+  { code: "bik_tax_borne_by_employer", label: "Tax Borne by Employer – previous year (perquisite)", group: "Benefits-in-kind / Perquisites" },
 ];
 
 export const DEDUCTION_CATEGORIES: AdjustmentCategory[] = [

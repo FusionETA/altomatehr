@@ -27,8 +27,16 @@ public interface IEmployeeImportService
     // `blanks` is the admin's choice at upload: what an empty cell does to
     // someone who already exists. A column missing from the file is left alone
     // either way.
+    //
+    // `checkOnly` runs every row's checks and counts who would be added or
+    // updated, saving nothing — for showing what a file will do before it's
+    // imported (FAH). A rule only the profile save knows can still fail a
+    // row on the real run.
     Task<EmployeeImportResult> ImportAsync(
-        byte[] content, TabularFormat format, EmployeeImportBlankCells blanks = EmployeeImportBlankCells.Keep);
+        byte[] content,
+        TabularFormat format,
+        EmployeeImportBlankCells blanks = EmployeeImportBlankCells.Keep,
+        bool checkOnly = false);
 }
 
 public enum EmployeeImportBlankCells

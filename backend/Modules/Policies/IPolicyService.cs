@@ -6,11 +6,17 @@ namespace AltomateHR.Api.Modules.Policies;
 public interface IPolicyService
 {
     // --- Admin CRUD ---
+    // Every policy in the org — for the services that resolve who is on what.
     Task<IEnumerable<PolicyDto>> GetAllAsync();
+    // The policies the CALLER may see: all of them, or for an admin limited
+    // to some policies, just those. What GET /policies returns.
+    Task<IEnumerable<PolicyDto>> GetVisibleAsync() => GetAllAsync();
+    // Owner-level (AdminAccess.ManagesAllPolicies): create, archive/restore,
+    // set the default. Editing a policy needs it to be in the caller's scope.
     Task<PolicySaveResult> CreateAsync(SavePolicyDto dto);
     Task<PolicySaveResult> UpdateAsync(string id, SavePolicyDto dto);
-    Task<PolicyDto?> SetArchivedAsync(string id, bool archived);
-    Task<PolicyDto?> SetDefaultAsync(string id);
+    Task<PolicySaveResult> SetArchivedAsync(string id, bool archived);
+    Task<PolicySaveResult> SetDefaultAsync(string id);
 
     // --- Resolution for other modules ---
     // The employee's assigned policy, or the org default when unassigned.
@@ -50,7 +56,9 @@ public interface IPolicyService
     Task<IReadOnlyList<PolicyLeaveEntitlement>> GetAllPolicyEntitlementsAsync();
 }
 
-public record PolicySaveResult(bool Ok, PolicyDto? Policy, string? Error);
+// Forbidden: the caller may not do this (→ 403). Ok false with no Error and not
+// Forbidden is "no such policy" (→ 404).
+public record PolicySaveResult(bool Ok, PolicyDto? Policy, string? Error, bool Forbidden = false);
 
 public readonly record struct PolicyModuleAccess(bool Attendance, bool Claims, bool Leave)
 {

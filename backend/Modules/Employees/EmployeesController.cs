@@ -264,6 +264,20 @@ public class EmployeesController : ControllerBase
             : BadRequest(new { error = result.Error });
     }
 
+    // POST /employees/{userId}/welcome-email — send the welcome email again.
+    // A button on the employee page, so people only, like Set password.
+    [HumanOnly]
+    [HttpPost("{userId}/welcome-email")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> ResendWelcome(string userId)
+    {
+        var result = await _employees.ResendWelcomeAsync(userId);
+        if (result.Ok) return NoContent();
+        return result.Error is null
+            ? NotFound()
+            : BadRequest(new { error = result.Error });
+    }
+
     [RequireScope("employees:read")]
     [HttpGet("import/template")]
     [Authorize(Roles = "Admin,Owner")]

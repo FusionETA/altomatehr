@@ -38,6 +38,11 @@ public class PayrollRunAdjustment : ITenantScoped
     [Precision(8, 2)] public decimal OtRestHours { get; set; }
     [Precision(8, 2)] public decimal OtPublicHours { get; set; }
 
+    // Hours for the company's CUSTOM overtime types, as a JSON object of
+    // overtime type id → hours. Empty object, never null. Any hours here or
+    // above replace ALL the approved overtime, as the three built-in boxes do.
+    public string OtCustomHoursJson { get; set; } = "{}";
+
     // ---- One-off rows ----
     // JSON array of `ManualLineItem`. Empty array, never null.
     public string ManualLineItemsJson { get; set; } = "[]";
@@ -67,6 +72,12 @@ public class PayrollRunAdjustment : ITenantScoped
     // Priced exactly as approved unpaid leave is: monthly salary ÷ the
     // company's day basis × days. Monthly-paid staff only.
     [Precision(6, 2)] public decimal? UnpaidLeaveDays { get; set; }
+
+    // The employer's HRD Corp levy for this person this month, as entered.
+    // Null = computed (levy rate × HRDF wages, citizens only); an amount
+    // REPLACES it — the entered figure is the final answer, as in PayrollPanda.
+    // For a month the levy was agreed or paid differently from the formula.
+    [Precision(10, 2)] public decimal? HrdfLevy { get; set; }
 
     public string? Notes { get; set; }
 

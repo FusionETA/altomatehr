@@ -22,12 +22,15 @@ public class OtRateService : IOtRateService
     private readonly IPolicyService _policies;
     private readonly IShiftService _shifts;
     private readonly IHolidayService _holidays;
+    private readonly IOvertimeTypeService? _types;
 
-    public OtRateService(IPolicyService policies, IShiftService shifts, IHolidayService holidays)
+    public OtRateService(
+        IPolicyService policies, IShiftService shifts, IHolidayService holidays, IOvertimeTypeService? types = null)
     {
         _policies = policies;
         _shifts = shifts;
         _holidays = holidays;
+        _types = types;
     }
 
     public async Task<OtRateResolution> ResolveAsync(string employeeId, DateTime date, string? projectId)
@@ -36,26 +39,26 @@ public class OtRateService : IOtRateService
         var dayType = await ResolveDayTypeAsync(employeeId, date, projectId);
 
         if (policy is null)
-            return new OtRateResolution(dayType, null, null, "No policy resolved for this employee.");
+            return new OtRateResolution(dayType, null, "No policy resolved for this employee.");
 
         if (!policy.OtEnabled)
-            return new OtRateResolution(dayType, null, null, "OT is disabled on this employee's policy.");
+            return new OtRateResolution(dayType, null, "OT is disabled on this employee's policy.");
 
         if (policy.OtMethod != OtMethod.CASH)
-            return new OtRateResolution(dayType, null, null,
+            return new OtRateResolution(dayType, null,
                 $"OT is banked as time off ({policy.OtMethod}), so no cash multiplier applies.");
 
+        // The policy's own rate, or else the company's.
+        var rates = _types is null ? null : await _types.RatesForPolicyAsync(policy);
         return dayType switch
         {
             OtDayType.PUBLIC_HOLIDAY => new OtRateResolution(
-                dayType, policy.OtRatePublicHoliday, policy.OtRatePublicHolidayInShift,
-                "Public holiday."),
+                dayType, rates?.PublicHoliday ?? policy.OtRatePublicHoliday ?? 3.00m, "Public holiday."),
             OtDayType.REST_DAY => new OtRateResolution(
-                dayType, policy.OtRateRestDay, policy.OtRateRestDayInShift,
+                dayType, rates?.Rest ?? policy.OtRateRestDay ?? 2.00m,
                 "Rest day (outside the employee's working days)."),
             _ => new OtRateResolution(
-                dayType, policy.OtRateNormalDay, null,
-                "Normal working day — in-shift hours are ordinary pay."),
+                dayType, rates?.Normal ?? policy.OtRateNormalDay ?? 1.50m, "Normal working day."),
         };
     }
 

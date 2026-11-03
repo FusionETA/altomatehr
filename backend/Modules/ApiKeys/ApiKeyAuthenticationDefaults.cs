@@ -12,4 +12,7 @@ public static class ApiKeyAuthenticationDefaults
 
     // Each granted scope is added as one claim of this type.
     public const string ScopeClaim = "apikey_scope";
+
+    // On a FAH key's identity: a person acting through the assistant, not an integration.
+    public const string ActingClaim = "apikey_acting";
 }

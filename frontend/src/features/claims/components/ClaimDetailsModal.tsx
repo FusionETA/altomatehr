@@ -5,6 +5,7 @@ import { formatCurrency, formatShortDate } from "../lib/claim-formatters";
 import { ClaimStatusBadge } from "./ClaimStatusBadge";
 import { OverLimitBadge } from "./OverLimitBadge";
 import { ViewReceiptButton } from "./ViewReceiptButton";
+import { useAccountTerms } from "@/features/settings/lib/account-terms";
 
 export function ClaimDetailsModal({
   claim,
@@ -24,6 +25,7 @@ export function ClaimDetailsModal({
   onClose: () => void;
   footer?: ReactNode;
 }) {
+  const terms = useAccountTerms();
   const isMileage = claim.claimType === "MILEAGE";
   const paidWith = claim.paymentType === "COMPANY" ? "Company money" : "My own money";
   const supportingDocuments = claim.supportingDocumentUrls ?? [];
@@ -79,7 +81,7 @@ export function ClaimDetailsModal({
               value={employeeLabel ?? claim.employeeName ?? claim.employeeEmail ?? "Unknown employee"}
             />
             <InfoRow label="Category" value={claim.category} />
-            <InfoRow label="Account" value={accountLabel ?? "Not assigned"} />
+            <InfoRow label={terms.singular} value={accountLabel ?? "Not assigned"} />
             <InfoRow label="Project" value={projectLabel ?? "Not assigned"} />
           </InfoPanel>
 
@@ -135,16 +137,18 @@ export function ClaimDetailsModal({
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                Main receipt
+                {isMileage ? "Route screenshot" : "Main receipt"}
               </span>
               {claim.receiptUrl ? (
                 <ViewReceiptButton
                   receiptUrl={claim.receiptUrl}
-                  label="View main receipt"
+                  label={isMileage ? "View route screenshot" : "View main receipt"}
                   className="inline-flex rounded-full bg-muted px-4 py-2 text-sm font-semibold text-primary transition hover:bg-secondary"
                 />
               ) : (
-                <span className="text-sm text-muted-foreground">No main receipt attached</span>
+                <span className="text-sm text-muted-foreground">
+                  {isMileage ? "No route screenshot attached" : "No main receipt attached"}
+                </span>
               )}
             </div>
 

@@ -6,7 +6,9 @@ import { NotificationBell } from "@/features/notifications/components/Notificati
 import { PushToggleMenuItem } from "@/features/notifications/components/PushToggleMenuItem";
 import { launchAppraisifyInNewTab } from "@/features/appraisify/api";
 import { useWhatsNew, WhatsNewMenuItem } from "@/features/whats-new/components/WhatsNew";
+import { FahLauncher } from "@/features/fah/components/FahLauncher";
 import { AccountsSettings } from "@/features/settings/components/AccountsSettings";
+import { useAccountTerms } from "@/features/settings/lib/account-terms";
 import { EmployeesSettings } from "@/features/settings/components/EmployeesSettings";
 import { OrganizationSettings } from "@/features/settings/components/OrganizationSettings";
 import { PoliciesSettings } from "@/features/settings/components/PoliciesSettings";
@@ -51,6 +53,7 @@ export function AdminShell({
   // Superadmins only: opens the Fusioneta support page.
   onOpenSupport?: () => void;
 }) {
+  const accountTerms = useAccountTerms();
   // The view lives in the URL so Back steps through the app rather than out of
   // it. The shell still owns the state; the hook only keeps the two in step.
   //
@@ -83,7 +86,7 @@ export function AdminShell({
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
-  const whatsNew = useWhatsNew(user.email);
+  const whatsNew = useWhatsNew(user.email, "admins");
 
   // Coming back from Xero's consent screen. The app has no router, so the
   // return URL is only ever the app root — without this a successful connect
@@ -187,7 +190,7 @@ export function AdminShell({
                               : "text-muted-foreground hover:bg-muted hover:text-foreground"
                           }`}
                         >
-                          {child.label}
+                          {child.id === "settings-accounts" ? accountTerms.plural : child.label}
                         </button>
                       );
                     })}
@@ -214,7 +217,10 @@ export function AdminShell({
             <div className="flex items-center gap-2 sm:gap-3">
               {/* Altomate provisions an SSO customer's companies itself, so
                   one made here would be unknown to it. */}
-              <OrgSwitcher allowCreate={!user.viaSso} />
+              {/* Not in support mode: the creator becomes the Owner, which
+                  would be the support person, not the customer. Support →
+                  Create company sets the customer as Owner instead. */}
+              <OrgSwitcher allowCreate={!user.viaSso && !user.supportMode} />
 
               <div className="hidden sm:block">
                 <NotificationBell onNavigate={navigateFromNotification} />
@@ -391,7 +397,7 @@ export function AdminShell({
                       : "border-border/60 bg-card text-muted-foreground"
                   }`}
                 >
-                  {child.label}
+                  {child.id === "settings-accounts" ? accountTerms.plural : child.label}
                 </button>
               );
             })}
@@ -420,6 +426,8 @@ export function AdminShell({
         </main>
       </div>
       {whatsNew.panel}
+      {/* FAH acts as the signed-in admin, so not while in a company as support. */}
+      {!user.supportMode ? <FahLauncher /> : null}
     </div>
   );
 }

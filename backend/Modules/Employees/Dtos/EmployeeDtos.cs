@@ -14,6 +14,8 @@ public class EmployeeDto
     // Per-org employment profile.
     public string? EmployeeNumber { get; set; }
     public string? JobTitle { get; set; }
+    // What colleagues call them here; shown beside Name, never instead of it.
+    public string? Nickname { get; set; }
     public DateTime? JoinDate { get; set; }
     public int OtTimeBalanceMin { get; set; }
 
@@ -41,6 +43,10 @@ public class UpdateEmployeeDto
 
     [MaxLength(120)]
     public string? JobTitle { get; set; }
+
+    // Null = unchanged on an update; "" clears it.
+    [MaxLength(60)]
+    public string? Nickname { get; set; }
 
     // First day of work IN THIS ORG. Drives pro-rated accrual: setting or
     // correcting it recomputes the employee's earned days for the year.
@@ -100,6 +106,10 @@ public class CreateEmployeeDto
 
     [MaxLength(120)]
     public string? JobTitle { get; set; }
+
+    // Null = unchanged on an update; "" clears it.
+    [MaxLength(60)]
+    public string? Nickname { get; set; }
 
     // First day of work IN THIS ORG. Drives pro-rated accrual: setting or
     // correcting it recomputes the employee's earned days for the year.

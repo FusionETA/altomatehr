@@ -42,4 +42,14 @@ public class ApiKey : ITenantScoped
 
     public DateTime CreatedAt { get; set; }
     public DateTime? LastUsedAt { get; set; }
+
+    // Set on a FAH key: a short-lived key minted for ONE signed-in admin so the
+    // in-app assistant (through the MCP server) acts as that person — their
+    // role, limits and name in the logs — instead of as an anonymous company
+    // key. Null on an ordinary integration key.
+    [MaxLength(40)]
+    public string? ActingUserId { get; set; }
+
+    // A FAH key stops working at this moment. Null = no expiry (integration keys).
+    public DateTime? ExpiresAt { get; set; }
 }

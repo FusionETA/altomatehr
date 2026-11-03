@@ -71,6 +71,26 @@ public class YtdImportParserTests
         Assert.Contains(result.Employees[0].Months[0].CategoryAmounts, kv => kv.Value == 100m);
     }
 
+    // The HRDF levy goes by several names — PayrollPanda exports "Employer
+    // HRDF Levy". Each reaches the payslip's HRDF, not "unrecognised".
+    [Theory]
+    [InlineData("HRDF")]
+    [InlineData("Employer HRDF Levy")]
+    [InlineData("HRDF Levy")]
+    [InlineData("Employer HRDF")]
+    [InlineData("HRD Corp Levy")]
+    public void TheHrdfLevyIsReadUnderItsUsualNames(string header)
+    {
+        var result = YtdImportParser.Parse(
+            Csv(Header.Replace(",HRDF,", $",{header},"),
+                NameRow,
+                "January,,5000,110,0,0,550,650,24.75,86.65,9.90,9.90,42.50,0,0,0,0"),
+            TabularFormat.Csv);
+
+        Assert.Empty(result.UnrecognisedColumns);
+        Assert.Equal(42.50m, result.Employees[0].Months[0].Hrdf);
+    }
+
     // A mistyped header must still be reported — accepting more labels is not
     // the same as accepting anything.
     [Fact]

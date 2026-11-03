@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 8ffa8e4
+  user-guide-covered-up-to: 28f436f
 -->
 <html lang="en">
 <head>
@@ -372,6 +372,10 @@
         has expired or was already used, the sign-in page says so; go back and press it again. Because your account
         is managed in Altomate, <span class="btn-name">New company</span> and <span class="btn-name">Log out</span>
         aren't shown here — sign out from Altomate.</li>
+      <li><strong>"This company's AltomateHR account has been deactivated"</strong> — the company's account has been
+        switched off by AltomateHR support, so nobody in it can sign in. If you belong to another company, you're
+        taken there and told which one; use the company switcher to move between them. Contact AltomateHR support to
+        have the account switched back on.</li>
       <li>The first time, you're asked to <span class="btn-name">Enable</span> notifications — say yes if you want
         to hear about approvals and requests as they happen.</li>
     </ul>
@@ -394,7 +398,7 @@
         company</span> creates one with you as its owner.</li>
       <li>The bell — requests and decisions as they happen, with <span class="btn-name">Mark all read</span></li>
       <li>The ⋮ menu — <span class="btn-name">Change password</span> (not shown if you signed in through Altomate), push notifications (if your browser supports them), <span class="btn-name">What's new</span> (our release notes, with a dot on
-        the menu until you've read the latest), <span class="btn-name">Guide</span> (opens this guide in a new tab),
+        the menu until you've read the latest; admins and owners also see the lines meant only for admins), <span class="btn-name">Guide</span> (opens this guide in a new tab),
         <span class="btn-name">Launch Appraisify</span> (opens Appraisify in a new tab, so AltomateHR stays open; if your
         browser blocks the new tab, or AltomateHR is installed as a home-screen app, it opens in the same tab instead), and <span class="btn-name">Log out</span></li>
     </ol>
@@ -430,7 +434,7 @@
     <p class="topic-lede">Where you land. Built around what needs a decision, not vanity totals.</p>
     <ul>
       <li><strong>Quick actions</strong> — straight to Manage Employee, Company Structure, Organization, Policies,
-        Accounts and Projects.</li>
+        Claim item types (Chart of accounts once Xero is connected) and Projects.</li>
       <li><strong>Work permits</strong> — shown first, and only when it applies: foreign workers whose work permit
         has expired or runs out within 60 days, soonest first, with the permit number and how many days are left
         (or how long ago it expired). With nothing to renew, the card isn't there.</li>
@@ -503,8 +507,10 @@
           <p>A saved signature is an image of a signature printed on the letter, like signing on paper and scanning it.
             It isn't a certified or legally verified digital signature. Only save a signature for someone who has agreed
             to it being printed on company letters.</p></div></li>
-      <li><h4>Accounts</h4>
-        <p>The chart of accounts, in two tabs:</p>
+      <li><h4>Claim item types / Chart of accounts</h4>
+        <p>What employees can claim for. Without Xero this page is called <strong>Claim item types</strong>; once Xero
+          is connected it becomes <strong>Chart of accounts</strong> (in the sidebar, on the Executive Overview card and in
+          the claim form, where the field reads <em>Claim item type</em> or <em>Account</em> to match). It has two tabs:</p>
         <ul>
           <li><strong>Expenses</strong> — what a claim is coded to. Each can be <em>Selectable for claims</em>,
             carry a <strong>spend limit</strong>, and <em>Allow mileage</em> at its own rate. A <strong>Type</strong>
@@ -513,8 +519,24 @@
           <li><strong>Bank accounts</strong> — what a company-paid claim was paid <em>from</em>. Tick
             <strong>Offer for company-paid claims</strong> on the ones employees should be able to pick.</li>
         </ul>
-        <p>Below, <strong>Mileage defaults</strong> sets the company-wide rate and unit (km or miles). With Xero
-          connected, Xero owns the list — press <span class="btn-name">Sync from Xero</span> after changing it there.</p></li>
+        <p>Below, <strong>Mileage defaults</strong> sets the company-wide rate and unit (km or miles). For employees to file
+          mileage claims, at least one claim item type needs <em>Allow mileage</em> switched on (with a rate, or the default
+          one). Until then the mileage claim picker tells employees “No mileage claim item type enabled yet. Ask your admin
+          to switch on mileage for one.” Mileage distances read from a route screenshot use the unit set here.</p>
+        <p><strong>Without Xero</strong> the page opens with the hint <em>What employees can claim for, with optional spend
+          limits and mileage</em>. Fill in a <strong>Code</strong>, <strong>Name</strong> and <strong>Type</strong>, add a
+          <strong>Spend limit (optional)</strong> if you want one, tick <em>Selectable for claims</em> and
+          <em>Allow mileage</em> as needed, and press <span class="btn-name">Add claim item type</span>.
+          A new company starts with 22 starter claim item types — common expense headings such as Advertising &amp; Marketing,
+          Office Expenses and Travel – Local, numbered 400 to 494 — plus a <strong>090 Business Bank Account</strong> on the
+          Bank accounts tab, so employees can file claims from day one. Press <span class="btn-name">Archive</span> on any you
+          don't want; archived ones are hidden until you press <span class="btn-name">Show … archived</span>, where
+          <span class="btn-name">Restore</span> brings one back. <strong>449 Motor Vehicle / Mileage</strong>
+          starts with mileage switched off: press <span class="btn-name">Edit</span> and set your own rate before
+          employees file mileage claims.</p>
+        <p><strong>With Xero connected</strong>, Xero owns the list — press <span class="btn-name">Sync from Xero</span>
+          after changing it there. Connecting Xero archives the starter claim item types, and disconnecting restores them.
+          Anything you archived or restored by hand stays as you left it.</p></li>
       <li><h4>Projects</h4>
         <p>Your work sites. Open a project with <span class="btn-name">Edit</span> to set:</p>
         <ul>
@@ -529,26 +551,54 @@
       <li><h4>Work Schedule</h4>
         <p>The company's default hours and working days, and the <strong>public holidays</strong> —
           pick a <strong>Country</strong> and <strong>Year</strong> and press <span class="btn-name">Import</span>, then add
-          or remove any by hand. The calendar shows working days, rest days and holidays at a glance.</p></li>
+          or remove any by hand. The calendar shows working days, rest days and holidays at a glance.</p>
+        <p><strong>Overtime types.</strong> Below the calendar is an <strong>Overtime types</strong> card: what overtime pays, as a multiple of the hourly
+          rate (for example <em>1.5 ×</em>). Three types come with every company, tagged <strong>Built in</strong>:
+          <strong>Normal day</strong>, <strong>Rest day</strong> and <strong>Public holiday</strong>. Approved overtime
+          lands in one of them on its own, by the calendar. You can rename them and change their rate, but not remove
+          them.</p>
+        <ul>
+          <li><strong>Change one</strong> — edit the name or the number, then press <span class="btn-name">Save</span>
+            beside it.</li>
+          <li><strong>Add your own</strong> (for example <em>Night shift</em>) — type the name and the rate in the last
+            row, then press <span class="btn-name">Add</span>. Your employees can pick it when they submit overtime.</li>
+          <li><strong>Remove one of your own</strong> with the bin button. Hours already approved for it are still paid.</li>
+          <li>Only the owner can change this card. An admin sees it greyed out with a note saying so.</li>
+        </ul></li>
       <li><h4>Policies</h4>
         <p>Reusable rules you assign to people instead of setting each one individually: which modules they
           can use, the attendance checks (geofence, IP allowlist, capturing location, auto clock-out), salary type,
-          overtime method (cash or time bank), OT rates, and leave entitlements. One policy is the default, marked with a
+          overtime method (cash or time bank), overtime rates, and leave entitlements. One policy is the default, marked with a
           <strong>Default</strong> tag wherever policies are listed or picked — it's what a new hire gets unless you
           choose another.</p>
         <p>Under <strong>Leave entitlements</strong> you set the days per year for each leave type, or leave a box blank to
           use the leave type's default. A line there reminds you that staff always get at least the Employment Act
-          minimum for their years of service, whatever the policy says (see <a href="#leave">Leave</a>).</p></li>
+          minimum for their years of service, whatever the policy says (see <a href="#leave">Leave</a>).</p>
+        <p>Every admin can edit the policies their access covers, so there's nothing to switch on for Policies under
+          <strong>Admins</strong>. An admin limited to some policies sees only those; a policy that also applies to the
+          company's admins or owner shows <em>Owner only</em> where <span class="btn-name">Edit</span> would be. Only the
+          owner sees <span class="btn-name">New policy</span>, <span class="btn-name">Make default</span> and
+          <span class="btn-name">Archive</span> / <span class="btn-name">Restore</span>; an admin sees a short note
+          saying so.</p>
+        <p><strong>Overtime rates in a policy.</strong> In a policy's editor, once <strong>Overtime enabled</strong> is ticked and the <strong>Overtime method</strong> is <em>Cash (paid out)</em>, the rate boxes appear. A box left <strong>blank</strong> uses
+          the company's rate from the <strong>Overtime types</strong> card (<strong>System Settings → Work Schedule</strong>), which shows greyed inside the box. Type a number to give just
+          this policy its own rate. If your company has its own types, they're listed underneath with a tick:
+          untick one to stop that policy's staff picking it, or type a rate to pay it differently. (The two <em>in shift</em> rates that used to be here are gone.)</p></li>
       <li><h4>Admins <span class="badge owner">Owner only</span></h4>
         <p>Add admins and decide how far each one can go. Owners are listed too, marked <em>Owner · full access</em> —
-          an owner's access can't be restricted. Each admin row shows a one-line summary (for example
-          <em>5 modules (3 view only) · 1 policy · no settings</em>) and two buttons:</p>
+          an owner's access can't be restricted. Each admin row shows their name with their login email underneath, a one-line summary (for example
+          <em>5 modules (3 view only) · 1 policy · no settings</em>) and three buttons:</p>
         <ul>
+          <li><span class="btn-name">Edit</span> — opens <strong>Edit admin</strong> to change their
+            <strong>Name</strong> and <strong>Email</strong>, then <span class="btn-name">Save</span>. The email is the one
+            they sign in with, and it changes in every company they belong to. If that login also opens a company you
+            don't own, the email can't be changed here and the dialog tells you to ask Altomate support; the name can
+            still be changed.</li>
           <li><span class="btn-name">Manage access</span> — opens a dialog with three tabs, then
             <span class="btn-name">Save</span>:
             <ul>
               <li><strong>Modules</strong> — tick <em>All modules, full control</em>, or set each module
-                (Employees, Leave, Projects, Teams, Accounts, Policies, Overtime, Claims, Attendance, Payroll, Documents,
+                (Employees, Leave, Projects, Teams, Claim item types / Chart of accounts, Overtime, Claims, Attendance, Payroll, Documents,
                 Activity log) to <span class="btn-name">Off</span>, <span class="btn-name">View</span> or
                 <span class="btn-name">Manage</span>. <em>View</em> lets them see the screens and download what's
                 there; <em>Manage</em> also lets them edit, approve and run. A module set to Off disappears from that
@@ -560,7 +610,7 @@
               <li><strong>Settings</strong> — <em>Can change company settings</em>. Turn it off to let someone work
                 (run payroll, approve, edit employees) without changing how the company is set up. It covers
                 Organization, Work Schedule, Payroll settings, company and statutory details, portal logins and the Xero
-                connection. Accounts, Projects and Policies follow their own module level.</li>
+                connection. Claim item types and Projects follow their own module level.</li>
             </ul></li>
           <li><span class="btn-name">Remove</span> — takes the person off as an admin straight away (you confirm
             first). Their login isn't deleted, and you can add them again later.</li>
@@ -573,8 +623,12 @@
     <figure class="shot" data-place="System Settings">
       <div class="shot-grid" data-orient="screen">
         <div class="shot-item">
-          <img src="shots/admin/admins-list.png" alt="System Settings → Admins: the owner marked full access, and an admin row with Manage access and Remove buttons" loading="lazy">
+          <img src="shots/admin/admins-list.png" alt="System Settings → Admins: the owner marked full access, and two admin rows, each with the login email under the name and Edit, Manage access and Remove buttons" loading="lazy">
           <p class="shot-cap">Admins</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/admins-edit.png" alt="The Edit admin dialog with the Name and Email boxes, a note that the email changes in every company they belong to, and Cancel and Save" loading="lazy">
+          <p class="shot-cap">Edit admin</p>
         </div>
         <div class="shot-item">
           <img src="shots/admin/admins-access-modules.png" alt="The Manage access dialog on its Modules tab, with Off, View and Manage for each module" loading="lazy">
@@ -591,15 +645,15 @@
     <figure class="shot" data-place="System Settings">
       <div class="shot-grid" data-orient="screen">
         <div class="shot-item">
-          <img src="shots/admin/accounts-bank.png" alt="System Settings → Accounts: the Expenses list with its Type filter (Depreciation, Direct Costs, Expense, Overhead) and Type column" loading="lazy">
-          <p class="shot-cap">Accounts</p>
+          <img src="shots/admin/accounts-bank.png" alt="System Settings → Claim item types: the hint, the add form with the Add claim item type button, and the Expenses list with its Type filter and Type column" loading="lazy">
+          <p class="shot-cap">Claim item types</p>
         </div>
         <div class="shot-item">
           <img src="shots/admin/project-editor.png" alt="System Settings → Projects with Active / Archived tabs and the geofence radius" loading="lazy">
           <p class="shot-cap">Projects</p>
         </div>
       </div>
-      <p class="shot-cap shot-cap-main">Accounts and Projects</p>
+      <p class="shot-cap shot-cap-main">Claim item types and Projects</p>
     </figure>
 
     
@@ -610,15 +664,27 @@
           <p class="shot-cap">Work Schedule</p>
         </div>
         <div class="shot-item">
-          <img src="shots/admin/policy-editor.png" alt="System Settings → Policies with the default Full-time policy" loading="lazy">
+          <img src="shots/admin/overtime-types.png" alt="System Settings → Work Schedule, the Overtime types card below the calendar: Normal day, Rest day and Public holiday marked Built in, a Night shift type of the company's own, and a row to add a new one" loading="lazy">
+          <p class="shot-cap">Overtime types (Work Schedule)</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/policy-editor.png" alt="System Settings → Policies: the list of policies with the Default tag, a New policy button, and Edit, Make default and Archive on each row" loading="lazy">
           <p class="shot-cap">Policies</p>
         </div>
         <div class="shot-item">
           <img src="shots/admin/policy-editor-leave.png" alt="The Edit policy window at Leave entitlements, with the note about the Employment Act minimum above the Annual, Medical and Unpaid Leave days" loading="lazy">
           <p class="shot-cap">Leave entitlements in a policy</p>
         </div>
+        <div class="shot-item">
+          <img src="shots/admin/policy-overtime-rates.png" alt="The Edit policy dialog's overtime section: blank rate boxes showing the company's rates greyed, and a ticked Night shift type with its own rate box" loading="lazy">
+          <p class="shot-cap">Overtime rates in a policy</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/policies-limited.png" alt="System Settings → Policies as an admin limited to one policy: that one policy marked Owner only, no New policy button, and a note that only the owner can create, archive or change the default" loading="lazy">
+          <p class="shot-cap">Policies, as a limited admin</p>
+        </div>
       </div>
-      <p class="shot-cap shot-cap-main">Work Schedule and Policies</p>
+      <p class="shot-cap shot-cap-main">Work Schedule, Overtime types and Policies</p>
     </figure>
 
     <div class="note"><span class="nt">What a limited admin sees</span>
@@ -656,12 +722,15 @@
       Choosing the payroll start month under Annual forms doesn't count as setting up.</p>
     <h3>General</h3>
     <ul>
-      <li><strong>Working-days rule</strong> — calendar days in the month, or 26 days.</li>
+      <li><strong>Working-days rule</strong> — calendar days in the month, or 26 days. It sets the daily and hourly rate
+        used for overtime, and how a mid-month joiner or leaver is prorated (26 days: that month's Monday–Saturday days;
+        calendar: its calendar days). It doesn't change how unpaid leave is deducted — that always uses the month's calendar days
+        (see <a href="#payroll">Running payroll</a>).</li>
       <li><strong>EPF defaults</strong> and your <strong>EPF employer no.</strong></li>
       <li><strong>HRD Corp levy</strong> — whether you pay it, the rate, and your HRD Corp employer no.</li>
       <li><strong>PCB compliance</strong> — auto-apply the RM 350 SOCSO + EIS relief.</li>
-      <li><strong>Payroll disbursement bank</strong> — Maybank, CIMB, Public Bank or Hong Leong, with the account
-        details. This decides <a href="#files">which bank file</a> a run produces. Choose “Other bank” if you pay
+      <li><strong>Payroll disbursement bank</strong> — Maybank, CIMB, Public Bank, Hong Leong or OCBC (<em>OCBC (incl. OCBC Al-Amin)</em> in the list), with the account
+        details. For OCBC, the first 3 digits of the account number are OCBC's branch code. This decides <a href="#files">which bank file</a> a run produces. Choose “Other bank” if you pay
         salaries another way.</li>
       <li><strong>Xero sync on submit</strong> — post the payroll journal to Xero when a run is approved.</li>
     </ul>
@@ -679,7 +748,8 @@
       encrypted, but anyone who can open this page can reveal them.</p>
     <h3>Xero sync</h3>
     <p>With Xero connected: how expense lines are grouped, the tracking category for projects, and which Xero
-      accounts each payroll line posts to.</p>
+      accounts each payroll line posts to (including the optional <em>PCB borne by employer</em> expense account; left
+      blank, it posts to Salary).</p>
     <p>Changes are saved with the bar that appears at the bottom — <span class="btn-name">Save changes</span>.</p>
     
     <figure class="shot" data-place="Payroll settings">
@@ -718,8 +788,8 @@
     </ul>
     <h3>Adding people</h3>
     <ul>
-      <li><span class="btn-name">Add employee</span> — name, employee ID (optional — leave it blank and the next number in your company's pattern is assigned; the field shows it, for example <em>D-908 (auto)</em>), job title, join date, email, date
-        of birth, role and policy. The policy starts on your default one. Their <strong>starting password</strong> is
+      <li><span class="btn-name">Add employee</span> — name, an optional <strong>Nickname</strong>, employee ID (optional — leave it blank and the next number in your company's pattern is assigned; the field shows it, for example <em>D-908 (auto)</em>), job title, join date, email, date
+        of birth, role and policy. The policy starts on your default one (or, if you're an admin who can't see the default, on your own first policy). Their <strong>starting password</strong> is
         their email followed by their birth month and day (e.g. <code>ali@company.com1123</code>), or one you type.
         Tick <em>Send a welcome email</em> to have it sent to them.</li>
       <li><span class="btn-name">Import</span> — one spreadsheet to add new people <em>or</em> update everyone at once,
@@ -731,7 +801,8 @@
           <li><strong>Step 2</strong> — choose what a blank cell does: <em>Keep existing values</em> (the safe default —
             a partly filled file can't wipe anything) or <em>Erase existing values</em> (use only when the file is the
             full, up-to-date record; you're asked to confirm, and Name, Role, Employee No, Salary Type and EPF/EIS can't
-            be erased).</li>
+            be erased). The file has an optional <strong>Nickname</strong> column, next to Name; <span class="btn-name">Export</span>
+            includes it too.</li>
           <li><strong>Step 3</strong> — upload it. An email already in the company updates that person. Rows that
             were imported but need a look — for example a nationality it didn't recognise, kept as typed — are listed
             as warnings. New passwords are shown once — copy them then.</li>
@@ -769,7 +840,7 @@
     <div class="tbl-scroll"><table>
       <thead><tr><th>Tab</th><th>What's in it</th></tr></thead>
       <tbody>
-        <tr><td><strong>Personal</strong></td><td>Contact, identity (nationality is picked from a list), PR / tax resident /
+        <tr><td><strong>Personal</strong></td><td>Contact (<strong>Full name</strong> and <strong>Nickname</strong>), identity (nationality is picked from a list), PR / tax resident /
           OKU, address, emergency contact, spouse, children. For a foreign worker, <strong>Identity</strong> also has
           the <strong>Work permit number</strong> and <strong>Work permit expiry</strong> — see below</td></tr>
         <tr><td><strong>Employment</strong></td><td>Monthly salary or hourly rate and its <strong>Salary history</strong>,
@@ -787,6 +858,37 @@
           <strong>Letters</strong> card with the <a href="#letters">HR letters</a> kept for this person</td></tr>
       </tbody>
     </table></div>
+    <h3>Nicknames</h3>
+    <p>Some people are known by a shorter name. Give them a <strong>Nickname</strong> and supervisors and
+      admins see it beside the full name wherever the app shows who someone is, for example
+      <em>Arjun Pillai (Arj)</em>. It never replaces the full name.</p>
+    <ol class="steps">
+      <li><h4>Set it</h4>
+        <p>Open the person, go to <strong>Personal</strong> and type it in <strong>Nickname</strong>, next to
+          <strong>Full name</strong>, then save. You can also set it when you press
+          <span class="btn-name">Add employee</span>, or fill the <strong>Nickname</strong> column in the
+          <span class="btn-name">Import</span> spreadsheet. Clear the box to remove it.</p></li>
+      <li><h4>Where it shows</h4>
+        <p>The employee list (you can search by nickname too), the leave, claims, overtime and attendance screens and
+          their approvals, the Executive Overview, and the list of people when you pick who to include in a payroll
+          run.</p></li>
+      <li><h4>Where it doesn't</h4>
+        <p>Payslips, statutory files, EA and other LHDN forms, bank files and HR letters always use the full name.
+          Matching people when you import a spreadsheet goes by the full name too, not the nickname.</p></li>
+    </ol>
+    <figure class="shot" data-place="Employees">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/employee-nickname.png" alt="An employee's Personal tab with Full name and Nickname side by side, the hint under Nickname, and the name in the header shown as Arjun Pillai (Arj)" loading="lazy">
+          <p class="shot-cap">Nickname on the Personal tab</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/employee-nickname-list.png" alt="The employee list searched for a nickname, showing Aisyah Binti Rahman (Ica)" loading="lazy">
+          <p class="shot-cap">Searching the list by nickname</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">A nickname shows beside the full name</p>
+    </figure>
     <h3>Work permits</h3>
     <p>For a foreign worker, keep their Immigration work permit on file so a renewal isn't missed.</p>
     <ol class="steps">
@@ -842,6 +944,28 @@
     </figure>
     <p>Edits are saved with the bar at the bottom. <span class="btn-name">Set password</span> in the header sets a new
       password for them — hand it over outside email.</p>
+    <p>If someone never got their welcome email, or lost it, press <span class="btn-name">Resend welcome email</span>
+      in the header, next to <span class="btn-name">Set password</span>, then <span class="btn-name">Send email</span>
+      to confirm. The button changes to <em>Welcome email sent</em>. The email tells them where to sign in. While their
+      starting password (email followed by birth month and day) still works, it explains that rule; once they've changed
+      it, it tells them to use their current password, or <em>Forgot password</em> on the sign-in page. It never
+      contains the password itself. The button is greyed out for employees who have left — restore them first. On a
+      narrow screen the header buttons move below the name.</p>
+    <figure class="shot" data-place="Employees">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/employee-resend-welcome.png" alt="The Resend welcome email confirmation over an employee's record, with Cancel and Send email buttons" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Confirming Resend welcome email</p>
+    </figure>
+    <p>The <strong>Email</strong> on a person's record is the email they sign in with, so it changes everywhere they
+      work. Saving is refused, with a message saying why, in these cases:</p>
+    <ul>
+      <li>The person's login is also used in a company you don't own. Ask Altomate support to change it.</li>
+      <li>The person is an admin and you aren't the owner. Only the owner can change an admin's login email.</li>
+      <li>The person is an owner. An owner's login email is changed only through Altomate support (an owner can change their own).</li>
+    </ul>
     <h3>Archiving, and employment history</h3>
     <p>On the Employment tab, turn on <strong>Archive this employee</strong> and set their last day and reason. Payroll
       still pays them up to their last day, then leaves them out. At the bottom of the tab, <strong>Employment
@@ -859,7 +983,7 @@
     </figure>
     <h3>Moving someone to another company</h3>
     <p>If you look after more than one company, two buttons sit in the employee's header, next to
-      <span class="btn-name">Set password</span>. They appear for staff, not for owners or admins, and only when there is
+      <span class="btn-name">Set password</span> and <span class="btn-name">Resend welcome email</span>. They appear for staff, not for owners or admins, and only when there is
       a company you run where the person doesn't already work. Archived people must be restored first.</p>
     <ul>
       <li><span class="btn-name">Transfer</span> — they leave this company and start at the other one.
@@ -876,14 +1000,14 @@
         Here, they're archived with the day before as their last day, and the move is added to their Employment history.</li>
       <li><span class="btn-name">Duplicate</span> — they keep working here <em>and</em> are added to the other company
         (same login; they switch between the two). In <strong>Add to another company</strong> pick the
-        <strong>Other company</strong>, <strong>Policy there</strong> and <strong>Join date there</strong>, choose whether to
+        <strong>Other company</strong> from the dropdown, then <strong>Policy there</strong> and <strong>Join date there</strong>, choose whether to
         include statutory numbers and bank, and press <span class="btn-name">Add to company</span>. Set their salary
         at the other company.</li>
     </ul>
     <figure class="shot" data-place="Employees">
       <div class="shot-grid" data-orient="screen">
         <div class="shot-item">
-          <img src="shots/admin/employee-transfer-buttons.png" alt="An employee's header with Set password, Transfer and Duplicate buttons" loading="lazy">
+          <img src="shots/admin/employee-transfer-buttons.png" alt="An employee's header with Set password, Resend welcome email, Transfer and Duplicate buttons" loading="lazy">
           <p class="shot-cap">Transfer and Duplicate</p>
         </div>
         <div class="shot-item">
@@ -970,6 +1094,11 @@
         same message appears on the bar at the bottom, and <span class="btn-name">Save changes</span> does nothing
         until you fix it. A year that isn't four digits says <em>Enter a 4-digit year, e.g. 2026.</em> The empty box
         shows <em>e.g. 2026</em> in grey as an example; it isn't filled in until you type it.</li>
+      <li><strong>PCB borne by employer</strong> — in the <strong>Income tax</strong> section. Turn it on when the company
+        pays this person's PCB instead of taking it from their pay. PCB is still worked out as usual and still goes to
+        LHDN, but it is no longer taken off their net pay: it counts as a cost to the company instead. Because tax the
+        company pays for someone counts as their income, the person's first payslip next year adds it as a taxable
+        benefit — see <a href="#payroll-borne-pcb">When the company pays someone's PCB</a>.</li>
       <li><strong>Special tax rate (15%)</strong> — only for someone LHDN has approved (Returning Expert, knowledge worker
         or C-suite). Choose the approval and, if it's time-limited, the <em>From month</em> and <em>To month</em>; outside
         them PCB goes back to the normal resident rates.</li>
@@ -988,6 +1117,10 @@
         <div class="shot-item">
           <img src="shots/admin/employee-socso-scheme.png" alt="The SOCSO, EIS and SKBBK section of the Statutory tab with the SOCSO scheme set to Not covered and its warning underneath" loading="lazy">
           <p class="shot-cap">SOCSO scheme set to Not covered</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/employee-pcb-borne.png" alt="The Income tax section on an employee's Statutory tab, with the PCB borne by employer switch off and its hint underneath" loading="lazy">
+          <p class="shot-cap">PCB borne by employer, Statutory tab</p>
         </div>
       </div>
       <p class="shot-cap shot-cap-main">An employee's record</p>
@@ -1076,7 +1209,8 @@
       — plus hours worked, recent attendance, and PDF exports.</p>
     <h3>Overtime</h3>
     <p>Every overtime submission with its before-work and after-work photos or PDFs (an employee can attach up to ten
-      of each), filterable by status. Read-only — supervisors approve overtime from their own queue.</p>
+      of each), filterable by status. When the employee picked an overtime type (such as <em>Night shift</em>), its name is
+      shown with the request. Read-only — supervisors approve overtime from their own queue.</p>
     <h3>Shifts</h3>
     <p>Define shifts per project (e.g. Day 8:00–17:00), with working days and unpaid break minutes. Whether someone
       is late, and how many hours they were expected to work, come from their shift.</p>
@@ -1110,7 +1244,9 @@
     <h3>All claims</h3>
     <p>Filter by project, employee, own-money or company-money, and dates. The last column tells you where each
       claim stands — who it's waiting with, “In Xero”, “In the payroll run”, or a button to retry a Xero push that
-      failed. Open a claim to see its details: the employee is shown by name, and for company money the <em>Company bank</em> line shows the name of the account that paid.</p>
+      failed. Open a claim to see its details: the employee is shown by name, and for company money the <em>Company bank</em> line shows the name of the account that paid. On a mileage claim the
+      receipt line reads <strong>Route screenshot</strong> with a <span class="btn-name">View route screenshot</span> button,
+      so you and the approvers can see the route the employee planned. Supervisors see the same when they open the claim in their queue.</p>
     <h3>Settings</h3>
     <ul>
       <li><strong>Default currency</strong>.</li>
@@ -1226,8 +1362,9 @@
         reason, or saving with nothing different, doesn't send one.</li>
       <li>The approval trail shows <em>Changed by admin</em> with the leave before and after, and the change goes in the
         <a href="#audit">Activity Log</a>.</li>
-      <li>Changing approved <em>unpaid</em> leave marks any open payroll draft for the old and new dates for a re-run; a
-        payroll already submitted isn't changed.</li>
+      <li>Changing approved <em>unpaid</em> leave marks any open payroll draft for the old and new dates for a re-run. A
+        month already approved isn't changed: the difference is settled on the person's next payroll run instead (see
+        <a href="#payroll">Running payroll</a>).</li>
     </ul>
     <figure class="shot" data-place="Leave">
       <div class="shot-grid" data-orient="screen">
@@ -1248,7 +1385,8 @@
       <span class="btn-name">Cancel leave</span> (or <span class="btn-name">Keep it</span> to back out). Approved days go
       back into their balance and they're notified; it can't be undone, so they'd need to apply again. If they'd already
       asked to cancel, cancelling here completes it at once. Cancelling approved <em>unpaid</em> leave marks any open
-      payroll draft for those dates for a re-run; a payroll already submitted isn't changed. The cancellation is recorded
+      payroll draft for those dates for a re-run. If that month's payroll was already approved and the days were
+      deducted, they're paid back on the person's next run. The cancellation is recorded
       in the <a href="#audit">Activity Log</a>.</p>
 
     <figure class="shot" data-place="Leave">
@@ -1285,8 +1423,10 @@
     <p>Year rollover and monthly accrual run by themselves; the buttons under <em>Maintenance</em> are there if you need
       to run them early.</p>
     <div class="note tip"><span class="nt">Unpaid leave and payroll</span>
-      <p>Approved unpaid leave is deducted in that month's payroll automatically. If it's approved after the month's
-        payroll has been run, the run is marked for a re-run — see <a href="#payroll">Running payroll</a>. If a person's
+      <p>Approved unpaid leave is deducted in that month's payroll automatically. If it's approved while the month's
+        payroll is still a draft, the run is marked for a re-run. If it's approved after that month's payroll was
+        approved, it's deducted on the person's next run instead, and cancelled leave that was already deducted is paid
+        back the same way — see <a href="#payroll">Running payroll</a>. If a person's
         unpaid leave isn't in the Leave module, you can type their unpaid days on the payroll draft instead.</p>
     </div>
     
@@ -1314,15 +1454,18 @@
   <details class="topic" id="payroll" open>
     <summary><h2>Running payroll</h2><span class="badge month">Every month</span></summary>
     <div class="topic-body">
-    <p class="topic-lede"><strong>Payroll → Payroll runs.</strong> One run per month: draft it, run payroll, check
-      it, send it for approval, then approve and file.</p>
+    <p class="topic-lede"><strong>Payroll → Payroll runs.</strong> Draft the month, run payroll, check
+      it, send it for approval, then approve and file. Most companies pay a month in one run; you can also
+      <a href="#payroll-split">pay a month in several runs</a>.</p>
     <ol class="steps">
       <li><h4>Create the draft</h4>
         <p><span class="btn-name">Create draft</span> — in <strong>Start a payroll run</strong>, pick the month and year,
           and which policies and employees to include. Changing the month reloads the list, because who is payable
           depends on it: someone who left is still listed for their last month. Only people whose records are complete can be included, and only employees and supervisors are on payroll —
           owners and admins aren't. The app remembers the policies you picked and anyone you unticked, so you don't have to
-          recreate the draft later if someone joins (see <em>Re-run if anything changed</em>).</p></li>
+          recreate the draft later if someone joins (see <em>Re-run if anything changed</em>). The text above the button
+          says the same: pick the period, the policies and the employees, and nothing is worked out until you run payroll.
+          If the month already has a run, see <a href="#payroll-split">Paying a month in several runs</a>.</p></li>
       <li><h4>Run payroll</h4>
         <p><span class="btn-name">Run payroll</span> works out everyone's pay — salary, overtime, unpaid leave,
           allowances, loan repayments, and every statutory line — from their current records and the month's
@@ -1330,15 +1473,27 @@
           in your own local time.</p></li>
       <li><h4>Check and adjust</h4>
         <p>Open anyone's line with <span class="btn-name">Edit OT / adjustments</span> to change worked hours, overtime,
-          or add a one-off allowance, deduction or expense for this month. <strong>Reimbursed claims</strong> lists
-          approved claims waiting to be paid — add them to this run. Unpaid leave is deducted automatically from approved
+          or add a one-off allowance, deduction or expense for this month, or to set one person's employer HRDF levy. The
+          <strong>Overtime</strong> box has one hours box per overtime type, each labelled with the rate it pays
+          (for example <em>Normal day (1.5×)</em>, then your own types such as <em>Night shift</em>); the rate is the
+          employee's policy rate, or the company's. Leave them all blank to pay the approved overtime, or type hours to
+          replace it. <strong>Reimbursed claims</strong> lists
+          approved claims waiting to be paid — add them to this run one at a time, or press <span class="btn-name">Add all</span>
+          (with a number, e.g. <em>Add all 12</em>) to add every one in the list. Staff numbers show beside the names. Once
+          there are more than five claims, a search box appears: type an employee's name, staff ID, a claim number or a
+          title, and the button becomes <span class="btn-name">Add these</span> for just the claims that match. Long
+          lists scroll inside the card, so the run's Submit button stays in reach. Each added claim has a ✕ to take it off again. Unpaid leave is deducted automatically from approved
           unpaid leave; for staff whose unpaid leave isn't in the Leave module yet, type it in — see
           <em>Unpaid days not in the Leave module</em> below. For a part-month Basic, see
           <em>Basic this month</em> below. The <strong>Needs attention</strong> tab lists anyone
           whose net pay would be negative, anyone on RM 0.00, missing fields the statutory files need, and anyone left
           out. A payslip that's missing something shows a small <em>missing</em> tag beside the name; open it to see what,
           such as <em>No SOCSO number</em> or <em>No SOCSO scheme chosen</em> (a Malaysian aged 55 to 59 with no scheme
-          picked — set it on their Statutory tab). While the run is still a draft, the download button on a person's row gives a preview of their payslip,
+          picked — set it on their Statutory tab).
+          In the missing-fields list, each person's name and each missing field is a link that opens their record in a
+          new tab, on the right tab and with the box ready to type in. Fill it in, save, then come back to the run — a
+          draft refreshes itself when you return to its tab — and press <span class="btn-name">Re-run payroll</span>.
+          While the run is still a draft, the download button on a person's row gives a preview of their payslip,
           watermarked <strong>DRAFT</strong>.</p></li>
       <li><h4>Basic this month</h4>
         <p>For a joiner or leaver whose timesheet gives a part-month Basic, open their
@@ -1361,22 +1516,56 @@
           <strong>Unpaid leave</strong> box with one field, <strong>Unpaid days</strong>. Half days are fine (type 0.5).</p>
         <ul>
           <li>As you type, the box works out the deduction for you, for example
-            <em>RM 3,000.00 ÷ 26 working days × 2 days = RM 230.77</em>. The days it divides by follow the
-            working-days setting in your payroll settings.</li>
+            <em>RM 3,000.00 ÷ 30 calendar days × 2 days = RM 200.00</em>. It always divides by the number of calendar
+            days in that month (30 for November, 31 for December), whichever Working-days rule you chose in your payroll
+            settings.</li>
           <li>Leave it <strong>blank</strong> to use the unpaid leave approved in the Leave module for that month; the
             number of days shows greyed in the field. A number you type <strong>replaces</strong> it, so a day is never
             docked twice. Type 0 to cancel the Leave module's unpaid days for this month.</li>
-          <li>You can type from 0 up to the number of days in that month's basis (26 in the example). Anything more is refused.</li>
+          <li>You can type from 0 up to the number of calendar days in that month (30 in the example). Anything more is refused.</li>
           <li>If the month already has its own <em>unpaid leave</em> line further down the adjustments (for example from an ABPay
             timesheet) and you've typed nothing in <strong>Unpaid days</strong>, that line is the month's unpaid leave and the Leave module's days
             aren't docked on top of it. A note in the box says so, for example
             <em>The 2 days approved in the Leave module won't be docked, because this month already has its own unpaid leave line below.</em></li>
           <li>The box is only there for monthly staff. Hourly staff are paid for the hours they worked.</li>
         </ul>
+        <p>Approved unpaid leave from the Leave module is worked out the same way: monthly salary ÷ the month's calendar
+          days × the unpaid days. Only working days of the leave count, so a weekend or public holiday inside an unpaid
+          leave isn't deducted.</p>
         <p>The days are docked exactly as approved unpaid leave is — its own line on the payslip, taken off gross pay and
           off the wage used for EPF, SOCSO, EIS and PCB. In <strong>One-off adjustments</strong> the person's row then
           shows a tag such as <em>2 unpaid days</em>. Press <span class="btn-name">Save adjustments</span>, then
           <span class="btn-name">Re-run payroll</span> to apply it.</p></li>
+      <li><h4>Unpaid leave decided after its month was approved</h4>
+        <p>You don't have to do anything for this. When unpaid leave is approved after the month's payroll was approved,
+          the person's next run later that year picks it up on its own, as a line on their payslip, for example
+          <em>Unpaid Leave – Sep 2026 (approved late, 2 days)</em>. It's worked out at that month's rate, the salary ÷
+          that month's calendar days, not the month you're running. If approved unpaid leave that was already deducted is
+          later cancelled or moved, the next run pays it back as <em>Unpaid Leave refund – Sep 2026 (2 days)</em>.</p>
+        <ul>
+          <li>A month you imported from earlier payroll, or a month where you typed the person's unpaid days on the
+            run, is never revisited.</li>
+          <li>Approving or cancelling unpaid leave for an earlier month, approving a run, or reverting one marks any later
+            drafts as <strong>Stale</strong>, since they may now carry one of these lines. Press
+            <span class="btn-name">Re-run payroll</span> on them.</li>
+        </ul></li>
+      <li><h4>Employer HRDF levy for one person</h4>
+        <p>The HRDF levy is what the company pays HRD Corp for each person, worked out for you as the levy rate in your
+          payroll settings times their HRDF wages, for Malaysian citizens. To set a different figure for one person on this
+          run, open their <span class="btn-name">Adjust</span> panel (or <span class="btn-name">Edit</span>).
+          Between <strong>Unpaid leave</strong> and <strong>Overtime</strong> there's an
+          <strong>Employer HRDF levy</strong> box with one field, <strong>Levy (RM)</strong>.</p>
+        <ul>
+          <li>Leave it <strong>blank</strong> to use the computed levy. The figure shows greyed in the field while the run
+            is up to date; if you've just changed something, it appears after you press
+            <span class="btn-name">Re-run payroll</span>.</li>
+          <li>Type an amount to use it instead. It is the <strong>final</strong> figure, not an extra on top, and
+            <strong>0</strong> counts: type 0 to charge no levy for that person.</li>
+          <li>It is an employer cost only. The person's pay, payslip and deductions don't change.</li>
+        </ul>
+        <p>In <strong>One-off adjustments</strong> the person's row then shows a tag such as <em>HRDF levy RM 25.00</em>.
+          Press <span class="btn-name">Save adjustments</span>, then <span class="btn-name">Re-run payroll</span> so the
+          run's HRDF totals use it.</p></li>
       <li><h4>Pay figures are final (ABPay runs only)</h4>
         <p>On a draft you'll see a tick box, <strong>Pay figures are final — don't prorate joiners and leavers</strong>.
           Tick it for a run imported from ABPay, where the timesheet already pays part-month staff for the days they
@@ -1419,6 +1608,8 @@
         <li>an employee's payroll details, or a salary change</li>
         <li>a loan</li>
         <li>approved unpaid leave or overtime in that month</li>
+        <li>unpaid leave for an earlier month being approved or cancelled, or an earlier run being approved or
+          reverted</li>
         <li>payroll settings, or year-to-date figures imported</li>
         <li>an adjustment or an attached claim</li>
       </ul>
@@ -1430,16 +1621,79 @@
           example a director paid nothing; the run notes them, and the bank file leaves them out.)</li>
         <li>A required employer or employee field is missing.</li>
         <li>Someone in the run has an EPF number that isn't digits only. They're listed as <em>EPF number (digits only)</em>,
-          the same way a missing IC number is. Fix the number on their Statutory tab, then press
+          the same way a missing IC number is. Click the field in <strong>Needs attention</strong> to open it on their Statutory tab, fix the number, then press
           <span class="btn-name">Re-run payroll</span>.</li>
-        <li>The previous month hasn't been filed yet — months are filed in order.</li>
+        <li>An earlier run this year that includes any of the same people isn't approved yet, whichever month it's for —
+          runs are approved in order. The message names the month to approve first.</li>
       </ul>
     </div>
     <p>Once a run is approved, a <strong>LHDN payment receipts</strong> card appears on it. Enter the receipt number and
       date LHDN issued when you paid that month's PCB (MTD) — and CP38, if you had any — and press
       <span class="btn-name">Save receipts</span>. They're printed on each employee's PCB 2(II) statement; no figure changes.</p>
     <p><strong>Made a mistake after filing?</strong> <span class="btn-name">Revert to draft</span> reopens it. Any later
-      months that were worked out from it go back to draft too — the app lists them before you confirm.</p>
+      months that were worked out from it go back to draft too — the app lists them before you confirm. That includes a
+      later run that only shares people with this one through another run: if September has Ali, October has Ali and
+      Ben, and November has Ben, reverting September also reverts October and November. Later runs still waiting for
+      approval are sent back to draft as well, and are listed in the same message. If the company pays a month in several
+      runs, a run for a completely different group of people is left alone. A month you imported from earlier payroll is
+      never sent back this way.</p>
+    <p><strong>Revert is refused while next year's run uses this month's PCB.</strong> If this month has PCB the company paid
+      for someone (see <a href="#payroll-borne-pcb">When the company pays someone's PCB</a>) and a run in the following
+      year that is awaiting approval or approved has already added it, <span class="btn-name">Revert to draft</span>
+      doesn't go ahead. The message says <em>Revert [that run] first</em>: revert the next year's run, then this
+      month, because reverting this month could change the amount that run added.</p>
+    <p><strong>An imported month can't be reverted.</strong> A month you brought in under <strong>Import earlier payroll</strong>
+      has no <span class="btn-name">Revert to draft</span> button. Its run page shows a note instead: <em>Imported from your
+      previous payroll system. To correct this month, import it again under “Import earlier payroll” at the foot of the
+      Payroll runs page — that replaces it.</em> See <a href="#ytd">Starting mid-year</a>.</p>
+
+    <h3 id="payroll-split">Paying a month in several runs</h3>
+    <p>Some companies pay one group of staff on a different day from another — say office staff and workers. Start a
+      separate run for each group and every run is approved, filed and paid on its own.</p>
+    <ol class="steps">
+      <li><h4>Start another run for the month</h4>
+        <p>Press <span class="btn-name">Create draft</span> and pick a month that already has a run. A
+          <strong>Run name</strong> field appears (for example <em>Workers</em> or <em>Management</em>). While the month
+          has a run without a name, the new run <strong>must</strong> be named, and the button stays off until you type
+          one. The hint under the field lists the runs the month already has.</p></li>
+      <li><h4>Pick who is in it</h4>
+        <p>Anyone who is already in another run that month is greyed out in the list and marked
+          <strong>Already in</strong> and that run's name, and the count at the top says how many are in another run.
+          They can't be ticked. <strong>Each person is in only one run a month</strong>; if everyone on the policies you
+          picked is already taken, the dialog says so.</p></li>
+      <li><h4>Rename a run any time</h4>
+        <p>On the run's page, press the pencil next to its title, type the name, and press
+          <span class="btn-name">Save</span>. You can do this in any status — draft, waiting for approval or approved —
+          because the name is only a label. It can't be the same as another run's name that month, or so close to it that the
+          two runs' files would end up with the same name.</p></li>
+    </ol>
+    <p><strong>On the runs list.</strong> A month with more than one run gets a
+      <strong>&lt;Month&gt; — all runs</strong> row above its runs, with the runs indented beneath it. It adds up the
+      runs' staff, gross, net pay and cost to employer, and has <span class="btn-name">Summary</span> and
+      <span class="btn-name">Excel</span> buttons for the month's combined payroll summary. That row is for checking
+      only — you can't open, approve or file it. Until every run in the month is approved it says
+      <em>not all approved yet</em>, and the combined summary is marked as a draft, like the
+      <strong>Payroll summary for approval</strong> card. The run's name replaces the month in titles, confirmation
+      questions and the <strong>Download files</strong> window, for example <em>November 2026 – Workers</em>. The
+      <a href="#payroll-overview">Payroll Overview</a> adds the runs up too.</p>
+
+    <figure class="shot" data-place="Paying a month in several runs">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/payroll-run-picker.png" alt="Start a payroll run for November 2026, a month that already has a run: the Run name field, and the Outlet Staff people already in that run greyed out as Already in November 2026, with two free people ticked" loading="lazy">
+          <p class="shot-cap">Run name and greyed-out people</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/payroll-runs-split.png" alt="Payroll runs with a November 2026 — all runs row showing the combined figures and Summary and Excel buttons, and the month's two runs, November 2026 and Workers, indented beneath it" loading="lazy">
+          <p class="shot-cap">The month's all-runs row</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/payroll-run-name.png" alt="A run's page headed November 2026 – Workers, with the pencil to rename it beside the title" loading="lazy">
+          <p class="shot-cap">A named run, with its pencil</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Paying a month in several runs</p>
+    </figure>
     
     <figure class="shot" data-place="Running payroll">
       <div class="shot-grid" data-orient="screen">
@@ -1448,12 +1702,16 @@
           <p class="shot-cap">Payroll runs</p>
         </div>
         <div class="shot-item">
-          <img src="shots/admin/payroll-adjustments.png" alt="The adjustments drawer for one monthly employee: the Basic this month block with its Basic (RM) field, then Working hours and the start of Unpaid leave" loading="lazy">
+          <img src="shots/admin/payroll-adjustments.png" alt="The adjustments drawer for one monthly employee: the Unpaid leave box, the Employer HRDF levy box with the computed RM 30.90 shown greyed, and the start of Overtime" loading="lazy">
           <p class="shot-cap">Adjustments drawer</p>
         </div>
         <div class="shot-item">
-          <img src="shots/admin/payroll-adjustments-unpaid.png" alt="The adjustments drawer scrolled to Working hours, the Unpaid leave box with its Unpaid days field, and the start of Overtime" loading="lazy">
-          <p class="shot-cap">Unpaid leave in the drawer</p>
+          <img src="shots/admin/payroll-adjustments-basic.png" alt="The adjustments drawer for one monthly employee scrolled to the Basic this month block with its Basic (RM) field, then Working hours and the start of Unpaid leave" loading="lazy">
+          <p class="shot-cap">Basic this month</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/payroll-adjustments-overtime.png" alt="The adjustments drawer's Overtime box with one hours box per type: Normal day (1.5×), Rest day (2×), Public holiday (3×) and Night shift (1.5×)" loading="lazy">
+          <p class="shot-cap">Overtime hours, one box per type</p>
         </div>
         <div class="shot-item">
           <img src="shots/admin/payroll-payslips-search.png" alt="A run's Payslips list narrowed by the search box to one person, with the Total row still showing all 9 employees" loading="lazy">
@@ -1464,6 +1722,15 @@
     </figure>
 
     
+    <figure class="shot" data-place="Running payroll">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/payroll-needs-attention.png" alt="A draft run's Needs attention tab: one field the statutory files need, with the person's missing IC number shown as a link that opens their record in a new tab" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Needs attention: click a missing field to fix it</p>
+    </figure>
+
     <figure class="shot" data-place="Running payroll">
       <div class="shot-grid" data-orient="screen">
         <div class="shot-item">
@@ -1482,10 +1749,45 @@
       <p class="shot-cap shot-cap-main">Payroll summary for approval, on a draft run</p>
     </figure>
 
+    <h3 id="payroll-borne-pcb">When the company pays someone's PCB</h3>
+    <p>For anyone with <strong>PCB borne by employer</strong> turned on (Statutory tab of their record), the run works
+      out their PCB as usual, but it isn't taken from their net pay. Here is what you'll see:</p>
+    <ul>
+      <li><strong>On the run's Payslips list</strong> — <strong>Gross</strong> leaves out the PCB the company pays, because
+        it was never part of their pay. The <strong>PCB</strong> column shows only what came out of the person's pay,
+        with <em>+ RM x paid by employer</em> under it (for example <em>+ RM 150.00 paid by employer</em>) for the part
+        the company pays. So Gross less the deduction columns still comes to net pay. <strong>Total PCB payment</strong>
+        under <strong>What gets remitted</strong> is still every ringgit paid to LHDN, the company's part included.</li>
+      <li><strong>In the Payroll Summary (PDF and Excel)</strong> — the <strong>PCB</strong> column under
+        <strong>Employee contributions</strong> is again only what came out of the person's pay. When anyone in the run
+        has PCB paid by the company, an extra column appears under <strong>Employer contributions</strong>, just before
+        cost (<em>PCB (paid by employer)</em> in Excel). Each row then adds up both ways: Gross less the employee columns
+        is net pay, and Gross plus the employer columns is cost to employer. A run with no company-paid PCB looks as before.</li>
+      <li><strong>In a person's payslip panel</strong> (click their name) — <strong>PCB / MTD</strong> no longer appears under
+        <strong>Deductions from the employee</strong>. It is listed as <strong>PCB / MTD (paid by employer)</strong> under
+        <strong>Paid by the employer</strong>, with EPF, SOCSO and EIS (employer), and is part of
+        <strong>Total cost to employer</strong>. CP38, zakat and any additional PCB are still the employee's.</li>
+      <li><strong>Benefits in kind</strong> — this section of the panel now lists each non-cash item by name, for example
+        <em>Tax Borne by Employer – 2026 (perquisite)</em>, instead of one total. They are shown for information and are
+        not in gross pay.</li>
+      <li><strong>Next year's first payslip</strong> — tax the company paid is the person's income the following year. So
+        their first payslip of the next year (January, or the first month they are paid in) gets an extra line,
+        <em>Tax Borne by Employer – 2026 (perquisite)</em>, with the total PCB the company paid them that year. It is
+        taxable but not paid in cash, so it appears under benefits in kind and doesn't change their take-home pay. It is
+        added once only. If you need to enter one by hand, it's in the allowance list as <em>Tax Borne by Employer –
+        previous year (perquisite)</em>.</li>
+      <li><strong>Months you imported</strong> — imported figures say what PCB was paid, not who paid it, so imported months
+        never count as PCB the company paid. See <a href="#ytd">Starting mid-year</a>.</li>
+      <li><strong>Xero</strong> — see the optional <em>PCB borne by employer</em> account under <a href="#xero">Xero</a>.</li>
+    </ul>
+    <p>If you approve or revert a month that has PCB the company paid for someone, any draft for the next year is marked
+      <strong>Stale</strong>, since it may be missing that line. Press <span class="btn-name">Re-run payroll</span> on it.</p>
+
     <h3>Cost to employer</h3>
     <p>The <strong>Cost to employer</strong> column on <strong>Payroll runs</strong> (and the <em>Cost</em> figure on the
       Overview, and on each person's payslip detail) is what the company actually pays out for the month: gross pay plus
-      its own EPF, SOCSO, EIS and HRDF contributions. A deduction the company keeps — <em>Loan Repayment</em> and
+      its own EPF, SOCSO, EIS and HRDF contributions, plus any PCB it pays for the person (see
+      <a href="#payroll-borne-pcb">When the company pays someone's PCB</a>). A deduction the company keeps — <em>Loan Repayment</em> and
       <em>Miscellaneous / Other Deduction</em> — is taken off that cost as well as off the person's net pay, because the
       company never pays that money out. Deductions passed on to someone else, such as CP38 and extra PCB to LHDN, or
       zakat, still count as cost. Months you imported from earlier payroll follow the same rule.</p>
@@ -1503,9 +1805,11 @@
       SOCSO, EIS and PCB are still worked out on the full pay, so the Gross column can be lower than the figure those
       contributions are based on.</p>
 
-    <h3>The Payroll Overview</h3>
+    <h3 id="payroll-overview">The Payroll Overview</h3>
     <p>The first tab sums it up: runs waiting for your approval, employees not ready to file, drafts to re-run,
-      the latest run's totals, and everything filed so far this year.</p>
+      the latest run's totals, and everything filed so far this year. When the latest month is paid in several runs,
+      the card is called <strong>Latest month</strong> and adds the runs up — staff, gross, net pay and cost — with
+      <em>Not all approved</em> until every run is approved, and the link becomes <strong>Open the runs</strong>.</p>
     </div>
   </details>
 
@@ -1517,9 +1821,10 @@
     <div class="tbl-scroll"><table>
       <thead><tr><th>Group</th><th>Files</th><th>Where it goes</th></tr></thead>
       <tbody>
-        <tr><td>Reports</td><td>Payroll Summary (as a PDF or as Excel), Payment Schedule (who is paid what, split into the bank file and those paid manually), PCB Calculation Details, Allowance Report (Excel), Deduction Report (Excel)</td><td>Your records / approver</td></tr>
+        <tr><td>Reports</td><td>Payroll Summary (as a PDF or as Excel), Payment Schedule (who is paid what, split into the bank file and those paid manually), PCB Calculation Details, Allowance &amp; Deduction Reports (ZIP)</td><td>Your records / approver</td></tr>
         <tr><td></td><td>AB Pay timesheet (Excel) — only if your company is connected to ABPay</td><td>The ABPay app, and your records</td></tr>
-        <tr><td>Statutory</td><td>EPF Contribution CSV</td><td>KWSP i-Akaun</td></tr>
+        <tr><td>Statutory</td><td><span class="btn-name">Download EPF, SOCSO &amp; PCB (zip)</span> — the four files below in one zip</td><td>See each file below</td></tr>
+        <tr><td></td><td>EPF Contribution CSV</td><td>KWSP i-Akaun</td></tr>
         <tr><td></td><td>SOCSO + EIS Contribution TXT (v1)</td><td>PERKESO ASSIST — for months before June 2026, or while PERKESO still accepts either layout (June to September 2026)</td></tr>
         <tr><td></td><td>SOCSO + EIS + SKBBK Contribution TXT (ASSIST 2.0)</td><td>PERKESO ASSIST 2.0 — compulsory from June 2026</td></tr>
         <tr><td></td><td>PCB / MTD TXT (CP39)</td><td>LHDN e-PCB — the file is named with your employer number, the month and the year, for example <em>6051351020072026.txt</em></td></tr>
@@ -1535,12 +1840,21 @@
         <em>… (1).txt</em>, and LHDN refuses that name. Rename it (for example to <em>6051351020072026.txt</em>), or
         use the first copy.</p>
     </div>
+    <h3>All the agency uploads in one zip</h3>
+    <p>At the <strong>Statutory uploads</strong> heading, <span class="btn-name">Download EPF, SOCSO &amp; PCB (zip)</span>
+      gives you one zip holding the EPF CSV, both SOCSO + EIS files (the v1 layout and the ASSIST 2.0 layout with SKBBK)
+      and the PCB file. Open the zip and upload each file to its own portal, named as in the table above. You don't have to tick anything first.</p>
+    <p>A file that can't be made yet — for example the PCB file when the employer tax number is missing — is left out
+      of the zip. A line under the heading says how many files came down, and the row of each missing file says why, in the
+      same words as when you download that file on its own. Fix what it asks for and press the button again. The single-file
+      buttons are still there when you only want one.</p>
     <h3>The bank file follows your bank</h3>
     <ul>
       <li><strong>Public Bank</strong> — ECP Bulk Payroll (.xlsx)</li>
       <li><strong>Maybank</strong> — Maybank2E universal payment file (.txt)</li>
       <li><strong>CIMB</strong> — BizChannel@CIMB bulk payroll (Excel), for IC and passport holders alike (see below)</li>
       <li><strong>Hong Leong</strong> — ConnectFirst, plus a ConnectBiz template</li>
+      <li><strong>OCBC</strong> — Velocity GIRO file (.txt), see below</li>
     </ul>
     <p>Set the <strong>payment date</strong> before downloading. (For CIMB the box isn't shown — CIMB's template has no
       payment date; you choose it in BizChannel when you upload.) The file is refused — with a message saying why — if a
@@ -1550,6 +1864,31 @@
     <p>Whatever your bank, only employees paid by <strong>Bank transfer</strong> are in the file. The Public Bank file
       leaves out anyone whose payment method is Other bank / e-wallet, Cash or Cheque. Pay them from
       <strong>Manual Payments</strong>.</p>
+    <h3>OCBC: Velocity GIRO file</h3>
+    <p>When your payroll bank is OCBC, the Bank group offers <span class="btn-name">OCBC Velocity GIRO (Payroll)</span>.
+      Upload it under <strong>GIRO file upload</strong> in Velocity@ocbc. It pays every employee paid by bank transfer,
+      whichever bank they use, OCBC staff included. Above the file, fill in:</p>
+    <ul>
+      <li><strong>Payment date</strong> — the day the money should go out.</li>
+      <li><strong>Recipient reference</strong> — what employees see on their bank statement, up to 20 characters. It
+        starts as something like <em>SALARY OCT 2026</em>; change it if you like, or leave it empty to use that.</li>
+      <li><strong>Tape ID</strong> — starts at 001. Each file you send for the same payment date from the same account
+        needs a different one (001–999), so a second run paid that day takes 002.</li>
+      <li><strong>ID check</strong> — a tickbox, off to begin with. Tick it and the employee's bank matches their IC or
+        passport to the account number before crediting. That is safer, but payments that don't match are rejected.</li>
+    </ul>
+    <p>The file is refused, with a message saying why, if a bank setting is missing or an employee's bank isn't
+      recognised, as with the other banks. For Hong Leong, the <strong>Recipient reference</strong> box likewise starts
+      with the period, such as <em>SALARY OCT 2026</em>.</p>
+    <figure class="shot" data-place="Files">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/payroll-downloads-ocbc.png" alt="The Download files dialog for a company whose payroll bank is OCBC: payment date, recipient reference, tape ID and ID check above the OCBC Velocity GIRO (Payroll) and Manual Payments rows" loading="lazy">
+          <p class="shot-cap">OCBC Velocity GIRO file</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Downloading the OCBC bank file</p>
+    </figure>
     <h3>CIMB: one Excel file for everyone</h3>
     <p>For CIMB the download is <span class="btn-name">BizChannel@CIMB Bulk Payroll (Excel)</span>: CIMB's own bulk
       payroll template, filled in with the name, bank, account number and amount of everyone paid by bank transfer.
@@ -1560,6 +1899,9 @@
       number.</p>
     <p>The bank file and <strong>Manual Payments</strong> together add up to the run's total net pay, so nobody is
       missed.</p>
+    <p>If the month is paid in <a href="#payroll-split">several runs</a>, each run has its own files, and a named run's
+      file names carry its name (letters and digits only), so you can tell the office staff's PCB file from the
+      workers'. The window is headed with the run's name too.</p>
     <p><strong>Manual Payments (Excel)</strong> is always offered. It lists everyone the bank file doesn't pay —
       other banks and e-wallets such as Merchantrade, cash, cheque, and anyone missing bank details — with account,
       amount and totals, so you can pay them yourself.</p>
@@ -1597,13 +1939,14 @@
         deductions the company keeps (loans and Miscellaneous / Other Deduction), not other deductions taken from net
         pay, such as CP38.</p>
     </div>
-    <h3>Allowance and Deduction reports (Excel)</h3>
-    <p>The Reports group also has <strong>Allowance Report (Excel)</strong> and <strong>Deduction Report (Excel)</strong>.
-      Each has one row per employee and one column per item, with a totals row at the bottom.</p>
+    <h3>Allowance and Deduction reports (ZIP)</h3>
+    <p>The Reports group has one row, <strong>Allowance &amp; Deduction Reports (ZIP)</strong>, with both Excel reports in
+      a single zip. (They used to be two separate rows.) Each report has one row per employee and one column per item,
+      with a totals row at the bottom.</p>
     <ul>
-      <li><strong>Allowance Report</strong> lists every allowance on the run. Benefits in kind are listed but not
+      <li><strong>Allowance report</strong> lists every allowance on the run. Benefits in kind are listed but not
         counted as cash in the totals.</li>
-      <li><strong>Deduction Report</strong> lists deductions other than EPF, SOCSO, EIS and PCB, such as loans, unpaid
+      <li><strong>Deduction report</strong> lists deductions other than EPF, SOCSO, EIS and PCB, such as loans, unpaid
         leave and advances. Unpaid leave and advances are listed but not added into the total, because the payslip
         takes them off gross pay instead.</li>
     </ul>
@@ -1627,7 +1970,12 @@
     <figure class="shot" data-place="Files">
       <div class="shot-grid" data-orient="screen">
         <div class="shot-item">
-          <img src="shots/admin/payroll-downloads.png" alt="The Download files dialog, Reports group: Payroll Summary, Allowance Report (Excel), Deduction Report (Excel) and Payment Schedule" loading="lazy">
+          <img src="shots/admin/payroll-downloads.png" alt="The Download files dialog, Reports group: Payroll Summary, Allowance &amp; Deduction Reports (ZIP), Payment Schedule and PCB Calculation Details" loading="lazy">
+          <p class="shot-cap">Reports</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/payroll-downloads-statutory.png" alt="The Statutory uploads group in the Download files dialog, with the Download EPF, SOCSO &amp; PCB (zip) button beside the heading and the four agency files below it" loading="lazy">
+          <p class="shot-cap">Statutory uploads, one zip</p>
         </div>
       </div>
       <p class="shot-cap shot-cap-main">Downloading the month's files</p>
@@ -1704,7 +2052,7 @@
     <figure class="shot" data-place="Annual forms">
       <div class="shot-grid" data-orient="screen">
         <div class="shot-item">
-          <img src="shots/admin/annual-forms.png" alt="Payroll → Annual forms: the payroll start month card, the monthly runs approved warning and the employee table" loading="lazy">
+          <img src="shots/admin/annual-forms.png" alt="Payroll → Annual forms: the payroll start month card with its month picker, and the employee table" loading="lazy">
         </div>
       </div>
       <p class="shot-cap shot-cap-main">Annual tax forms</p>
@@ -1740,6 +2088,10 @@
       the year, fill in each month's figures, <span class="btn-name">Preview</span>, then import. Imported months are
       never recalculated and count toward everyone's year-to-date. The preview has a search box, so you can find one person
       by name and check their figures.</p>
+    <p>If your file has an HRDF column, it's read under the names payroll systems usually give it: <strong>HRDF</strong>,
+      <strong>Employer HRDF Levy</strong> (the name PayrollPanda uses), <strong>HRDF Levy</strong>,
+      <strong>Employer HRDF</strong> or <strong>HRD Corp Levy</strong>. If you imported months before and their HRDF came
+      through empty, import the same file again: it replaces those months with the HRDF filled in.</p>
     <p>The preview checks every row against your employee list before anything is imported:</p>
     <ul>
       <li>If the IC on a row belongs to a different employee than the name on it, the preview refuses the file and tells
@@ -1757,6 +2109,14 @@
       import only September, the earlier months stay exactly as they are. The preview's warnings name only the months in
       your file: a month that was imported before <em>will be replaced</em>, and a month that already has payroll in
       AltomateHR <em>will be skipped</em>.</p>
+    <p>Imported months are history from your previous system, so they can't be reverted to draft or re-run. To correct
+      one, import that month again; it replaces the old figures. Reverting an earlier month in AltomateHR never pulls an
+      imported month back to draft.</p>
+    <p><strong>PCB paid by the company.</strong> If anyone in your file has <strong>PCB borne by employer</strong> turned on
+      and PCB in the file, the preview warns you, naming them. Imported months aren't counted as PCB the company paid, so
+      their first payslip next year won't add those months' PCB as a taxable benefit. If the company did pay it, add it
+      on that payslip yourself as <em>Tax Borne by Employer – previous year</em> (one-off allowances on the run, under
+      Benefits-in-kind / Perquisites).</p>
     <p>For someone who joined from another employer this year, fill in <strong>Previous employment (TP3)</strong> on the
       Employment tab of their record.</p>
     </div>
@@ -1988,8 +2348,31 @@
       Xero organisation.</p>
     <ul>
       <li><strong>Connect</strong> — sign in to Xero and choose <em>only this company's</em> organisation.</li>
+      <li><strong>Xero switched off for your company</strong> — if AltomateHR has set your company to "No Xero", there is
+        no Connect button. The card says <em>Xero isn't switched on for your company. Contact AltomateHR if you need
+        it.</em> Claim settings and Claim item types don't ask you to connect Xero either; use the other ways of paying
+        claims. A company that was already connected keeps working as before. If that connection later stops working,
+        the card says so and tells you to <span class="btn-name">Disconnect</span> it or contact AltomateHR if you need
+        Xero; there is no Reconnect while Xero is switched off.</li>
+      <li><strong>Your company's own Xero app</strong> — if your company uses its own Xero app, the card says
+        <em>Uses your company's own Xero app.</em> under the description. AltomateHR sets this up for you.
+        If it isn't ready yet, <span class="btn-name">Connect this company to Xero</span> is greyed out and the card
+        says <em>Xero isn't set up for your company yet. Contact AltomateHR to finish setting up your company's Xero
+        app.</em> Contact AltomateHR, then come back and connect as normal.</li>
+      <li><strong>Which Xero organisation is this company?</strong> — if signing in to Xero comes back with several
+        organisations (this happens when the Xero app is connected to many organisations and Xero re-approves them all),
+        the card asks <em>Which Xero organisation is this company?</em> instead of connecting. Choose your company's own
+        organisation from the list and press <span class="btn-name">Connect this organisation</span>, or press
+        <span class="btn-name">Cancel</span> to drop the sign-in. Organisations already connected to another company in
+        AltomateHR aren't listed. <span class="btn-name">Reconnect</span> keeps your company's current organisation
+        automatically, so you aren't asked.</li>
+      <li><strong>Reconnect when convenient</strong> — if your company is moved to a different Xero app while it is
+        connected, the card shows this note. The current connection keeps working. Press
+        <span class="btn-name">Reconnect</span> and sign in to Xero once to move it across; your bills, files and records in Xero stay as they are, and the old app is removed from the Xero organisation's connected apps.</li>
       <li><strong>Chart of accounts</strong> — Xero owns it while connected; <span class="btn-name">Sync from Xero</span> in
-        Accounts. Accounts no longer in Xero are archived.</li>
+        <strong>Chart of accounts</strong> (the page is called Claim item types until Xero is connected). Accounts no longer
+        in Xero are archived. Connecting also archives the starter claim item types a new company begins with;
+        disconnecting restores them.</li>
       <li><strong>Projects</strong> — pulled from Xero Projects, or from the options of a tracking category you choose.
         Once you choose a category, it <em>is</em> the project list: projects made by hand, or not in that category, are
         hidden from the pickers (clearing the category brings them back).</li>
@@ -1997,7 +2380,9 @@
       <li><strong>Payroll</strong> — the payroll journal is posted when a run is approved, if you've switched it on. In
         <strong>Payroll → Settings → Xero sync</strong>, the expense lines offer expense accounts and the payables
         (EPF, SOCSO, EIS, PCB, net salary) offer liability accounts — sync from Xero first if a list is empty. A saved
-        account of the wrong type is flagged so you can pick again.</li>
+        account of the wrong type is flagged so you can pick again. There is one optional expense account,
+        <strong>PCB borne by employer</strong>: PCB the company pays for staff is posted there as its own line, and if you
+        leave it blank it goes to the Salary account instead.</li>
       <li><strong>If a Connect or Reconnect doesn't finish</strong> while Xero is still connected, the card shows a
         calm note that nothing changed and the organisation is still connected. Reloading the page after a successful
         connect no longer shows "Xero didn't finish connecting".</li>
@@ -2075,7 +2460,8 @@
         that day, then they drop out of future runs but keep every payslip and form.</p></div></details>
     <details class="qa"><summary>A new employee can't sign in.</summary>
       <div class="body"><p>Their starting password is their email followed by their birth month and day, so their date
-        of birth must be on file. Or use <span class="btn-name">Set password</span> on their record.</p></div></details>
+        of birth must be on file. Press <span class="btn-name">Resend welcome email</span> on their record to remind them how
+        to sign in, or use <span class="btn-name">Set password</span> to give them a new password.</p></div></details>
     </div>
   </details>
 

@@ -131,6 +131,25 @@ public class PayrollDocumentTests
         Assert.Equal(payslip.GrossPay - PayslipPdf.TotalDeductions(payslip), payslip.NetPay);
     }
 
+    // PCB the company pays is not the employee's deduction: it's listed with
+    // the employer contributions, and the payslip still reconciles.
+    [Fact]
+    public void Payslip_WithPcbBorneByEmployer_StillReconciles_AndRenders()
+    {
+        var payslip = Payslip(gross: 5000m, net: 5000m - (550m + 24.75m + 9.90m));
+        payslip.PcbBorneByEmployer = payslip.Pcb;
+
+        Assert.Equal(payslip.GrossPay - PayslipPdf.TotalDeductions(payslip), payslip.NetPay);
+        Assert.True(IsPdf(PayslipPdf.Render(new PayslipPdfModel
+        {
+            Payslip = payslip,
+            OrganizationName = "Globe Engineering Sdn Bhd",
+            PeriodLabel = "March 2026",
+            IssueDate = new DateTime(2026, 3, 31),
+            Ytd = new PayslipYtdSummary(),
+        })));
+    }
+
     // Zakat and CP38 have their own rows AND live inside TotalDeductions, so
     // the catch-all row nets them off. Counting them twice would overstate
     // the deductions and break the reconciliation above.

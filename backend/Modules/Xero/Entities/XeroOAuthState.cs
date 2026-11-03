@@ -30,4 +30,16 @@ public class XeroOAuthState : ITenantScoped
     // connection's dates can't work, since ConnectedAt keeps the FIRST connect.
     [MaxLength(80)]
     public string? ConnectedTenantId { get; set; }
+
+    // The Xero app this sign-in started with (null = the original app), so the
+    // callback swaps the code with the same app.
+    [MaxLength(40)]
+    public string? XeroAppId { get; set; }
+
+    // A sign-in that came back with several Xero orgs and no way to tell which
+    // is this company's: Xero's tokens and the orgs to choose from, encrypted
+    // (the token protector), until the person who signed in picks one on the
+    // Xero card or PendingChoiceExpiresAt passes.
+    public string? PendingChoiceProtected { get; set; }
+    public DateTime? PendingChoiceExpiresAt { get; set; }
 }

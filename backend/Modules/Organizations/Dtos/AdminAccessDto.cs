@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using AltomateHR.Api.Modules.Organizations;
 
 namespace AltomateHR.Api.Modules.Organizations.Dtos;
@@ -54,4 +55,17 @@ public class ModuleAccessDto
     public IReadOnlyDictionary<string, ModuleLevel> Levels { get; set; } = new Dictionary<string, ModuleLevel>();
     public bool CanChangeSettings { get; set; } = true;
     public bool AllEmployees { get; set; } = true;
+    // May create, archive/restore policies and set the default (Owners).
+    public bool ManagesAllPolicies { get; set; } = true;
+}
+
+// The Owner's "Edit" on an admin: their name and login email. Both live on the
+// person's account, so they change in every company that person belongs to.
+public class UpdateAdminDetailsDto
+{
+    [Required, MaxLength(160)]
+    public string Name { get; set; } = string.Empty;
+
+    [Required, EmailAddress, MaxLength(120)]
+    public string Email { get; set; } = string.Empty;
 }

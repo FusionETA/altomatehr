@@ -28,7 +28,23 @@ public interface IPayrollDraftStaleness
     // belong to dates — unpaid leave, an overtime claim. Also stamps that
     // month's pending and submitted runs, which show nothing until they're
     // sent back or reverted to draft — then they read as needing a re-run.
-    Task MarkDraftsCoveringAsync(DateTime from, DateTime to);
+    //
+    // With `userId`, only runs that could hold that person: a run whose chosen
+    // roster leaves them out is skipped (a month can hold several runs for
+    // different groups). A run with no roster means everyone, so it's marked.
+    Task MarkDraftsCoveringAsync(DateTime from, DateTime to, string? userId = null);
+
+    // DRAFTS ONLY, in the months after `after` to the end of its year. For
+    // unpaid leave: a change to a filed month is settled on a later run (see
+    // UnpaidLeaveCarryForward), so those drafts were built from old days.
+    // Default keeps test doubles compiling.
+    Task MarkLaterDraftsAsync(DateTime after, string? userId = null) => Task.CompletedTask;
+
+    // DRAFTS ONLY, every month of `year`. For PCB borne by the employer: a
+    // person's first run of a year adds the PREVIOUS year's borne PCB as a
+    // perquisite, so approving or reverting one of last year's runs changes
+    // what that draft should hold. Default keeps test doubles compiling.
+    Task MarkDraftsOfYearAsync(int year) => Task.CompletedTask;
 
     // Every generated draft in a NAMED org — for a change made from outside
     // that org (an employee transfer touches two companies; the transfer job
@@ -52,8 +68,18 @@ public class PayrollDraftStaleness : IPayrollDraftStaleness
 
     public Task MarkAllDraftsAsync() => MarkAsync(null);
 
-    public Task MarkDraftsCoveringAsync(DateTime from, DateTime to) =>
-        MarkAsync(MonthsBetween(from, to));
+    public Task MarkDraftsCoveringAsync(DateTime from, DateTime to, string? userId = null) =>
+        MarkAsync(MonthsBetween(from, to), userId);
+
+    public Task MarkLaterDraftsAsync(DateTime after, string? userId = null) =>
+        after.Month == 12
+            ? Task.CompletedTask
+            : MarkAsync(
+                MonthsBetween(new DateTime(after.Year, after.Month, 1).AddMonths(1), new DateTime(after.Year, 12, 1)),
+                userId, draftsOnly: true);
+
+    public Task MarkDraftsOfYearAsync(int year) =>
+        MarkAsync(MonthsBetween(new DateTime(year, 1, 1), new DateTime(year, 12, 1)), draftsOnly: true);
 
     public async Task MarkAllDraftsForOrgAsync(string organizationId)
     {
@@ -78,7 +104,8 @@ public class PayrollDraftStaleness : IPayrollDraftStaleness
         return months;
     }
 
-    private async Task MarkAsync(IReadOnlyCollection<(int Year, int Month)>? periods)
+    private async Task MarkAsync(
+        IReadOnlyCollection<(int Year, int Month)>? periods, string? userId = null, bool draftsOnly = false)
     {
         // No org, no sweep: without one the tenant filter is off, and a
         // background job must not mark every company's drafts.
@@ -87,7 +114,7 @@ public class PayrollDraftStaleness : IPayrollDraftStaleness
 
         try
         {
-            await _runs.MarkDraftsMutatedAsync(orgId, periods);
+            await _runs.MarkDraftsMutatedAsync(orgId, periods, userId, draftsOnly);
         }
         catch (Exception ex)
         {

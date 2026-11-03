@@ -44,6 +44,11 @@ public class ChartOfAccount : ITenantScoped
     // only inferable, and "XeroAccountId is null" stops being a reliable proxy
     // the moment an account is created locally and later linked to Xero.
     public bool IsCustom { get; set; }
+    // One of the starter claim item types a company without Xero gets
+    // (DefaultClaimItemTypes). Archived when Xero is connected — marked
+    // ArchivedByXeroConnect so a disconnect brings back exactly these.
+    public bool IsDefault { get; set; }
+    public bool ArchivedByXeroConnect { get; set; }
 
     public bool IsSelectable { get; set; } = true;               // employees can file claims against it
 

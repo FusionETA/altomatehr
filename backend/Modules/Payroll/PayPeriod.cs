@@ -113,26 +113,32 @@ public static class PayPeriod
     // What to dock a MONTHLY employee for approved unpaid leave.
     //
     // The base salary is left whole and the absence comes off as its own line,
-    // so the payslip reads "Basic 3,000 / Unpaid Leave −115.38" rather than a
+    // so the payslip reads "Basic 3,100 / Unpaid Leave −100.00" rather than a
     // silently smaller salary.
     //
-    // The divisor is the s.60I ORDINARY-RATE basis — what one day of this
-    // person's pay is worth — not s.18A proration. The two are different
-    // statutes and this is the rate question, so the org's CALENDAR /
-    // TWENTY_SIX setting legitimately applies here (unlike proration, where it
-    // must not; see the note at the top of this file).
+    // Leave without pay is one of EA s.18A's incomplete-month cases, and s.18A
+    // opens "Notwithstanding section 60I": the day is worth the monthly salary
+    // ÷ the CALENDAR days of that month — never ÷26, and not the org's
+    // CALENDAR / TWENTY_SIX setting (that one only reaches the s.60I rate for
+    // overtime). So a RM 3,100 salary docks RM 100 a day in January and
+    // RM 103.33 in April.
+    //
+    // `unpaidDays` is the Leave module's count: WORKING days only. A weekend or
+    // public holiday inside an unpaid leave stays paid — a decision, not an
+    // oversight (Mon 5 – Fri 16 Oct docks 10 days, not 12), even though the
+    // divisor is calendar days.
     //
     // Returns 0 when it does not apply: HOURLY staff are paid for the hours
     // they worked, so there is nothing to dock.
     public static decimal UnpaidLeaveDeduction(
-        decimal? monthlySalary, decimal unpaidDays, int workingDaysBasis)
+        decimal? monthlySalary, decimal unpaidDays, int year, int month)
     {
         if (monthlySalary is null or <= 0m) return 0m;
-        if (unpaidDays <= 0m || workingDaysBasis <= 0) return 0m;
+        if (unpaidDays <= 0m) return 0m;
 
         // Rounded once, at the end — the daily rate stays exact through the
         // multiplication.
-        return Money.Round2(monthlySalary.Value / workingDaysBasis * unpaidDays);
+        return Money.Round2(monthlySalary.Value / CalendarDaysInMonth(year, month) * unpaidDays);
     }
 
     // Mon-Sat days between two dates, both ends inclusive. The window is at

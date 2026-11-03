@@ -1948,10 +1948,12 @@ public class LeaveServiceTests
     private sealed class RecordingDraftStaleness : AltomateHR.Api.Modules.Payroll.IPayrollDraftStaleness
     {
         public List<(DateTime From, DateTime To)> Covering { get; } = [];
+        public List<string?> Users { get; } = [];
         public Task MarkAllDraftsAsync() => Task.CompletedTask;
-        public Task MarkDraftsCoveringAsync(DateTime from, DateTime to)
+        public Task MarkDraftsCoveringAsync(DateTime from, DateTime to, string? userId = null)
         {
             Covering.Add((from, to));
+            Users.Add(userId);
             return Task.CompletedTask;
         }
     }
@@ -2213,7 +2215,7 @@ public class LeaveServiceTests
 
         public Task<OrganizationDto?> GetByIdAsync(string organizationId) =>
             Task.FromResult<OrganizationDto?>(new OrganizationDto { Id = organizationId, Name = "Test Org" });
-        public Task<OrganizationDto> CreateAsync(CreateOrganizationDto dto, string ownerUserId, bool viaSso = false) => throw new NotImplementedException();
+        public Task<OrganizationDto> CreateAsync(CreateOrganizationDto dto, string ownerUserId, bool viaSso = false, bool viaSupport = false) => throw new NotImplementedException();
         public Task<OrganizationDto?> UpdateAsync(string organizationId, UpdateOrganizationDto dto) => throw new NotImplementedException();
         public Task<OrganizationDto?> UpdatePlanAsync(string organizationId, UpdateOrgPlanDto dto) => throw new NotImplementedException();
     }
@@ -2286,8 +2288,8 @@ public class LeaveServiceTests
         public Task<IEnumerable<PolicyDto>> GetAllAsync() => throw new NotImplementedException();
         public Task<PolicySaveResult> CreateAsync(SavePolicyDto dto) => throw new NotImplementedException();
         public Task<PolicySaveResult> UpdateAsync(string id, SavePolicyDto dto) => throw new NotImplementedException();
-        public Task<PolicyDto?> SetArchivedAsync(string id, bool archived) => throw new NotImplementedException();
-        public Task<PolicyDto?> SetDefaultAsync(string id) => throw new NotImplementedException();
+        public Task<PolicySaveResult> SetArchivedAsync(string id, bool archived) => throw new NotImplementedException();
+        public Task<PolicySaveResult> SetDefaultAsync(string id) => throw new NotImplementedException();
 
         public Task<IReadOnlyList<EmployeePolicy>> GetAllAcrossOrgsAsync() =>
             Task.FromResult<IReadOnlyList<EmployeePolicy>>([]);

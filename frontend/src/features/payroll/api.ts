@@ -138,6 +138,12 @@ export type PayrollRun = {
   periodYear: number;
   periodMonth: number;
   periodLabel: string;
+  // A month can be split into runs, one per staff group. Every run after the
+  // month's first is named; `label` is "October 2026 – Workers" (just the
+  // month when unnamed) — show it wherever runs of one month sit together.
+  name: string | null;
+  label: string;
+  runNumber: number;
   status: PayrollRunStatus;
   source: PayrollRunSource;
   // Pay figures are final (an ABPay import): joiners and leavers are paid as
@@ -232,6 +238,8 @@ export type Payslip = {
   otNormalHours: number;
   otRestHours: number;
   otPublicHours: number;
+  // The company's own overtime types paid, named and rated as at generation.
+  otCustom: PayslipOvertimeLine[];
   otPay: number;
   totalAllowances: number;
   totalReimbursements: number;
@@ -262,6 +270,9 @@ export type Payslip = {
   grossShown: number;
   netPay: number;
   totalCostToEmployer: number;
+  // The part of `pcb` the company paid instead of deducting it ("PCB borne by
+  // employer"); 0 otherwise. Not taken from net pay.
+  pcbBorneByEmployer: number;
   // Missing TIN / EPF / SOCSO numbers, recorded at generation. The
   // readiness guard reads the same facts before a submission is accepted.
   statutoryWarnings: string[];
@@ -302,6 +313,10 @@ export type PayrollPickerMember = {
   name: string;
   employeeId: string;
   jobTitle: string;
+  // Already in another run this month — a person is paid in one run a month,
+  // so they're shown but can't be picked.
+  takenByRunId?: string | null;
+  takenByRunLabel?: string | null;
 };
 
 export type PayrollPickerPolicy = {
@@ -318,9 +333,16 @@ export type PayrollRunPicker = { policies: PayrollPickerPolicy[] };
 export const getPayrollRunPicker = (year: number, month: number) =>
   apiGet<PayrollRunPicker>(`/payroll/runs/picker?year=${year}&month=${month}`);
 
+// Rename a run (any status — it's a label). "" clears the name, which the
+// server refuses while another run in the month is unnamed.
+export const renamePayrollRun = (id: string, name: string) =>
+  apiPatch<PayrollRun>(`/payroll/runs/${id}`, { name });
+
 export type CreatePayrollRunInput = {
   periodYear: number;
   periodMonth: number;
+  // Needed when the month already has a run — it tells the runs apart.
+  name?: string;
   // The ticked policies and the individually-unticked employees. Omitted by
   // callers with no scope, which the backend reads as "the whole roster".
   policyIds?: string[];
@@ -386,7 +408,8 @@ export type PayrollReadiness = {
   ok: boolean;
   totalMissingCount: number;
   orgIssues: string[];
-  employeeIssues: { name: string; employeeCode: string; missing: string[] }[];
+  // userId: whose record to open to fill the gap (missing from an older API).
+  employeeIssues: { name: string; employeeCode: string; missing: string[]; userId?: string | null }[];
 };
 
 export const getPayrollReadiness = (id: string) =>
@@ -580,6 +603,14 @@ export const downloadPayrollSummary = (runId: string) =>
 export const downloadPayrollSummaryXlsx = (runId: string) =>
   download(`/payroll/runs/${runId}/documents/summary?format=xlsx`, "payroll-summary.xlsx");
 
+// Every run in a month as one summary — for checking a split month as a
+// whole. Read-only; each run still files and pays on its own.
+export const downloadMonthSummary = (year: number, month: number, format: "pdf" | "xlsx") =>
+  download(
+    `/payroll/runs/month/${year}/${month}/summary${format === "xlsx" ? "?format=xlsx" : ""}`,
+    `payroll-summary-${year}-${String(month).padStart(2, "0")}.${format}`,
+  );
+
 // Everyone the bank file doesn't pay — other banks / e-wallets, cash, cheque,
 // and anyone missing bank details — to pay by hand.
 export const downloadManualPayments = (runId: string) =>
@@ -597,6 +628,22 @@ export const downloadAllowanceReport = (runId: string) =>
 
 export const downloadDeductionReport = (runId: string) =>
   download(`/payroll/runs/${runId}/documents/deductions`, "deduction-report.xlsx");
+
+// Both reports in one zip. A run with only one of the two zips that one;
+// `note` then says which is missing and why.
+export const downloadAllowanceDeductionZip = async (runId: string) => {
+  const file = await download(
+    `/payroll/runs/${runId}/documents/allowances-deductions`,
+    "Allowance_Deduction_Reports.zip",
+  );
+  const skipped = file.headers?.get("X-Bundle-Skipped") ?? "";
+  const note = skipped.includes("deductions")
+    ? "Allowance report only: no deductions on this run other than EPF, SOCSO, EIS and PCB."
+    : skipped.includes("allowances")
+      ? "Deduction report only: no allowances on this run."
+      : undefined;
+  return { ...file, note };
+};
 
 export const downloadPaymentSchedule = (runId: string) =>
   download(
@@ -635,13 +682,14 @@ export const downloadPcbDetails = (runId: string) =>
   );
 
 // The layout is decided by the company's own payroll bank, not by the caller
-// — so there is one endpoint and the server picks. `channel` and
-// `recipientReference` apply to Hong Leong only, which publishes two upload
-// portals taking different files; every other bank ignores them.
+// — so there is one endpoint and the server picks. `channel` applies to Hong
+// Leong only, which publishes two upload portals taking different files;
+// `recipientReference` to Hong Leong and OCBC; `tapeId` and `idCheck` to OCBC.
+// Every other bank ignores them.
 export const downloadBankFile = (
   runId: string,
   paymentDate?: string,
-  options?: { channel?: HlbChannel; recipientReference?: string },
+  options?: { channel?: HlbChannel; recipientReference?: string; tapeId?: string; idCheck?: boolean },
 ) => {
   const query = new URLSearchParams();
   if (paymentDate) query.set("paymentDate", paymentDate);
@@ -649,6 +697,8 @@ export const downloadBankFile = (
   if (options?.recipientReference) {
     query.set("recipientReference", options.recipientReference);
   }
+  if (options?.tapeId) query.set("tapeId", options.tapeId);
+  if (options?.idCheck) query.set("idCheck", "true");
 
   return download(
     `/payroll/runs/${runId}/documents/bank-file${query.size > 0 ? `?${query}` : ""}`,
@@ -671,6 +721,17 @@ export const downloadPerkesoSkbbkTxt = (runId: string) =>
 
 export const downloadPcbTxt = (runId: string) =>
   download(`/payroll/runs/${runId}/files/pcb`, "PCB.txt");
+
+// The four statutory uploads in one zip. A file that couldn't be produced is
+// left out and its key listed in `skipped` ("epf", "socso-eis",
+// "socso-eis-skbbk", "pcb"); its reason comes from downloading it alone.
+export const downloadStatutoryZip = async (runId: string) => {
+  const file = await download(`/payroll/runs/${runId}/files/statutory`, "Statutory.zip");
+  const skipped = (file.headers?.get("X-Bundle-Skipped") ?? "")
+    .split(",")
+    .filter((key) => key.length > 0);
+  return { file, skipped };
+};
 
 // ─── The payroll roster ───────────────────────────────────────────────
 
@@ -1101,6 +1162,8 @@ export type PayrollRunAdjustment = {
   otNormalHours: number;
   otRestHours: number;
   otPublicHours: number;
+  // The company's own overtime types: type id → hours.
+  otCustomHours: Record<string, number>;
   manualLineItems: ManualLineItem[];
   // Keyed by the profile allowance's array index, as a string.
   fixedAllowanceOverrides: Record<string, FixedAllowanceOverride>;
@@ -1111,6 +1174,8 @@ export type PayrollRunAdjustment = {
   basicPayOverride: number | null;
   // Null = use approved unpaid leave from the Leave module; a number replaces it.
   unpaidLeaveDays: number | null;
+  // Employer HRDF levy entered for this person: replaces the computed levy.
+  hrdfLevy: number | null;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -1122,6 +1187,7 @@ export type SavePayrollRunAdjustment = {
   otNormalHours: number;
   otRestHours: number;
   otPublicHours: number;
+  otCustomHours: Record<string, number>;
   manualLineItems: {
     category: string;
     label: string | null;
@@ -1133,6 +1199,8 @@ export type SavePayrollRunAdjustment = {
   expectedHours: number | null;
   basicPayOverride: number | null;
   unpaidLeaveDays: number | null;
+  // Null = computed (levy rate × HRDF wages); an amount is the final figure.
+  hrdfLevy: number | null;
   notes: string | null;
 };
 
@@ -1169,6 +1237,9 @@ export type PayrollAdjustmentContext = {
   unpaidMonthlySalary: number | null;
   unpaidDayBasis: number;
   unpaidDayBasisLabel: string;
+  // The employer HRDF levy the formula gives, from the run's last payroll
+  // (null until payroll has been run) — the greyed value behind the box.
+  computedHrdfLevy?: number | null;
   // False when the policy keeps this employee off attendance; the figures
   // above are then absent rather than zero.
   attendanceApplies: boolean;
@@ -1181,8 +1252,28 @@ export type PayrollAdjustmentContext = {
   approvedOtNormalHours: number;
   approvedOtRestHours: number;
   approvedOtPublicHours: number;
+  // Every overtime box, in order: the three built-in types under the
+  // company's names (key normalDay / restDay / publicHoliday), then the
+  // company's own types this person's policy offers or that have hours.
+  overtimeTypes: AdjustmentOvertimeType[];
   loanInstallments: LoanInstallmentPreview[];
   editable: boolean;
+};
+
+export type PayslipOvertimeLine = {
+  typeId: string;
+  name: string;
+  hours: number;
+  multiplier: number;
+  amount: number;
+};
+
+export type AdjustmentOvertimeType = {
+  key: string;
+  name: string;
+  builtIn: boolean;
+  multiplier: number;
+  approvedHours: number;
 };
 
 export const getRunAdjustments = (runId: string) =>
@@ -1358,6 +1449,8 @@ export const XERO_EXPENSE_SLOTS = [
   { key: "socsoEmployer", label: "SOCSO — employer contribution" },
   { key: "eisEmployer", label: "EIS — employer contribution" },
   { key: "hrdfEmployer", label: "HRD Corp levy" },
+  // Optional — left blank, it posts to Salary.
+  { key: "taxBorneByEmployer", label: "PCB borne by employer (optional — Salary if blank)" },
 ] as const;
 
 export const XERO_ACCRUAL_SLOTS = [

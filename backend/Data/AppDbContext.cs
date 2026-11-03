@@ -19,6 +19,7 @@ using AltomateHR.Api.Modules.Projects.Entities;
 using AltomateHR.Api.Modules.Shifts.Entities;
 using AltomateHR.Api.Modules.Teams.Entities;
 using AltomateHR.Api.Modules.Xero.Entities;
+using AltomateHR.Api.Modules.Fah.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace AltomateHR.Api.Data;
@@ -63,6 +64,8 @@ public class AppDbContext : DbContext
     public DbSet<OvertimeRequest> OvertimeRequests => Set<OvertimeRequest>();
     public DbSet<EmployeePolicy> EmployeePolicies => Set<EmployeePolicy>();
     public DbSet<PolicyLeaveEntitlement> PolicyLeaveEntitlements => Set<PolicyLeaveEntitlement>();
+    public DbSet<OvertimeType> OvertimeTypes => Set<OvertimeType>();
+    public DbSet<PolicyOvertimeRate> PolicyOvertimeRates => Set<PolicyOvertimeRate>();
     public DbSet<Shift> Shifts => Set<Shift>();
     public DbSet<Holiday> Holidays => Set<Holiday>();
     public DbSet<Team> Teams => Set<Team>();
@@ -70,7 +73,12 @@ public class AppDbContext : DbContext
     public DbSet<TeamApprovalOverride> TeamApprovalOverrides => Set<TeamApprovalOverride>();
     public DbSet<XeroConnection> XeroConnections => Set<XeroConnection>();
     public DbSet<XeroOAuthState> XeroOAuthStates => Set<XeroOAuthState>();
+    // Platform-level, set by the superadmin: deliberately NOT company-filtered.
+    public DbSet<XeroApp> XeroApps => Set<XeroApp>();
+    public DbSet<XeroOwnerSetting> XeroOwnerSettings => Set<XeroOwnerSetting>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
+    public DbSet<FahConversation> FahConversations => Set<FahConversation>();
+    public DbSet<FahAttachment> FahAttachments => Set<FahAttachment>();
 
     // Not ITenantScoped, so it gets no global query filter — that is the point.
     // See MasterKey: provisioning cannot require a credential that already
@@ -96,6 +104,7 @@ public class AppDbContext : DbContext
     public DbSet<PayrollRunAdjustment> PayrollRunAdjustments => Set<PayrollRunAdjustment>();
     public DbSet<PayrollRunClaim> PayrollRunClaims => Set<PayrollRunClaim>();
     public DbSet<PayrollRunMember> PayrollRunMembers => Set<PayrollRunMember>();
+    public DbSet<UnpaidLeaveSettlement> UnpaidLeaveSettlements => Set<UnpaidLeaveSettlement>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<WebPushSubscription> WebPushSubscriptions => Set<WebPushSubscription>();
     public DbSet<DocumentTemplate> DocumentTemplates => Set<DocumentTemplate>();
@@ -216,6 +225,12 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<PolicyLeaveEntitlement>()
             .HasIndex(e => new { e.PolicyId, e.LeaveTypeId }).IsUnique();
 
+        var otType = modelBuilder.Entity<OvertimeType>();
+        otType.Property(t => t.Kind).HasConversion<string>().HasMaxLength(20);
+        otType.HasIndex(t => new { t.OrganizationId, t.Kind });
+        modelBuilder.Entity<PolicyOvertimeRate>()
+            .HasIndex(r => new { r.PolicyId, r.OvertimeTypeId }).IsUnique();
+
         modelBuilder.Entity<Shift>().HasIndex(s => new { s.ProjectId, s.Name }).IsUnique();
         modelBuilder.Entity<Shift>().HasIndex(s => new { s.ProjectId, s.IsDefault });
 
@@ -243,6 +258,8 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<XeroConnection>().HasIndex(c => c.OrganizationId).IsUnique();
         modelBuilder.Entity<XeroConnection>().HasIndex(c => c.TenantId);
         modelBuilder.Entity<XeroOAuthState>().HasIndex(s => s.State).IsUnique();
+        modelBuilder.Entity<XeroOwnerSetting>().HasIndex(s => s.OwnerUserId).IsUnique();
+        modelBuilder.Entity<XeroOwnerSetting>().Property(s => s.Choice).HasConversion<string>().HasMaxLength(20);
 
         modelBuilder.Entity<ApiKey>().HasIndex(k => k.TokenHash).IsUnique();  // the per-request lookup
         modelBuilder.Entity<ApiKey>().HasIndex(k => k.OrganizationId);
@@ -318,10 +335,12 @@ public class AppDbContext : DbContext
         companyInfo.HasIndex(c => c.OrganizationId).IsUnique();
         companyInfo.Property(c => c.DeclarantIdType).HasConversion<string>().HasMaxLength(20);
 
-        // Payroll runs — one per (org, period), which is what makes "the January
-        // run" unambiguous for every statutory filing downstream.
+        // Payroll runs — a month can hold several (one per staff group), each
+        // with its own number, so two runs started at the same moment can't
+        // both become the month's run 1. What is also unique is a person
+        // within a month: see the Payslip and PayrollRunMember indexes below.
         var payrollRun = modelBuilder.Entity<PayrollRun>();
-        payrollRun.HasIndex(r => new { r.OrganizationId, r.PeriodYear, r.PeriodMonth }).IsUnique();
+        payrollRun.HasIndex(r => new { r.OrganizationId, r.PeriodYear, r.PeriodMonth, r.RunNumber }).IsUnique();
         payrollRun.HasIndex(r => new { r.OrganizationId, r.Status });
         payrollRun.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
         payrollRun.Property(r => r.Source).HasConversion<string>().HasMaxLength(20);
@@ -330,6 +349,9 @@ public class AppDbContext : DbContext
         // half-failed regeneration from leaving two payslips for one person.
         var payslip = modelBuilder.Entity<Payslip>();
         payslip.HasIndex(p => new { p.PayrollRunId, p.EmployeeProfileId }).IsUnique();
+        // One payslip per person per MONTH, across every run of that month —
+        // what lets a month hold several runs without anyone being paid twice.
+        payslip.HasIndex(p => new { p.OrganizationId, p.PeriodYear, p.PeriodMonth, p.EmployeeProfileId }).IsUnique();
         // The YTD read walks the year's payslips per employee, so this is the
         // index it needs; the run's own detail page uses the unique one above.
         payslip.HasIndex(p => new { p.OrganizationId, p.EmployeeProfileId });
@@ -357,6 +379,14 @@ public class AppDbContext : DbContext
         // unique index stops a double-insert leaving someone on the run twice.
         var runMember = modelBuilder.Entity<PayrollRunMember>();
         runMember.HasIndex(m => new { m.PayrollRunId, m.EmployeeProfileId }).IsUnique();
+        // And one run per person per month: two runs of a month can't both
+        // hold the same person, even if two admins pick them at once.
+        runMember.HasIndex(m => new { m.OrganizationId, m.PeriodYear, m.PeriodMonth, m.EmployeeProfileId }).IsUnique();
+
+        // Which payslip settled which unpaid leave — read by year, rebuilt by run.
+        var settlement = modelBuilder.Entity<UnpaidLeaveSettlement>();
+        settlement.HasIndex(s => new { s.OrganizationId, s.PeriodYear });
+        settlement.HasIndex(s => s.PayrollRunId);
         lineItem.Property(li => li.Kind).HasConversion<string>().HasMaxLength(20);
         profile.Property(p => p.SalaryType).HasConversion<string>().HasMaxLength(20);
 
@@ -432,6 +462,10 @@ public class AppDbContext : DbContext
             p => _currentUser.OrganizationId == null || p.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<PolicyLeaveEntitlement>().HasQueryFilter(
             e => _currentUser.OrganizationId == null || e.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<OvertimeType>().HasQueryFilter(
+            t => _currentUser.OrganizationId == null || t.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<PolicyOvertimeRate>().HasQueryFilter(
+            r => _currentUser.OrganizationId == null || r.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<Shift>().HasQueryFilter(
             s => _currentUser.OrganizationId == null || s.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<Holiday>().HasQueryFilter(
@@ -457,6 +491,15 @@ public class AppDbContext : DbContext
         // known. ApiKeyAuditLog is NOT tenant-scoped (internal operational log).
         modelBuilder.Entity<ApiKey>().HasQueryFilter(
             k => _currentUser.OrganizationId == null || k.OrganizationId == _currentUser.OrganizationId);
+        // A FAH chat belongs to one person in one company; FahRepository adds the person.
+        modelBuilder.Entity<FahConversation>().HasQueryFilter(
+            c => _currentUser.OrganizationId == null || c.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<FahConversation>().HasIndex(c => new { c.OrganizationId, c.UserId, c.UpdatedAt });
+        // An attached file, the same: FahAttachmentRepository adds the person.
+        modelBuilder.Entity<FahAttachment>().HasQueryFilter(
+            a => _currentUser.OrganizationId == null || a.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<FahAttachment>().HasIndex(a => new { a.OrganizationId, a.UserId, a.ConversationId });
+        modelBuilder.Entity<FahAttachment>().Property(a => a.Kind).HasConversion<string>().HasMaxLength(10);
         modelBuilder.Entity<EmployeeProfile>().HasQueryFilter(
             p => (_currentUser.OrganizationId == null || p.OrganizationId == _currentUser.OrganizationId)
                  && (_scope.UserIds == null || _scope.UserIds.Contains(p.UserId)));
@@ -497,6 +540,9 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<PayrollRunMember>().HasQueryFilter(
             m => (_currentUser.OrganizationId == null || m.OrganizationId == _currentUser.OrganizationId)
                  && (_scope.ProfileIds == null || _scope.ProfileIds.Contains(m.EmployeeProfileId)));
+        modelBuilder.Entity<UnpaidLeaveSettlement>().HasQueryFilter(
+            s => (_currentUser.OrganizationId == null || s.OrganizationId == _currentUser.OrganizationId)
+                 && (_scope.ProfileIds == null || _scope.ProfileIds.Contains(s.EmployeeProfileId)));
         modelBuilder.Entity<Notification>().HasQueryFilter(
             n => _currentUser.OrganizationId == null || n.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<DocumentTemplate>().HasQueryFilter(

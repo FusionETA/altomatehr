@@ -145,6 +145,7 @@ public class EmployeeImportService : IEmployeeImportService
                 [EmployeeImportSheet.RoleKey] = employee.Role,
                 [EmployeeImportSheet.EmployeeNumberKey] = employee.EmployeeNumber,
                 [EmployeeImportSheet.JobTitleKey] = employee.JobTitle,
+                [EmployeeImportSheet.NicknameKey] = employee.Nickname,
                 [EmployeeImportSheet.JoinDateKey] = TabularSheet.Date(employee.JoinDate ?? p.JoinDate),
                 [EmployeeImportSheet.DateOfBirthKey] = TabularSheet.Date(p.DateOfBirth),
                 // Names, not ids, because that is what the import reads back.
@@ -210,7 +211,10 @@ public class EmployeeImportService : IEmployeeImportService
     }
 
     public async Task<EmployeeImportResult> ImportAsync(
-        byte[] content, TabularFormat format, EmployeeImportBlankCells blanks = EmployeeImportBlankCells.Keep)
+        byte[] content,
+        TabularFormat format,
+        EmployeeImportBlankCells blanks = EmployeeImportBlankCells.Keep,
+        bool checkOnly = false)
     {
         IReadOnlyList<TabularSheetContent> sheets;
         try
@@ -270,6 +274,9 @@ public class EmployeeImportService : IEmployeeImportService
         var createdAccounts = new List<CreatedAccount>();
         var created = 0;
         var updated = 0;
+        // Checking only: new people the file would add, so a repeat of one
+        // further down counts as the update it would be.
+        var wouldAdd = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         for (var i = 1; i < rows.Count; i++)
         {
@@ -283,6 +290,12 @@ public class EmployeeImportService : IEmployeeImportService
             if (email is null)
             {
                 errors.Add(new TabularImportError(rowNumber, "Email is blank — every row needs one."));
+                continue;
+            }
+
+            if (checkOnly && wouldAdd.Contains(email))
+            {
+                updated++;
                 continue;
             }
 
@@ -312,6 +325,12 @@ public class EmployeeImportService : IEmployeeImportService
                 if (cells.Problems.Count > 0)
                 {
                     errors.Add(new TabularImportError(rowNumber, string.Join(" ", cells.Problems.Distinct())));
+                    continue;
+                }
+                if (checkOnly)
+                {
+                    if (nationalityWarning is not null) warnings.Add(nationalityWarning);
+                    updated++;
                     continue;
                 }
 
@@ -369,6 +388,13 @@ public class EmployeeImportService : IEmployeeImportService
                 errors.Add(new TabularImportError(rowNumber, string.Join(" ", adding.Problems.Distinct())));
                 continue;
             }
+            if (checkOnly)
+            {
+                if (nationalityWarning is not null) warnings.Add(nationalityWarning);
+                wouldAdd.Add(email);
+                created++;
+                continue;
+            }
 
             var create = await _employees.CreateAsync(new CreateEmployeeDto
             {
@@ -378,6 +404,7 @@ public class EmployeeImportService : IEmployeeImportService
                 Role = adding.Text(EmployeeImportSheet.RoleKey, 20) ?? "Employee",
                 EmployeeNumber = number,
                 JobTitle = adding.Text(EmployeeImportSheet.JobTitleKey, 120),
+                Nickname = adding.Text(EmployeeImportSheet.NicknameKey, 60),
                 JoinDate = joinDate,
                 DateOfBirth = dateOfBirth,
                 PolicyId = policyId,
@@ -455,6 +482,7 @@ public class EmployeeImportService : IEmployeeImportService
         cells.Required(EmployeeImportSheet.EmployeeNumberKey, "Employee No", 40, v => save.EmployeeNumber = v);
         // The service reads "" as "clear" for these two, null as "unchanged".
         cells.Text(EmployeeImportSheet.JobTitleKey, 120, v => save.JobTitle = v ?? string.Empty);
+        cells.Text(EmployeeImportSheet.NicknameKey, 60, v => save.Nickname = v ?? string.Empty);
         cells.Date(EmployeeImportSheet.JoinDateKey, v =>
         {
             if (v is null) save.ClearJoinDate = true;
@@ -591,7 +619,7 @@ public class EmployeeImportService : IEmployeeImportService
         [
             EmployeeImportSheet.EmailKey, EmployeeImportSheet.NameKey, EmployeeImportSheet.RoleKey,
             EmployeeImportSheet.EmployeeNumberKey, EmployeeImportSheet.JobTitleKey,
-            EmployeeImportSheet.PolicyKey, EmployeeImportSheet.ShiftKey,
+            EmployeeImportSheet.NicknameKey, EmployeeImportSheet.PolicyKey, EmployeeImportSheet.ShiftKey,
         ];
 
         private static readonly string[] ProfileKeys =

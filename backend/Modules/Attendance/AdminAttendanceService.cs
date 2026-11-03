@@ -209,7 +209,7 @@ public class AdminAttendanceService : IAdminAttendanceService
 
     private static string Label(EmployeeRowIndex directory, string userId)
     {
-        var name = directory.NameOf(userId);
+        var name = directory.DisplayNameOf(userId);
         if (!string.IsNullOrWhiteSpace(name)) return name;
 
         var email = directory.EmailOf(userId);

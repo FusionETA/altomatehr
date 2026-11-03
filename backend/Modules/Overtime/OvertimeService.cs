@@ -27,6 +27,8 @@ public class OvertimeService : IOvertimeService
     // always does.
     private readonly Payroll.IPayrollDraftStaleness? _drafts;
 
+    private readonly IOvertimeTypeService? _types;
+
     public OvertimeService(
         IOvertimeRepository requests,
         IOvertimePhotoStorage photos,
@@ -35,8 +37,10 @@ public class OvertimeService : IOvertimeService
         INotificationService notifications,
         ITeamService teams,
         Xero.IXeroFileReader xero,
-        Payroll.IPayrollDraftStaleness? drafts = null)
+        Payroll.IPayrollDraftStaleness? drafts = null,
+        IOvertimeTypeService? types = null)
     {
+        _types = types;
         _drafts = drafts;
         _requests = requests;
         _photos = photos;
@@ -48,7 +52,7 @@ public class OvertimeService : IOvertimeService
     }
 
     public async Task<IEnumerable<OvertimeRequestDto>> GetMineAsync(string userId) =>
-        (await _requests.GetByEmployeeAsync(userId)).Select(ToDto);
+        await WithTypeNamesAsync((await _requests.GetByEmployeeAsync(userId)).Select(ToDto));
 
     public async Task<IEnumerable<OvertimeRequestDto>> GetTeamAsync(string userId)
     {
@@ -70,13 +74,13 @@ public class OvertimeService : IOvertimeService
         var people = visible.Select(r => r.EmployeeId).Distinct().ToList();
         var emails = await _supervision.GetEmailsAsync(people);
         var names = await _supervision.GetNamesAsync(people);
-        return visible.Select(request =>
+        return await WithTypeNamesAsync(visible.Select(request =>
         {
             var dto = ToDto(request);
             dto.EmployeeEmail = emails.GetValueOrDefault(request.EmployeeId);
             dto.EmployeeName = names.GetValueOrDefault(request.EmployeeId);
             return dto;
-        });
+        }));
     }
 
     public async Task<IEnumerable<OvertimeRequestDto>> GetAllForAdminAsync()
@@ -94,7 +98,7 @@ public class OvertimeService : IOvertimeService
         var emails = await _supervision.GetEmailsAsync(people!);
         var names = await _supervision.GetNamesAsync(people!);
 
-        return all.Select(request =>
+        return await WithTypeNamesAsync(all.Select(request =>
         {
             var dto = ToDto(request);
             dto.EmployeeEmail = emails.GetValueOrDefault(request.EmployeeId);
@@ -106,14 +110,25 @@ public class OvertimeService : IOvertimeService
                 ? null
                 : names.GetValueOrDefault(request.ReviewerId);
             return dto;
-        });
+        }));
+    }
+
+    // The picked overtime type's name, for the requests that have one.
+    private async Task<IEnumerable<OvertimeRequestDto>> WithTypeNamesAsync(IEnumerable<OvertimeRequestDto> dtos)
+    {
+        var list = dtos.ToList();
+        if (_types is null || list.All(d => d.OvertimeTypeId is null)) return list;
+        var names = (await _types.GetAllAsync(includeArchived: true)).ToDictionary(t => t.Id, t => t.Name);
+        foreach (var dto in list)
+            if (dto.OvertimeTypeId is { } id) dto.OvertimeTypeName = names.GetValueOrDefault(id);
+        return list;
     }
 
     public async Task<OvertimeRequestDto?> GetVisibleByIdAsync(string id, string userId, bool isAdmin)
     {
         var request = await _requests.GetByIdAsync(id);
         if (request is null) return null;
-        return isAdmin || request.EmployeeId == userId ? ToDto(request) : null;
+        return isAdmin || request.EmployeeId == userId ? (await WithTypeNamesAsync([ToDto(request)])).Single() : null;
     }
 
     public async Task<OvertimeSubmitResult> SubmitAsync(CreateOvertimeRequestDto dto, string employeeId)
@@ -164,11 +179,21 @@ public class OvertimeService : IOvertimeService
                 "You're not assigned to that project. Pick one of your own, or ask an admin to add you to its team.");
         }
 
+        // A type is optional, but must be one this employee's policy offers.
+        var typeId = Clean(dto.OvertimeTypeId);
+        if (typeId is not null && _types is not null
+            && (await _types.PickableForEmployeeAsync(employeeId)).All(t => t.Id != typeId))
+        {
+            return new OvertimeSubmitResult(false, null,
+                "That overtime type isn't available to you. Pick another, or leave it on automatic.");
+        }
+
         var now = DateTime.UtcNow;
         var request = new OvertimeRequest
         {
             EmployeeId = employeeId,
             ProjectId = projectId,
+            OvertimeTypeId = typeId,
             WorkDate = dto.WorkDate.Value.Date,
             StartAt = startAt,
             EndAt = endAt,
@@ -186,7 +211,7 @@ public class OvertimeService : IOvertimeService
 
         await _requests.AddAsync(request);
         await NotifyReviewersAsync(request);
-        return new OvertimeSubmitResult(true, ToDto(request), null);
+        return new OvertimeSubmitResult(true, (await WithTypeNamesAsync([ToDto(request)])).Single(), null);
     }
 
     // Removes EVERY after-work file from a request (DELETE /after-photo, kept
@@ -307,7 +332,7 @@ public class OvertimeService : IOvertimeService
     private async Task MarkPayrollIfApprovedAsync(OvertimeRequest request)
     {
         if (_drafts is null || request.Status != OvertimeStatus.APPROVED) return;
-        await _drafts.MarkDraftsCoveringAsync(request.WorkDate, request.WorkDate);
+        await _drafts.MarkDraftsCoveringAsync(request.WorkDate, request.WorkDate, request.EmployeeId);
     }
 
     public async Task<OvertimeTransitionResult> ApproveAsync(string id, string approverId)
@@ -706,6 +731,7 @@ public class OvertimeService : IOvertimeService
         StartAt = Iso(request.StartAt) ?? string.Empty,
         EndAt = Iso(request.EndAt) ?? string.Empty,
         RequestedMinutes = request.RequestedMinutes,
+        OvertimeTypeId = request.OvertimeTypeId,
         Reason = request.Reason,
         BeforePhotoUrl = request.BeforePhotoUrl,
         AfterPhotoUrl = request.AfterPhotoUrl,

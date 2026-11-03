@@ -23,11 +23,13 @@ public class ClaimsController : ControllerBase
 {
     private readonly IClaimsService _claims;
     private readonly IReceiptOcrService _ocr;
+    private readonly IMileageScanService _mileageScan;
 
-    public ClaimsController(IClaimsService claims, IReceiptOcrService ocr)
+    public ClaimsController(IClaimsService claims, IReceiptOcrService ocr, IMileageScanService mileageScan)
     {
         _claims = claims;
         _ocr = ocr;
+        _mileageScan = mileageScan;
     }
 
     // GET /claims — the caller's own claims.
@@ -121,25 +123,59 @@ public class ClaimsController : ControllerBase
     // extraction over the stored copy and returns both. Writes nothing to the
     // database: the values are form pre-fill, and the claim is still created by
     // the normal POST /claims with the returned ReceiptUrl.
-    //
-    // A failed extraction is NOT a failed upload — the file is already stored, so
-    // the response still carries the ReceiptUrl and the client can fall back to
-    // manual entry rather than making the user upload again.
     [HumanOnly]
     [HttpPost("receipts/analyze")]
     [RequestSizeLimit(8 * 1024 * 1024)]
     [EnableRateLimiting("ocr")]
-    public async Task<ActionResult<AnalyzeReceiptResponseDto>> AnalyzeReceipt(
-        IFormFile? receiptFile,
+    public Task<IActionResult> AnalyzeReceipt(IFormFile? receiptFile, CancellationToken cancellationToken) =>
+        StoreThenReadAsync(
+            receiptFile,
+            "Pick a receipt file to upload.",
+            async (bytes, contentType, receiptUrl) => new AnalyzeReceiptResponseDto
+            {
+                ReceiptUrl = receiptUrl,
+                Extraction = await _ocr.AnalyzeAsync(bytes, contentType, cancellationToken),
+            },
+            cancellationToken);
+
+    // POST /claims/mileage/analyze — upload a route screenshot (Google Maps,
+    // Waze, ...) AND read the distance and both ends off it. Same contract as
+    // the receipt read: the file is stored first and becomes the mileage
+    // claim's main document; the values are form pre-fill only.
+    [HumanOnly]
+    [HttpPost("mileage/analyze")]
+    [RequestSizeLimit(8 * 1024 * 1024)]
+    [EnableRateLimiting("ocr")]
+    public Task<IActionResult> AnalyzeMileage(IFormFile? receiptFile, CancellationToken cancellationToken) =>
+        StoreThenReadAsync(
+            receiptFile,
+            "Pick a route screenshot to upload.",
+            async (bytes, contentType, receiptUrl) => new AnalyzeMileageResponseDto
+            {
+                ReceiptUrl = receiptUrl,
+                Extraction = await _mileageScan.AnalyzeAsync(bytes, contentType, cancellationToken),
+            },
+            cancellationToken);
+
+    // Stores the upload exactly as POST /claims/receipts does, then reads the
+    // stored bytes with the model.
+    //
+    // A failed read is NOT a failed upload — the file is already stored, so the
+    // error still carries the ReceiptUrl and the client can fall back to manual
+    // entry rather than making the user upload again.
+    private async Task<IActionResult> StoreThenReadAsync<T>(
+        IFormFile? file,
+        string missingMessage,
+        Func<byte[], string, string, Task<T>> read,
         CancellationToken cancellationToken)
     {
-        if (receiptFile is null || receiptFile.Length == 0)
-            return BadRequest(new { message = "Pick a receipt file to upload." });
+        if (file is null || file.Length == 0)
+            return BadRequest(new { message = missingMessage });
 
         // Buffer once (capped at 8 MB by RequestSizeLimit): the bytes are needed
         // twice — to store, and to analyze.
         byte[] bytes;
-        await using (var stream = receiptFile.OpenReadStream())
+        await using (var stream = file.OpenReadStream())
         {
             using var buffer = new MemoryStream();
             await stream.CopyToAsync(buffer, cancellationToken);
@@ -151,9 +187,9 @@ public class ClaimsController : ControllerBase
         {
             using var storeStream = new MemoryStream(bytes, writable: false);
             var stored = await _claims.StoreReceiptAsync(new ClaimReceiptUpload(
-                receiptFile.FileName,
-                receiptFile.ContentType,
-                receiptFile.Length,
+                file.FileName,
+                file.ContentType,
+                file.Length,
                 storeStream));
             receiptUrl = stored.ReceiptUrl;
         }
@@ -165,8 +201,7 @@ public class ClaimsController : ControllerBase
 
         try
         {
-            var extraction = await _ocr.AnalyzeAsync(bytes, receiptFile.ContentType, cancellationToken);
-            return Ok(new AnalyzeReceiptResponseDto { ReceiptUrl = receiptUrl, Extraction = extraction });
+            return Ok(await read(bytes, file.ContentType, receiptUrl));
         }
         catch (AiConfigurationException ex)
         {

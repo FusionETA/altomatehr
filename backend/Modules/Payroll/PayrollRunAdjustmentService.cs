@@ -25,6 +25,9 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
     // and no rate — generation still prices typed days correctly.
     private readonly Leave.ILeaveService? _leave;
     private readonly IPayrollSettingsService? _settings;
+    private readonly IPayslipRepository? _payslips;
+
+    private readonly Overtime.IOvertimeTypeService? _overtimeTypes;
 
     public PayrollRunAdjustmentService(
         IPayrollRunAdjustmentRepository adjustments,
@@ -36,8 +39,12 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
         IAuditService audit,
         Overtime.IApprovedOvertimeService approvedOvertime,
         Leave.ILeaveService? leave = null,
-        IPayrollSettingsService? settings = null)
+        IPayrollSettingsService? settings = null,
+        IPayslipRepository? payslips = null,
+        Overtime.IOvertimeTypeService? overtimeTypes = null)
     {
+        _overtimeTypes = overtimeTypes;
+        _payslips = payslips;
         _approvedOvertime = approvedOvertime;
         _leave = leave;
         _settings = settings;
@@ -54,6 +61,26 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
     // generation time. Anything shown here that generation then decides
     // differently is worse than showing nothing — the admin would type against
     // a preview that does not hold.
+    // What the formula gives, off the last payroll's HRDF wage — the same
+    // arithmetic as PayslipCalculator, without any entered override.
+    private async Task<decimal?> ComputedHrdfLevyAsync(string runId, string employeeProfileId)
+    {
+        if (_payslips is null || _settings is null) return null;
+        // A run that needs re-running (an input or the HRDF settings changed
+        // since) may have payslips the current formula would no longer give.
+        var run = await _runs.GetByIdAsync(runId);
+        if (run is null || run.GeneratedAt is null
+            || run.LastMutatedAt is { } mutated && mutated > run.GeneratedAt)
+            return null;
+        var payslip = (await _payslips.GetForRunAsync(runId))
+            .FirstOrDefault(p => p.EmployeeProfileId == employeeProfileId);
+        if (payslip is null) return null;
+        var settings = await _settings.GetEffectiveAsync();
+        return settings.HrdfEnabled && settings.HrdfRate is > 0m and var rate
+            ? Money.Round2(payslip.HrdfWage * rate / 100m)
+            : 0m;
+    }
+
     public async Task<PayrollAdjustmentContextDto?> GetContextAsync(
         string runId, string employeeProfileId)
     {
@@ -93,13 +120,13 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
         var adjustment = await _adjustments.GetAsync(runId, employeeProfileId);
 
         // The same two figures generation uses: approved unpaid days from the
-        // Leave module, and the day basis from Payroll Settings.
+        // Leave module, and the month's calendar days (EA s.18A — see
+        // PayPeriod.UnpaidLeaveDeduction; the working-days setting doesn't apply).
         var approvedUnpaid = _leave is null
             ? 0m
             : (decimal)(await _leave.GetApprovedUnpaidDaysForOrgAsync(periodStart, periodEnd))
                 .GetValueOrDefault(profile.UserId);
-        var rule = _settings is null ? WorkingDaysRule.TWENTY_SIX : (await _settings.GetEffectiveAsync()).WorkingDaysRule;
-        var basis = PayPeriod.WorkingDaysForPeriod(run.PeriodYear, run.PeriodMonth, rule);
+        var basis = PayPeriod.CalendarDaysInMonth(run.PeriodYear, run.PeriodMonth);
 
         return new PayrollAdjustmentContextDto
         {
@@ -121,13 +148,15 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
                 : null,
             UnpaidMonthlySalary = profile.SalaryType == SalaryType.MONTHLY ? profile.MonthlySalary : null,
             UnpaidDayBasis = basis,
-            UnpaidDayBasisLabel = rule == WorkingDaysRule.CALENDAR ? "calendar days" : "working days",
+            UnpaidDayBasisLabel = "calendar days",
             AttendanceApplies = attendanceApplies,
+            ComputedHrdfLevy = await ComputedHrdfLevyAsync(runId, employeeProfileId),
 
             CashOvertime = cashOt,
             ApprovedOtNormalHours = PayrollOvertimeHours.ToHours(approvedOt?.NormalDayMin ?? 0),
             ApprovedOtRestHours = PayrollOvertimeHours.ToHours(approvedOt?.RestDayMin ?? 0),
             ApprovedOtPublicHours = PayrollOvertimeHours.ToHours(approvedOt?.PublicHolidayMin ?? 0),
+            OvertimeTypes = await OvertimeBoxesAsync(policy, approvedOt, adjustment),
             OvertimeDisabledReason = cashOt
                 ? null
                 : policy!.OtEnabled
@@ -201,19 +230,33 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
                 "This run is no longer a draft — revert it before editing adjustments.");
         }
 
-        // No more unpaid days than the month's day basis — beyond it the dock
-        // exceeds the salary itself. Negative is never meaningful.
+        // No more unpaid days than the month's calendar days — the dock's
+        // divisor, so beyond it the dock exceeds the salary itself. Negative
+        // is never meaningful.
         if (dto.UnpaidLeaveDays is { } typedDays)
         {
-            var rule = _settings is null ? WorkingDaysRule.TWENTY_SIX : (await _settings.GetEffectiveAsync()).WorkingDaysRule;
-            var basis = PayPeriod.WorkingDaysForPeriod(run.PeriodYear, run.PeriodMonth, rule);
+            var basis = PayPeriod.CalendarDaysInMonth(run.PeriodYear, run.PeriodMonth);
             if (typedDays < 0m || typedDays > basis)
             {
                 return new PayrollRunAdjustmentSaveResult(
                     true, false, null,
-                    $"Unpaid days must be between 0 and {basis} — the month's {basis} "
-                    + $"{(rule == WorkingDaysRule.CALENDAR ? "calendar" : "working")} days.");
+                    $"Unpaid days must be between 0 and {basis} — the month's {basis} calendar days.");
             }
+        }
+
+        // Each custom box must be one of the company's own overtime types.
+        if (dto.OtCustomHours.Count > 0)
+        {
+            var known = _overtimeTypes is null
+                ? []
+                : (await _overtimeTypes.GetAllAsync(includeArchived: true))
+                    .Where(t => t.Kind == Overtime.Entities.OvertimeTypeKind.CUSTOM)
+                    .Select(t => t.Id)
+                    .ToHashSet(StringComparer.Ordinal);
+            if (dto.OtCustomHours.Keys.FirstOrDefault(k => !known.Contains(k)) is { } unknown)
+                return new PayrollRunAdjustmentSaveResult(true, false, null, $"Unknown overtime type '{unknown}'.");
+            if (dto.OtCustomHours.Values.Any(h => h is < 0m or > 999.99m))
+                return new PayrollRunAdjustmentSaveResult(true, false, null, "Overtime hours must be between 0 and 999.99.");
         }
 
         // An unrecognised category is skipped silently by the calculator, so
@@ -253,12 +296,15 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
             OtNormalHours = dto.OtNormalHours,
             OtRestHours = dto.OtRestHours,
             OtPublicHours = dto.OtPublicHours,
+            OtCustomHoursJson = PayrollRunAdjustments.Serialize(
+                dto.OtCustomHours.Where(h => h.Value > 0m).ToDictionary(h => h.Key, h => h.Value)),
             ManualLineItemsJson = PayrollRunAdjustments.Serialize(items),
             FixedAllowanceOverridesJson = PayrollRunAdjustments.Serialize(overrides),
             WorkedHours = dto.WorkedHours,
             ExpectedHours = dto.ExpectedHours,
             BasicPayOverride = dto.BasicPayOverride is { } basic ? Math.Round(basic, 2, MidpointRounding.AwayFromZero) : null,
             UnpaidLeaveDays = dto.UnpaidLeaveDays,
+            HrdfLevy = dto.HrdfLevy is { } levy ? Money.Round2(levy) : null,
             Notes = string.IsNullOrWhiteSpace(dto.Notes) ? null : dto.Notes.Trim(),
         });
 
@@ -277,7 +323,9 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
                 saved.OtNormalHours,
                 saved.OtRestHours,
                 saved.OtPublicHours,
+                OtCustomHours = PayrollRunAdjustments.ParseOtCustomHours(saved.OtCustomHoursJson),
                 saved.UnpaidLeaveDays,
+                saved.HrdfLevy,
                 ManualLineItemCount = items.Count,
                 OverrideCount = overrides.Count,
                 saved.BasicPayOverride,
@@ -317,6 +365,40 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
         return new PayrollRunAdjustmentSaveResult(true, true, null, null);
     }
 
+    // The overtime boxes, with what each pays this person and what was
+    // approved for it.
+    private async Task<IReadOnlyList<AdjustmentOvertimeTypeDto>> OvertimeBoxesAsync(
+        EmployeePolicy? policy, Overtime.ApprovedOvertimeMinutes? approved, PayrollRunAdjustment? adjustment)
+    {
+        if (_overtimeTypes is null) return [];
+        var rates = await _overtimeTypes.RatesForPolicyAsync(policy);
+        var names = (await _overtimeTypes.GetAllAsync(includeArchived: true))
+            .Where(t => t.Kind != Overtime.Entities.OvertimeTypeKind.CUSTOM)
+            .ToDictionary(t => t.Kind, t => t.Name);
+        string Name(Overtime.Entities.OvertimeTypeKind kind, string fallback) => names.GetValueOrDefault(kind) ?? fallback;
+
+        var typed = PayrollRunAdjustments.ParseOtCustomHours(adjustment?.OtCustomHoursJson);
+        var boxes = new List<AdjustmentOvertimeTypeDto>
+        {
+            new() { Key = "normalDay", BuiltIn = true, Name = Name(Overtime.Entities.OvertimeTypeKind.NORMAL_DAY, "Normal day"),
+                Multiplier = rates.Normal, ApprovedHours = PayrollOvertimeHours.ToHours(approved?.NormalDayMin ?? 0) },
+            new() { Key = "restDay", BuiltIn = true, Name = Name(Overtime.Entities.OvertimeTypeKind.REST_DAY, "Rest day"),
+                Multiplier = rates.Rest, ApprovedHours = PayrollOvertimeHours.ToHours(approved?.RestDayMin ?? 0) },
+            new() { Key = "publicHoliday", BuiltIn = true, Name = Name(Overtime.Entities.OvertimeTypeKind.PUBLIC_HOLIDAY, "Public holiday"),
+                Multiplier = rates.PublicHoliday, ApprovedHours = PayrollOvertimeHours.ToHours(approved?.PublicHolidayMin ?? 0) },
+        };
+        foreach (var rate in rates.Custom.Values)
+        {
+            var approvedHours = PayrollOvertimeHours.ToHours(approved?.CustomMin?.GetValueOrDefault(rate.TypeId) ?? 0);
+            if (!rate.Offered && approvedHours == 0m && !typed.ContainsKey(rate.TypeId)) continue;
+            boxes.Add(new AdjustmentOvertimeTypeDto
+            {
+                Key = rate.TypeId, Name = rate.Name, Multiplier = rate.Multiplier, ApprovedHours = approvedHours,
+            });
+        }
+        return boxes;
+    }
+
     // ─── Mapping ────────────────────────────────────────────────────────
 
     private static PayrollRunAdjustmentDto ToDto(PayrollRunAdjustment a) => new()
@@ -327,6 +409,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
         OtNormalHours = a.OtNormalHours,
         OtRestHours = a.OtRestHours,
         OtPublicHours = a.OtPublicHours,
+        OtCustomHours = PayrollRunAdjustments.ParseOtCustomHours(a.OtCustomHoursJson),
         ManualLineItems = PayrollRunAdjustments
             .ParseManualLineItems(a.ManualLineItemsJson)
             .Select(li => new ManualLineItemResponseDto
@@ -348,6 +431,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
         ExpectedHours = a.ExpectedHours,
         BasicPayOverride = a.BasicPayOverride,
         UnpaidLeaveDays = a.UnpaidLeaveDays,
+        HrdfLevy = a.HrdfLevy,
         Notes = a.Notes,
         CreatedAt = a.CreatedAt,
         UpdatedAt = a.UpdatedAt,

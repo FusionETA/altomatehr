@@ -11,6 +11,9 @@ import {
 export type Organization = {
   id: string;
   name: string;
+  // Whether Xero is connected; readable by any member. Decides whether claim
+  // accounts are called "Chart of accounts" or "Claim item types".
+  xeroConnected?: boolean;
   defaultCurrency: string;
   defaultMileageRate: number;
   mileageUnit: "KM" | "MILE";
@@ -258,6 +261,10 @@ export const getAdmins = () => apiGet<AdminAccess[]>("/organizations/admins");
 export const removeAdmin = (userId: string) => apiDelete<void>(`/organizations/admins/${userId}`);
 export const setAdminAccess = (userId: string, body: SetAdminAccess) =>
   apiPut<AdminAccess>(`/organizations/admins/${userId}/access`, body);
+// Owner-only: an Admin's name and login email. Both are on the person's
+// account, so they change in every company that person belongs to.
+export const updateAdminDetails = (userId: string, body: { name: string; email: string }) =>
+  apiPut<AdminAccess>(`/organizations/admins/${userId}`, body);
 
 // Every grantable module key, plus the caller's OWN access: which modules
 // they have and at what level, whether they may change settings, and whether
@@ -268,6 +275,9 @@ export type ModuleAccess = {
   levels: Record<string, ModuleLevel>;
   canChangeSettings: boolean;
   allEmployees: boolean;
+  // May create, archive/restore policies and set the default — Owners.
+  // Admins edit only the policies their employee scope covers.
+  managesAllPolicies?: boolean;
 };
 export const getModuleAccess = () => apiGet<ModuleAccess>("/organizations/modules");
 
@@ -349,6 +359,19 @@ export type XeroStatus = {
    * looking healthy until the next sync fails with a 409.
    */
   needsReconnect?: boolean;
+  /** On the owner's own Xero app rather than AltomateHR's shared one. */
+  ownApp?: boolean;
+  /** The owner's own app isn't set up yet, so Connect is refused. */
+  connectBlocked?: boolean;
+  /** AltomateHR switched Xero off for this company: no Connect at all. */
+  xeroDisabled?: boolean;
+  /** Connected through an older app; reconnecting moves it to the current one. */
+  reconnectToMoveApp?: boolean;
+  /**
+   * The caller's sign-in came back with several Xero organisations (an app
+   * shared with another product re-approves them all): pick this company's.
+   */
+  pendingChoice?: { tenantId: string; tenantName: string }[] | null;
 };
 
 export const getXeroStatus = () => apiGet<XeroStatus>("/xero/status");
@@ -370,6 +393,10 @@ export const getXeroConnectUrl = (returnUrl?: string) =>
   );
 
 export const disconnectXero = () => apiPost<void>("/xero/disconnect", {});
+
+export const chooseXeroOrg = (tenantId: string) => apiPost<void>("/xero/choose-org", { tenantId });
+
+export const cancelXeroOrgChoice = () => apiDelete<void>("/xero/choose-org");
 
 // Pulls Xero's chart of accounts in. While Xero is connected this is the only
 // way accounts get created — the backend refuses hand-made ones, because an

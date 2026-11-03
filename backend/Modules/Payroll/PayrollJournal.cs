@@ -74,6 +74,9 @@ public static class PayrollJournal
         public decimal EisEmployer { get; init; }
         public decimal SkbbkEmployee { get; init; }
         public decimal Pcb { get; init; }
+        // The part of Pcb the company paid instead of deducting it: an expense
+        // of its own, since net pay no longer carries it.
+        public decimal PcbBorneByEmployer { get; init; }
         public decimal Cp38 { get; init; }
         public decimal Zakat { get; init; }
         public decimal Hrdf { get; init; }
@@ -94,6 +97,9 @@ public static class PayrollJournal
     {
         public required int PeriodYear { get; init; }
         public required int PeriodMonth { get; init; }
+        // The run's name when the month is split into several runs — each is
+        // posted as its own journal, and the narration says which.
+        public string? RunName { get; init; }
         public required PayrollXeroMapping Mapping { get; init; }
 
         // Account id → the CODE a journal line carries. Journals address
@@ -180,7 +186,8 @@ public static class PayrollJournal
         return new Result(
             true,
             lines,
-            $"{input.PeriodYear} - SALARY FOR {MonthName(input.PeriodMonth)} {input.PeriodYear}",
+            $"{input.PeriodYear} - SALARY FOR {MonthName(input.PeriodMonth)} {input.PeriodYear}"
+            + (string.IsNullOrWhiteSpace(input.RunName) ? "" : $" - {input.RunName.Trim().ToUpperInvariant()}"),
             LastDayOfPeriod(input.PeriodYear, input.PeriodMonth));
     }
 
@@ -316,7 +323,7 @@ public static class PayrollJournal
     // Only the accrual credits stay summed.
     private static void EmployerContributions(Input input, List<Line> lines, List<string> missing)
     {
-        var buckets = new Dictionary<string, (decimal Epf, decimal Socso, decimal Eis, decimal Hrdf)>(
+        var buckets = new Dictionary<string, (decimal Epf, decimal Socso, decimal Eis, decimal Hrdf, decimal Pcb)>(
             StringComparer.Ordinal);
 
         foreach (var row in input.Rows)
@@ -326,7 +333,8 @@ public static class PayrollJournal
                 b.Epf + row.EpfEmployer,
                 b.Socso + row.SocsoEmployer,
                 b.Eis + row.EisEmployer,
-                b.Hrdf + row.Hrdf);
+                b.Hrdf + row.Hrdf,
+                b.Pcb + row.PcbBorneByEmployer);
         }
 
         foreach (var (project, b) in buckets.OrderBy(p => p.Key, StringComparer.Ordinal))
@@ -339,6 +347,17 @@ public static class PayrollJournal
                 $"EIS CONTRIBUTION - EMPLOYER - {project}", project);
             Contribution(input, lines, missing, PayrollXeroAccounts.HrdfEmployer, b.Hrdf,
                 $"HRDF - EMPLOYER - {project}", project);
+
+            // PCB the company pays for staff: its own account if one is set,
+            // otherwise salary — it's part of what they're paid.
+            if (b.Pcb > 0m)
+            {
+                var slot = CodeFor(input, PayrollXeroAccounts.TaxBorneByEmployer) is not null
+                    ? PayrollXeroAccounts.TaxBorneByEmployer
+                    : PayrollXeroAccounts.Salary;
+                Contribution(input, lines, missing, slot, b.Pcb,
+                    $"PCB BORNE BY EMPLOYER - {project}", project);
+            }
         }
     }
 

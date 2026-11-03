@@ -25,6 +25,7 @@ public class PayrollXeroSyncServiceTests : IDisposable
     private readonly StubCurrentUser _currentUser = new();
     private readonly FakeAuditService _audit = new();
     private readonly RecordingXeroService _xero = new();
+    private readonly FakeClaimsService _claims = new();
     private readonly PayrollXeroSyncService _service;
 
     public PayrollXeroSyncServiceTests()
@@ -39,7 +40,7 @@ public class PayrollXeroSyncServiceTests : IDisposable
             new PayslipRepository(_db),
             new PayrollSettingsService(new PayrollSettingsRepository(_db), _audit),
             new ChartOfAccountRepository(_db),
-            new FakeClaimsService(),
+            _claims,
             _xero,
             _audit,
             NullLogger<PayrollXeroSyncService>.Instance);
@@ -266,6 +267,39 @@ public class PayrollXeroSyncServiceTests : IDisposable
         var run = Reload();
         Assert.Equal(Modules.Claims.Entities.XeroSyncStatus.ERROR, run.XeroSyncStatus);
         Assert.NotNull(run.XeroSyncError);
+    }
+
+    // A claim coded to an account Xero doesn't have (a starter claim item type
+    // shares its code with a different Xero account) must not post under that
+    // code: the run is refused, naming the claim.
+    [Fact]
+    public async Task AClaimOnALocalOnlyAccount_IsRefusedNotPostedUnderItsCode()
+    {
+        await SeedMappingAsync();
+        await SeedRunAsync();
+        _db.ChartOfAccounts.Add(new ChartOfAccount
+        {
+            Id = "starter-477", OrganizationId = "org-1", Code = "477", Name = "Staff Welfare & Refreshments", IsDefault = true,
+        });
+        _db.PayslipLineItems.Add(new PayslipLineItem
+        {
+            OrganizationId = "org-1", PayslipId = "slip-1", Kind = PayslipLineKind.REIMBURSEMENT,
+            Label = "Team lunch", Amount = 80m, ClaimId = "claim-1",
+        });
+        await _db.SaveChangesAsync();
+        _claims.Add(new Modules.Claims.Entities.Claim
+        {
+            Id = "claim-1", ChartOfAccountId = "starter-477",
+            Settlement = Modules.Claims.Entities.ClaimSettlement.PAYROLL,
+            Status = Modules.Claims.Entities.ClaimStatus.APPROVED,
+            PaymentType = Modules.Claims.Entities.PaymentType.PERSONAL,
+        });
+
+        var result = await _service.SyncAsync("run-1");
+
+        Assert.False(result.Ok);
+        Assert.Contains("Team lunch", result.Error);
+        Assert.Empty(_xero.Posted);
     }
 
     // Xero rejecting the post is not a server fault either.

@@ -17,12 +17,21 @@ public class OvertimeController : ControllerBase
 {
     private readonly IOvertimeService _overtime;
     private readonly IOtRateService _rates;
+    private readonly IOvertimeTypeService _types;
 
-    public OvertimeController(IOvertimeService overtime, IOtRateService rates)
+    public OvertimeController(IOvertimeService overtime, IOtRateService rates, IOvertimeTypeService types)
     {
         _overtime = overtime;
         _rates = rates;
+        _types = types;
     }
+
+    // GET /overtime/types — the company's own overtime types the caller may
+    // pick on a request (besides "automatic", sorted by the calendar).
+    [RequireScope("overtime:read")]
+    [HttpGet("types")]
+    public async Task<IActionResult> GetTypes() =>
+        Ok(await _types.PickableForEmployeeAsync(GetUserId()));
 
     // GET /overtime/rate?date=&projectId= — which OT multiplier applies to the
     // caller on that date, and why. Rate resolution only: computing actual pay

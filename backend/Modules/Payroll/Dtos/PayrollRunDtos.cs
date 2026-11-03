@@ -14,6 +14,11 @@ public class CreatePayrollRunDto
     [Range(1, 12)]
     public int PeriodMonth { get; set; }
 
+    // What sets this run apart from the month's others ("Workers"). Needed
+    // when the month already has a run; optional for its first.
+    [MaxLength(60)]
+    public string? Name { get; set; }
+
     // The policies the admin ticked in the picker. Null (an API caller that
     // doesn't send a scope) means "every policy" — the whole eligible roster.
     public List<string>? PolicyIds { get; set; }
@@ -30,6 +35,11 @@ public class CreatePayrollRunDto
 public class UpdatePayrollRunDto
 {
     public bool? SkipProration { get; set; }
+
+    // Rename the run. Null leaves it; "" clears it (allowed only while no
+    // other run in the month is unnamed). Any status — it's a label.
+    [MaxLength(60)]
+    public string? Name { get; set; }
 }
 
 // A run in the list. Totals only — the payslips come with the detail.
@@ -43,6 +53,12 @@ public class PayrollRunDto
     // "January 2026" — rendered server-side so the month names cannot drift
     // between the run list, the payslip PDF and the submission files.
     public string PeriodLabel { get; set; } = string.Empty;
+
+    // The run's name within its month, and "October 2026 – Workers" (just
+    // the month when unnamed) — the label to show when a month has several.
+    public string? Name { get; set; }
+    public string Label { get; set; } = string.Empty;
+    public int RunNumber { get; set; }
 
     public PayrollRunStatus Status { get; set; }
     public PayrollRunSource Source { get; set; }
@@ -145,6 +161,10 @@ public class PayslipDto
     public decimal OtNormalHours { get; set; }
     public decimal OtRestHours { get; set; }
     public decimal OtPublicHours { get; set; }
+
+    // The company's own overtime types paid, with the name and rate as they
+    // were at generation. Inside OtPay.
+    public IReadOnlyList<Entities.PayslipOvertimeLine> OtCustom { get; set; } = [];
     public decimal OtPay { get; set; }
     public decimal TotalAllowances { get; set; }
     public decimal TotalReimbursements { get; set; }
@@ -178,6 +198,10 @@ public class PayslipDto
     public decimal GrossShown { get; set; }
     public decimal NetPay { get; set; }
     public decimal TotalCostToEmployer { get; set; }
+
+    // The part of Pcb the company paid instead of deducting it; 0 unless the
+    // employee's PCB is borne by the employer.
+    public decimal PcbBorneByEmployer { get; set; }
 
     // Stable codes (MISSING_INCOME_TAX_NUMBER etc.) the admin UI maps to copy.
     // The figures are still correct — these block a filing, not the calc.

@@ -4,7 +4,11 @@
     {
       "name": "backend",
       "runtimeExecutable": "dotnet",
-      "runtimeArgs": ["run", "--launch-profile", "http"],
+      "runtimeArgs": [
+        "run",
+        "--launch-profile",
+        "http"
+      ],
       "cwd": "backend",
       "port": 5001
     },
@@ -15,7 +19,10 @@
         "ConnectionStrings__Default=Server=localhost;Port=3306;Database=altomatehr_local;User=root;Password=;AllowPublicKeyRetrieval=True;SslMode=None",
         "Seed__DemoData=true",
         "EngineMailer__ApiKey=",
-        "dotnet", "run", "--launch-profile", "http"
+        "dotnet",
+        "run",
+        "--launch-profile",
+        "http"
       ],
       "cwd": "backend",
       "port": 5001
@@ -23,9 +30,22 @@
     {
       "name": "frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "cwd": "frontend",
       "port": 5173
+    },
+    {
+      "name": "fah-mcp-local",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd ../AltomatehrMCP && ALTOMATE_API_URL=http://localhost:5001 MCP_TRANSPORT=http PORT=3100 LOG_LEVEL=info CONFIRM_SECRET=$(openssl rand -base64 32) node dist/index.js"
+      ],
+      "port": 3100,
+      "url": "http://localhost:3100"
     }
   ]
 }

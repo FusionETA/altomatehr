@@ -19,6 +19,37 @@ public class XeroStatusDto
     // Connected, but the stored tokens are unusable — only fresh consent fixes
     // it. Lets the UI say "reconnect" instead of waiting for a sync to fail.
     public bool NeedsReconnect { get; set; }
+
+    // The company is on its owner's own Xero app, not AltomateHR's shared one.
+    public bool OwnApp { get; set; }
+
+    // The owner is set to their own app but it hasn't been added yet, so
+    // Connect is refused until AltomateHR finishes setting it up.
+    public bool ConnectBlocked { get; set; }
+
+    // The company doesn't use Xero (set by AltomateHR): no Connect at all.
+    // Also ConnectBlocked. A company already connected keeps its connection.
+    public bool XeroDisabled { get; set; }
+
+    // Connected through a different app from the one the owner is on now.
+    // Still works; reconnecting moves it.
+    public bool ReconnectToMoveApp { get; set; }
+
+    // The caller's sign-in came back with several Xero orgs: pick one. Null
+    // when nothing is waiting.
+    public List<XeroOrgChoiceDto>? PendingChoice { get; set; }
+}
+
+public class XeroOrgChoiceDto
+{
+    public string TenantId { get; set; } = string.Empty;
+    public string TenantName { get; set; } = string.Empty;
+}
+
+public class XeroChooseTenantDto
+{
+    [System.ComponentModel.DataAnnotations.Required, System.ComponentModel.DataAnnotations.StringLength(64)]
+    public string TenantId { get; set; } = string.Empty;
 }
 
 public class XeroSyncAccountsResultDto

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { LoaderCircle, Paperclip, X } from "lucide-react";
+import { SearchInput } from "@/shared/components/SearchInput";
 import {
   attachClaim,
   detachClaim,
@@ -26,6 +27,15 @@ import { TableSkeleton } from "./TableSkeleton";
 //
 // Attaching snapshots the label and amount, so editing the claim afterwards
 // cannot move a figure on a run that has already been generated.
+//
+// A month can bring a hundred claims, so both lists scroll inside the card
+// (the run's Submit is below it) and one search narrows them both.
+const LIST_SCROLL = "max-h-[26rem] overflow-y-auto";
+
+function matches(needle: string, ...values: (string | null | undefined)[]) {
+  return !needle || values.some((value) => value?.toLowerCase().includes(needle));
+}
+
 export function PayrollRunClaims({
   runId,
   editable,
@@ -40,6 +50,9 @@ export function PayrollRunClaims({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  // "Add all shown": how far through, while it runs.
+  const [adding, setAdding] = useState<{ done: number; of: number } | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -72,7 +85,29 @@ export function PayrollRunClaims({
     }
   }
 
+  // One at a time, reloading once at the end. A claim that fails stops the
+  // rest, and what was added stays added — each one can be removed with ✕.
+  async function attachAll(claims: AttachableClaim[]) {
+    setBusy("attach-all");
+    setError(null);
+    setAdding({ done: 0, of: claims.length });
+    try {
+      for (const [i, claim] of claims.entries()) {
+        await attachClaim(runId, claim.claimId);
+        setAdding({ done: i + 1, of: claims.length });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "That did not go through.");
+    } finally {
+      await load();
+      onChanged();
+      setAdding(null);
+      setBusy(null);
+    }
+  }
+
   const total = attached.reduce((sum, claim) => sum + claim.amount, 0);
+  const needle = query.trim().toLowerCase();
 
   // Rows already on another run come back flagged rather than omitted, so the
   // picker can say WHERE they are instead of silently not offering them.
@@ -83,6 +118,15 @@ export function PayrollRunClaims({
     (claim) => claim.attachedToRunId !== null && claim.attachedToRunId !== runId,
   );
   const blocked = available.filter((claim) => claim.blockedReason !== null);
+
+  const attachedShown = attached.filter((c) =>
+    matches(needle, c.employeeName, c.employeeNumber, c.claimNumber, c.label),
+  );
+  const freeShown = free.filter((c) =>
+    matches(needle, c.employeeName, c.employeeNumber, c.claimNumber, c.title),
+  );
+  const freeTotal = freeShown.reduce((sum, claim) => sum + claim.amount, 0);
+  const searchable = attached.length + (editable ? free.length : 0) > 5;
 
   // Nothing attached and nothing attachable — an org settling claims through
   // Xero will never have either, so the card would be a permanent explainer
@@ -105,14 +149,37 @@ export function PayrollRunClaims({
 
       {error ? <p className={`${ERROR_PANEL} mb-4`}>Error: {error}</p> : null}
 
+      {searchable ? (
+        <div className="mb-4">
+          <SearchInput
+            value={query}
+            onChange={setQuery}
+            placeholder="Search employee, staff ID, claim no. or title"
+            className="sm:max-w-md"
+          />
+          {needle ? (
+            <p className={`${HINT} mt-2`}>
+              {attachedShown.length + (editable ? freeShown.length : 0) === 0
+                ? "No claim matches that search."
+                : `Showing ${[
+                    attached.length > 0 ? `${attachedShown.length} of ${attached.length} on this run` : null,
+                    editable && free.length > 0 ? `${freeShown.length} of ${free.length} waiting` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" and ")}.`}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       {loading ? (
         <TableSkeleton columns={4} label="Loading attached claims" />
       ) : (
         <div className="space-y-5">
           {attached.length > 0 ? (
-            <div className="overflow-x-auto">
+            <div className={`overflow-x-auto ${LIST_SCROLL}`}>
               <table className="w-full min-w-[620px] border-collapse">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-card">
                   <tr className="border-b border-border/70">
                     <th className={TH}>Claim</th>
                     <th className={TH}>Employee</th>
@@ -121,7 +188,7 @@ export function PayrollRunClaims({
                   </tr>
                 </thead>
                 <tbody>
-                  {attached.map((claim) => (
+                  {attachedShown.map((claim) => (
                     <tr key={claim.id} className="border-b border-border/40 last:border-0">
                       <td className={TD}>
                         <div className="font-medium text-foreground">{claim.label}</div>
@@ -129,7 +196,10 @@ export function PayrollRunClaims({
                           {claim.claimNumber}
                         </div>
                       </td>
-                      <td className={`${TD} text-muted-foreground`}>{claim.employeeName}</td>
+                      <td className={`${TD} text-muted-foreground`}>
+                        {claim.employeeName}
+                        {claim.employeeNumber ? ` · ${claim.employeeNumber}` : ""}
+                      </td>
                       <td className={`${TD_NUM} font-semibold`}>{rm(claim.amount)}</td>
                       <td className={`${TD} text-right`}>
                         {editable ? (
@@ -155,7 +225,7 @@ export function PayrollRunClaims({
                     </tr>
                   ))}
                 </tbody>
-                <tfoot>
+                <tfoot className="sticky bottom-0 bg-card">
                   <tr className="border-t border-border/70 bg-muted/40 font-semibold">
                     <td className={TD} colSpan={2}>
                       {attached.length} claim(s) on this run
@@ -172,11 +242,36 @@ export function PayrollRunClaims({
 
           {editable && free.length > 0 ? (
             <div>
-              <h3 className="mb-2 text-sm font-semibold text-foreground">
-                Waiting to be paid
-              </h3>
-              <ul className="space-y-2">
-                {free.map((claim) => (
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-foreground">
+                  Waiting to be paid{" "}
+                  <span className="font-normal text-muted-foreground">
+                    · {freeShown.length} claim(s), {rm(freeTotal)}
+                  </span>
+                </h3>
+                {freeShown.length > 1 ? (
+                  <button
+                    type="button"
+                    className={BUTTON_GHOST_SM}
+                    disabled={busy !== null}
+                    onClick={() => void attachAll(freeShown)}
+                  >
+                    {adding ? (
+                      <>
+                        <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+                        Adding {adding.done} of {adding.of}…
+                      </>
+                    ) : (
+                      <>
+                        <Paperclip className="size-3.5" aria-hidden />
+                        {needle ? `Add these ${freeShown.length}` : `Add all ${freeShown.length}`}
+                      </>
+                    )}
+                  </button>
+                ) : null}
+              </div>
+              <ul className={`space-y-2 ${LIST_SCROLL}`}>
+                {freeShown.map((claim) => (
                   <li
                     key={claim.claimId}
                     className="flex flex-wrap items-center gap-3 rounded-2xl border border-border/60 bg-card p-3"
@@ -184,7 +279,9 @@ export function PayrollRunClaims({
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-foreground">{claim.title}</p>
                       <p className="text-xs text-muted-foreground">
-                        {claim.employeeName} · {claim.claimNumber} · spent{" "}
+                        {claim.employeeName}
+                        {claim.employeeNumber ? ` (${claim.employeeNumber})` : ""} ·{" "}
+                        {claim.claimNumber} · spent{" "}
                         {shortDate(claim.spentAt)}
                       </p>
                     </div>

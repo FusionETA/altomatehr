@@ -50,11 +50,37 @@ public class XeroController : ControllerBase
             var redirectUrl = await _xero.CompleteCallbackAsync(code ?? string.Empty, state ?? string.Empty);
             return Redirect(redirectUrl);
         }
-        catch (Exception ex) when (ex is XeroConfigurationException or XeroConnectionException)
+        // A browser landed here from Xero: any Xero failure, including the app
+        // the sign-in started with having been deleted since, goes back to the
+        // app as "failed" rather than an API error page.
+        catch (Exception ex) when (ex is XeroConfigurationException or XeroConnectionException
+                                       or XeroReconnectRequiredException)
         {
             _logger.LogWarning(ex, "Xero callback failed.");
             return Redirect(_options.FailureRedirectUrl);
         }
+    }
+
+    // POST /xero/choose-org — the caller's sign-in came back with several Xero
+    // orgs; connect the one they picked (from status.pendingChoice).
+    [Authorize(Roles = "Admin,Owner")]
+    [RequireSettings]
+    [HumanOnly]
+    [HttpPost("choose-org")]
+    public async Task<IActionResult> ChooseOrg(XeroChooseTenantDto dto) =>
+        await _xero.ChooseTenantAsync(dto.TenantId)
+            ? NoContent()
+            : Conflict(new { error = "That choice is no longer available. Press Connect and sign in to Xero again." });
+
+    // DELETE /xero/choose-org — drop that sign-in without connecting.
+    [Authorize(Roles = "Admin,Owner")]
+    [RequireSettings]
+    [HumanOnly]
+    [HttpDelete("choose-org")]
+    public async Task<IActionResult> CancelChooseOrg()
+    {
+        await _xero.CancelPendingChoiceAsync();
+        return NoContent();
     }
 
     [Authorize(Roles = "Admin,Owner")]

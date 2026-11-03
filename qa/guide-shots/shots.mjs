@@ -31,6 +31,10 @@ async function session(browser, email, device, extra = {}) {
     timezoneId: "Asia/Kuala_Lumpur",
     ...extra,
   });
+  // The FAH assistant isn't live yet, so its corner button must never appear
+  // in a guide shot: tell the app it isn't available.
+  await context.route("**/fah/status", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ available: false }) }));
   const page = await context.newPage();
   // Login is rate limited (5 a minute): if a sign-in doesn't land, wait and retry.
   for (let attempt = 0; ; attempt++) {
@@ -54,6 +58,17 @@ async function go(page, v) {
   await page.goto(`${FRONT}/?v=${v}`);
   await page.getByRole("button", { name: "Account menu" }).waitFor();
   await settle(page, 1500);
+}
+
+// Demo Admin belongs to several companies on this machine and sign-in can land
+// on any of them: move to the demo company before shooting.
+async function inDemoCo(page) {
+  const switcher = page.getByRole("button", { name: "Switch company" });
+  if (!(await switcher.innerText()).includes("AltomateHR Demo Co")) {
+    await switcher.click();
+    await page.getByRole("button", { name: /AltomateHR Demo Co/ }).first().click();
+    await settle(page, 2500);
+  }
 }
 
 async function shoot(page, group, name) {
@@ -129,6 +144,35 @@ async function openClaimReceiptStep(page) {
   await page.getByText("My own money", { exact: true }).click();
   await page.getByText("Expense claim", { exact: true }).click();
   await page.getByText("Attach the main receipt").waitFor({ timeout: 15000 });
+  await settle(page);
+}
+
+// A made-up route screenshot for the mileage shots, drawn from HTML like the
+// receipt above: a plain map-style card, no real map or place data.
+async function demoRoutePng(page) {
+  const art = await page.context().newPage();
+  await art.setViewportSize({ width: 300, height: 240 });
+  await art.setContent(`<meta name="viewport" content="width=300"><body style="margin:0;font-family:sans-serif;background:#e8efe6">
+    <div style="position:relative;width:300px;height:170px;background:#dfe9dc">
+      <div style="position:absolute;left:40px;top:120px;width:12px;height:12px;border-radius:50%;background:#1a73e8;border:2px solid #fff"></div>
+      <svg width="300" height="170" style="position:absolute;left:0;top:0"><path d="M46 126 C 100 120, 120 60, 180 70 S 250 40, 258 34" stroke="#1a73e8" stroke-width="5" fill="none"/></svg>
+      <div style="position:absolute;left:252px;top:20px;width:14px;height:14px;border-radius:50%;background:#d93025;border:2px solid #fff"></div>
+    </div>
+    <div style="background:#fff;height:70px;padding:10px 14px;box-sizing:border-box;font-size:12px;color:#222">
+      <div style="font-size:18px;color:#188038"><b>28 min</b> <span style="color:#555;font-size:13px">(23.4 km)</span></div>
+      <div>via Federal Hwy</div><div style="color:#555">Bangsar South to i-City, Shah Alam</div></div></body>`);
+  const buffer = await art.screenshot({ type: "png" });
+  await art.close();
+  return buffer;
+}
+
+async function openMileageRouteStep(page) {
+  await go(page, "dashboard");
+  await page.getByText("Submit new claim").filter({ visible: true }).first().click();
+  await page.getByText("Who paid for this?").waitFor({ timeout: 15000 });
+  await page.getByText("My own money", { exact: true }).click();
+  await page.getByText("Mileage claim", { exact: true }).click();
+  await page.getByText("Attach a route screenshot").waitFor({ timeout: 15000 });
   await settle(page);
 }
 
@@ -241,9 +285,56 @@ async function fillLeaveEdit(page) {
 }
 
 // ─── Admin (desktop) ────────────────────────────────────────────────────
+// Moves the session to "AB Test Co A" (the local company with a November 2026
+// draft run), for the split-month payroll shots.
+async function toAbTestCoA(page) {
+  const switcher = page.getByRole("button", { name: "Switch company" });
+  if (!(await switcher.innerText()).includes("AB Test Co A")) {
+    await switcher.click();
+    await page.getByRole("button", { name: /AB Test Co A/ }).first().click();
+    await settle(page, 2500);
+  }
+}
+
 const admin = {
+  // System Settings → Work Schedule: the Overtime types card, after the
+  // Holidays and Calendar cards (needs `node setup.mjs overtime-types` for the
+  // Night shift row).
+  "overtime-types": async (page) => {
+    await inDemoCo(page);
+    await go(page, "settings/settings-work-schedule");
+    await page.getByText("Overtime types", { exact: true }).first().waitFor({ timeout: 15000 });
+    await page.getByPlaceholder("New type, e.g. Night shift").waitFor({ timeout: 15000 });
+    await settle(page);
+    await scrollTo(page, "Overtime types", 30, true);
+    await shoot(page, "admin", "overtime-types");
+  },
+  // System Settings → Policies: the policy list (the Overtime types card is on
+  // Work Schedule).
+  "policy-editor": async (page) => {
+    await inDemoCo(page);
+    await go(page, "settings/settings-policies");
+    await page.getByRole("button", { name: "New policy" }).waitFor({ timeout: 15000 });
+    await page.getByRole("button", { name: "Edit", exact: true }).first().waitFor({ timeout: 15000 });
+    await settle(page);
+    await shoot(page, "admin", "policy-editor");
+  },
+  // The policy editor's overtime section on Full-time: blank boxes show the
+  // company's rate greyed, and the own type has an on/off tick.
+  "policy-overtime-rates": async (page) => {
+    await inDemoCo(page);
+    await go(page, "settings/settings-policies");
+    const edit = page.getByRole("button", { name: "Edit", exact: true }).first();
+    await edit.waitFor({ timeout: 15000 });
+    await edit.click();
+    await page.getByText(/OT rate multipliers/).first().waitFor({ timeout: 15000 });
+    await scrollTo(page, "OT rate multipliers", 120);
+    await shoot(page, "admin", "policy-overtime-rates");
+    await page.keyboard.press("Escape");
+  },
   // Needs `node setup.mjs work-permits` so the "Work permits" card shows first.
   "executive-overview": async (page) => {
+    await inDemoCo(page);
     await go(page, "overview");
     await page.getByText("Work permits").first().waitFor({ timeout: 15000 });
     await settle(page);
@@ -294,6 +385,7 @@ const admin = {
   "documents-ai-ask": (page) => aiEditorShot(page, "documents-ai-ask", true),
   // System Settings → Admins: each admin row with Manage access and Remove.
   "admins-list": async (page) => {
+    await inDemoCo(page);
     await go(page, "settings/settings-admins");
     await page.getByRole("button", { name: "Manage access" }).first().waitFor({ timeout: 15000 });
     await settle(page);
@@ -301,6 +393,13 @@ const admin = {
   },
   // The Manage access dialog on its Modules tab (Off / View / Manage), then Employees.
   "admins-access-modules": async (page) => {
+    // Sign-in can land on another company on this machine: move to the demo company first.
+    const switcher = page.getByRole("button", { name: "Switch company" });
+    if (!(await switcher.innerText()).includes("AltomateHR Demo Co")) {
+      await switcher.click();
+      await page.getByRole("button", { name: /AltomateHR Demo Co/ }).first().click();
+      await settle(page, 2500);
+    }
     await go(page, "settings/settings-admins");
     await page.getByRole("button", { name: "Manage access" }).first().click();
     await page.getByText("Manage access", { exact: true }).last().waitFor();
@@ -313,6 +412,15 @@ const admin = {
     await page.getByRole("tab", { name: "Employees" }).click();
     await settle(page);
     await shoot(page, "admin", "admins-access-employees");
+  },
+  // The Edit admin dialog (name and login email) from the Edit button on an admin row.
+  "admins-edit": async (page) => {
+    await inDemoCo(page);
+    await go(page, "settings/settings-admins");
+    await page.getByRole("button", { name: "Edit", exact: true }).first().click();
+    await page.getByRole("heading", { name: "Edit admin" }).waitFor({ timeout: 15000 });
+    await settle(page);
+    await shoot(page, "admin", "admins-edit");
   },
   "employee-add": async (page) => {
     await go(page, "company/manage-employee");
@@ -346,6 +454,30 @@ const admin = {
     await shoot(page, "admin", "layout-menu");
     await page.keyboard.press("Escape");
   },
+  // Needs `node setup.mjs nicknames` (clear with `nicknames-remove`). The
+  // employee list, searched by a nickname: the person shows as "Full name (Nickname)".
+  "employee-nickname-list": async (page) => {
+    await go(page, "company/manage-employee");
+    await inDemoCo(page);
+    await go(page, "company/manage-employee");
+    await page.getByPlaceholder("Search employees").fill("Ica");
+    await page.getByText("Aisyah Binti Rahman (Ica)").first().waitFor();
+    await page.mouse.move(5, 5);
+    await shoot(page, "admin", "employee-nickname-list");
+  },
+  // Personal tab, top: Full name with the Nickname field and its hint.
+  "employee-nickname": async (page) => {
+    await go(page, "company/manage-employee");
+    await inDemoCo(page);
+    await go(page, "company/manage-employee");
+    await page.getByPlaceholder("Search employees").fill("Arj");
+    await page.getByText("Arjun Pillai (Arj)").first().click();
+    await settle(page);
+    await clickText(page, "Personal");
+    await page.getByText("Nickname", { exact: true }).first().waitFor();
+    await page.mouse.move(5, 5);
+    await shoot(page, "admin", "employee-nickname");
+  },
   "manage-employee": async (page) => {
     await go(page, "company/manage-employee");
     await shoot(page, "admin", "manage-employee");
@@ -369,20 +501,44 @@ const admin = {
   // Header with the Transfer and Duplicate buttons (someone with nothing queued).
   "employee-transfer-buttons": async (page) => {
     await go(page, "company/manage-employee");
+    await inDemoCo(page);
+    await go(page, "company/manage-employee");
+    await page.getByPlaceholder("Search employees").fill("Chan Mei");
+    await settle(page, 800);
     await clickText(page, "Chan Mei Ling");
     await page.getByRole("button", { name: "Duplicate", exact: true }).waitFor({ timeout: 15000 });
     await page.mouse.move(5, 5);
     await shoot(page, "admin", "employee-transfer-buttons");
   },
+  // The "Resend welcome email" confirmation, opened from the employee header.
+  // Cancelled afterwards so nothing is sent.
+  "employee-resend-welcome": async (page) => {
+    await go(page, "company/manage-employee");
+    await inDemoCo(page);
+    await go(page, "company/manage-employee");
+    await page.getByPlaceholder("Search employees").fill("Chan Mei");
+    await settle(page, 800);
+    await clickText(page, "Chan Mei Ling");
+    await page.getByRole("button", { name: "Resend welcome email" }).click();
+    await page.getByText("Resend welcome email?").waitFor({ timeout: 15000 });
+    await settle(page);
+    await shoot(page, "admin", "employee-resend-welcome");
+    await page.getByRole("button", { name: "Cancel", exact: true }).filter({ visible: true }).last().click();
+  },
   // The Transfer dialog for someone with no transfer queued (Chan Mei Ling).
   "employee-transfer-dialog": async (page) => {
     await go(page, "company/manage-employee");
+    await inDemoCo(page);
+    await go(page, "company/manage-employee");
+    await page.getByPlaceholder("Search employees").fill("Chan Mei");
+    await settle(page, 800);
     await clickText(page, "Chan Mei Ling");
     await page.getByRole("button", { name: "Transfer", exact: true }).click();
     await page.getByText("Transfer to another company").waitFor();
-    await page.getByLabel("Target company").selectOption({ index: 1 }).catch(async () => {
-      await page.locator("select").first().selectOption({ index: 1 });
-    });
+    // The company picker is the app's designed select (a combobox), not a native one.
+    await page.getByRole("combobox", { name: "Target company" }).click();
+    await page.getByRole("option", { name: "Demo Transfer Co" }).first().click();
+    await page.evaluate(() => document.activeElement?.blur());
     await settle(page);
     await shoot(page, "admin", "employee-transfer-dialog");
     await page.getByRole("button", { name: "Cancel", exact: true }).filter({ visible: true }).last().click();
@@ -407,6 +563,19 @@ const admin = {
     await clickText(page, "Evan Employee");
     await clickText(page, "Statutory");
     await shoot(page, "admin", "employee-statutory");
+  },
+  // Statutory tab scrolled to "Income tax": the "PCB borne by employer" switch
+  // and its hint. Nothing is changed or saved.
+  "employee-pcb-borne": async (page) => {
+    await go(page, "company/manage-employee");
+    await inDemoCo(page);
+    await go(page, "company/manage-employee");
+    await page.getByPlaceholder("Search employees").fill("Aisyah");
+    await settle(page, 800);
+    await clickText(page, "Aisyah Binti Rahman");
+    await clickText(page, "Statutory");
+    await scrollTo(page, "PCB borne by employer", 360, true);
+    await shoot(page, "admin", "employee-pcb-borne");
   },
   "salary-change": async (page) => {
     await go(page, "company/manage-employee");
@@ -435,10 +604,13 @@ const admin = {
     await page.keyboard.press("Escape");
   },
   "accounts-bank": async (page) => {
+    await inDemoCo(page);
     await go(page, "settings/settings-accounts");
+    await page.getByText("Add claim item type").first().waitFor({ timeout: 15000 });
     await clickText(page, "Expenses");
     await page.getByText("Site Materials").first().waitFor();
-    await scrollTo(page, "Bank accounts", 40);
+    await page.evaluate(() => window.scrollTo(0, 40));
+    await page.mouse.move(800, 60);
     await shoot(page, "admin", "accounts-bank");
   },
   loans: async (page) => {
@@ -450,14 +622,43 @@ const admin = {
     await shoot(page, "admin", "loans");
   },
   "payroll-downloads": async (page) => {
+    await inDemoCo(page);
     await go(page, "payroll");
     await clickText(page, "Payroll runs");
     await clickText(page, "September 2026");
     await page.getByRole("button", { name: "Download files" }).click();
     await page.getByText("Statutory uploads").first().waitFor();
     await settle(page);
-    await scrollTo(page, "Allowance Report (Excel)", 200);
+    await scrollTo(page, "Allowance & Deduction Reports (ZIP)", 200);
     await shoot(page, "admin", "payroll-downloads");
+    await page.keyboard.press("Escape");
+  },
+  // The Bank group of the Download files dialog when the payroll bank is OCBC
+  // (node setup.mjs payroll-bank-ocbc first; payroll-bank-restore afterwards).
+  "payroll-downloads-ocbc": async (page) => {
+    await inDemoCo(page);
+    await go(page, "payroll");
+    await clickText(page, "Payroll runs");
+    await clickText(page, "September 2026");
+    await page.getByRole("button", { name: "Download files" }).click();
+    await page.getByText("OCBC Velocity GIRO (Payroll)").first().waitFor({ timeout: 20000 });
+    await settle(page);
+    await scrollTo(page, "OCBC Velocity GIRO (Payroll)", 60);
+    await shoot(page, "admin", "payroll-downloads-ocbc");
+    await page.keyboard.press("Escape");
+  },
+  // The Statutory uploads group with its "Download EPF, SOCSO & PCB (zip)" button.
+  "payroll-downloads-statutory": async (page) => {
+    await inDemoCo(page);
+    await go(page, "payroll");
+    await clickText(page, "Payroll runs");
+    await clickText(page, "September 2026");
+    await page.getByRole("button", { name: "Download files" }).click();
+    await page.getByText("Statutory uploads").first().waitFor();
+    await settle(page);
+    await scrollTo(page, "Statutory uploads", 40, true);
+    await page.getByRole("button", { name: /Download EPF, SOCSO/ }).waitFor();
+    await shoot(page, "admin", "payroll-downloads-statutory");
     await page.keyboard.press("Escape");
   },
   // A draft run (node setup.mjs payroll-draft): the "Payroll summary for approval" card.
@@ -477,6 +678,24 @@ const admin = {
     await settle(page);
     await scrollTo(page, "Payroll summary for approval", 120);
     await shoot(page, "admin", "payroll-summary-approval");
+  },
+  // A draft run (node setup.mjs payroll-draft) after `node setup.mjs payroll-gap`:
+  // Needs attention lists the missing field as a link to the person's record.
+  "payroll-needs-attention": async (page) => {
+    const switcher = page.getByRole("button", { name: "Switch company" });
+    if (!(await switcher.innerText()).includes("AltomateHR Demo Co")) {
+      await switcher.click();
+      await page.getByRole("button", { name: /AltomateHR Demo Co/ }).first().click();
+      await settle(page, 2500);
+    }
+    await go(page, "payroll");
+    await clickText(page, "Payroll runs");
+    await clickText(page, "January 2027");
+    await page.getByText("Payroll summary for approval").first().waitFor({ timeout: 20000 });
+    await clickText(page, "Needs attention");
+    await page.getByText(/the statutory files need/i).first().waitFor({ timeout: 20000 });
+    await settle(page);
+    await shoot(page, "admin", "payroll-needs-attention");
   },
   // A run's Payslips list narrowed by the search box; the Total row stays the whole run's.
   "payroll-payslips-search": async (page) => {
@@ -499,15 +718,94 @@ const admin = {
     await page.evaluate(() => window.scrollBy(0, -160));
     await shoot(page, "admin", "payroll-payslips-search");
   },
-  // A draft run (node setup.mjs payroll-draft), one monthly employee's adjustments
-  // drawer scrolled to Basic this month / Working hours / Unpaid leave. Nothing is saved.
+  // AB Test Co A's November 2026 draft (not stale, so the computed HRDF levy
+  // shows greyed): one monthly employee's adjustments drawer, scrolled to the
+  // Unpaid leave / Employer HRDF levy / Overtime boxes. Nothing is saved.
   "payroll-adjustments": async (page) => {
-    const switcher = page.getByRole("button", { name: "Switch company" });
-    if (!(await switcher.innerText()).includes("AltomateHR Demo Co")) {
-      await switcher.click();
-      await page.getByRole("button", { name: /AltomateHR Demo Co/ }).first().click();
-      await settle(page, 2500);
-    }
+    await toAbTestCoA(page);
+    await go(page, "payroll");
+    await clickText(page, "Payroll runs");
+    await clickText(page, "November 2026");
+    await page.getByText("Payroll summary for approval").first().waitFor({ timeout: 20000 });
+    const adjust = page.getByRole("button", { name: /^(Adjust|Edit) Alya Test/ }).first();
+    await adjust.scrollIntoViewIfNeeded();
+    await adjust.click();
+    await page.getByText("Employer HRDF levy", { exact: true }).first().waitFor({ timeout: 20000 });
+    await settle(page, 800);
+    await scrollTo(page, "Unpaid leave", 60, true);
+    await shoot(page, "admin", "payroll-adjustments");
+    await page.getByRole("button", { name: "Cancel" }).click();
+  },
+  // The same drawer scrolled to the Overtime box: one hours box per overtime
+  // type with its rate (needs `node setup.mjs overtime-types ab-outlet-ot-on`;
+  // switch it back with `ab-outlet-ot-off`). Nothing is saved.
+  "payroll-adjustments-overtime": async (page) => {
+    await toAbTestCoA(page);
+    await go(page, "payroll");
+    await clickText(page, "Payroll runs");
+    await clickText(page, "November 2026");
+    await page.getByText("Payroll summary for approval").first().waitFor({ timeout: 20000 });
+    const adjust = page.getByRole("button", { name: /^(Adjust|Edit) Alya Test/ }).first();
+    await adjust.scrollIntoViewIfNeeded();
+    await adjust.click();
+    await page.getByText("Employer HRDF levy", { exact: true }).first().waitFor({ timeout: 20000 });
+    await page.getByText(/Night shift \(1\.5/).first().waitFor({ timeout: 20000 });
+    await settle(page, 800);
+    await scrollTo(page, "Overtime", 60, true);
+    await shoot(page, "admin", "payroll-adjustments-overtime");
+    await page.getByRole("button", { name: "Cancel" }).click();
+  },
+  // AB Test Co A has a November 2026 draft (unnamed): starting another run for that
+  // month needs a name, and the people already in it are greyed out.
+  "payroll-run-picker": async (page) => {
+    await toAbTestCoA(page);
+    await go(page, "payroll");
+    await clickText(page, "Payroll runs");
+    await page.getByRole("button", { name: "Create draft" }).first().click();
+    await page.getByText("Policies and employees").first().waitFor({ timeout: 20000 });
+    await page.locator("#runMonth").click();
+    await page.getByRole("option", { name: "November" }).click();
+    await page.locator("#runYear").fill("2026");
+    await page.getByText("11 in another run").first().waitFor({ timeout: 20000 });
+    // Expand the policy so the greyed people show, and scroll the dialog so the
+    // Run name field and the people around the two free ones are both in view.
+    await page.getByRole("button", { name: "Expand" }).first().click();
+    await page.getByText("Already in November 2026").first().waitFor({ timeout: 10000 });
+    await scrollTo(page, "Fiona Cp38", 40, true);
+    await scrollTo(page, "Run name", 20, true);
+    await settle(page, 600);
+    await shoot(page, "admin", "payroll-run-picker");
+    await page.keyboard.press("Escape");
+  },
+  // Needs: node setup.mjs split-run. The runs list with the "all runs" row.
+  "payroll-runs-split": async (page) => {
+    await toAbTestCoA(page);
+    await go(page, "payroll");
+    await clickText(page, "Payroll runs");
+    await page.getByText("November 2026 — all runs").first().waitFor({ timeout: 20000 });
+    await settle(page, 800);
+    // Zoom the page out a little so the Summary and Excel buttons at the end of
+    // the row fit beside the figures (the table is wider than the card at 100%).
+    await page.evaluate(() => { document.body.style.zoom = "0.88"; });
+    await settle(page, 800);
+    await scrollTo(page, "November 2026 — all runs", 140);
+    await shoot(page, "admin", "payroll-runs-split");
+  },
+  // Needs: node setup.mjs split-run. A named run's header: its name and the pencil.
+  "payroll-run-name": async (page) => {
+    await toAbTestCoA(page);
+    await go(page, "payroll");
+    await clickText(page, "Payroll runs");
+    await page.getByText("November 2026 — all runs").first().waitFor({ timeout: 20000 });
+    await page.getByRole("cell", { name: "Workers" }).first().click();
+    await page.getByRole("button", { name: "Rename this run" }).waitFor({ timeout: 20000 });
+    await settle(page, 800);
+    await shoot(page, "admin", "payroll-run-name");
+  },
+  // AltomateHR Demo Co's January 2027 draft (node setup.mjs payroll-draft): one
+  // monthly employee's adjustments drawer at Basic this month. Nothing is saved.
+  "payroll-adjustments-basic": async (page) => {
+    await inDemoCo(page);
     await go(page, "payroll");
     await clickText(page, "Payroll runs");
     await clickText(page, "January 2027");
@@ -518,38 +816,12 @@ const admin = {
     await page.getByText("Unpaid days", { exact: true }).first().waitFor({ timeout: 20000 });
     await settle(page, 800);
     await scrollTo(page, "Basic this month", 110, true);
-    await shoot(page, "admin", "payroll-adjustments");
-    await page.getByRole("button", { name: "Cancel" }).click();
-  },
-  // The same drawer scrolled to Working hours / Unpaid leave / Overtime. Nothing is saved.
-  "payroll-adjustments-unpaid": async (page) => {
-    const switcher = page.getByRole("button", { name: "Switch company" });
-    if (!(await switcher.innerText()).includes("AltomateHR Demo Co")) {
-      await switcher.click();
-      await page.getByRole("button", { name: /AltomateHR Demo Co/ }).first().click();
-      await settle(page, 2500);
-    }
-    await go(page, "payroll");
-    await clickText(page, "Payroll runs");
-    await clickText(page, "January 2027");
-    await page.getByText("Payroll summary for approval").first().waitFor({ timeout: 20000 });
-    const adjust = page.getByRole("button", { name: "Adjust Chan Mei Ling" }).first();
-    await adjust.scrollIntoViewIfNeeded();
-    await adjust.click();
-    await page.getByText("Unpaid days", { exact: true }).first().waitFor({ timeout: 20000 });
-    await settle(page, 800);
-    await scrollTo(page, "Working hours", 110, true);
-    await shoot(page, "admin", "payroll-adjustments-unpaid");
+    await shoot(page, "admin", "payroll-adjustments-basic");
     await page.getByRole("button", { name: "Cancel" }).click();
   },
   // Evan's Statutory tab at SOCSO, EIS & SKBBK with "Not covered" picked (not saved).
   "employee-socso-scheme": async (page) => {
-    const switcher = page.getByRole("button", { name: "Switch company" });
-    if (!(await switcher.innerText()).includes("AltomateHR Demo Co")) {
-      await switcher.click();
-      await page.getByRole("button", { name: /AltomateHR Demo Co/ }).first().click();
-      await settle(page, 2500);
-    }
+    await inDemoCo(page);
     await go(page, "company/manage-employee");
     await clickText(page, "Evan Employee");
     await clickText(page, "Statutory");
@@ -564,6 +836,7 @@ const admin = {
     await shoot(page, "admin", "employee-socso-scheme");
   },
   "annual-forms": async (page) => {
+    await inDemoCo(page);
     await go(page, "payroll");
     await clickText(page, "Annual forms");
     // 2026 is the year the demo runs are in; the default year has none.
@@ -731,6 +1004,18 @@ const evan = {
     await shoot(page, "employee", "claim-supporting");
     await page.getByRole("button", { name: "Close" }).filter({ visible: true }).first().click().catch(() => {});
   },
+  // The details form on the "Skip AI and fill manually" path, from the top, so
+  // the claim item type / chart of account field shows.
+  "claim-details": async (page) => {
+    await page.route("**/claims/receipts/analyze", (route) => route.abort());
+    await openClaimReceiptStep(page);
+    await page.getByRole("button", { name: "Skip AI and fill manually" }).click();
+    await page.getByText("Tap to add the main receipt (optional)").waitFor({ timeout: 15000 });
+    await page.getByPlaceholder("Client dinner").fill("Team lunch");
+    await settle(page, 800);
+    await shoot(page, "employee", "claim-details");
+    await page.getByRole("button", { name: "Close" }).filter({ visible: true }).first().click().catch(() => {});
+  },
   // The details form after "Skip AI and fill manually" with no receipt: the
   // optional "Tap to add the main receipt" box.
   "claim-add-receipt": async (page) => {
@@ -783,6 +1068,81 @@ const evan = {
     await shoot(page, "employee", "claim-edit-attached");
     await page.getByRole("button", { name: "Close" }).filter({ visible: true }).first().click().catch(() => {});
   },
+  // Mileage claim, step 3: no screenshot attached yet. Needs
+  // `node setup.mjs mileage-account`. Never calls the route AI.
+  "claim-route": async (page) => {
+    await page.route("**/claims/mileage/analyze", (route) => route.abort());
+    await openMileageRouteStep(page);
+    await settle(page, 1000);
+    await scrollTo(page, "Skip AI and fill manually", 520);
+    await shoot(page, "employee", "claim-route");
+    await page.getByRole("button", { name: "Close" }).filter({ visible: true }).first().click().catch(() => {});
+  },
+  // After "Read route & continue": the form filled in from a stubbed read
+  // (the local AI is off), with the "Filled in from your route screenshot" note.
+  "claim-route-read": async (page) => {
+    await page.route("**/claims/mileage/analyze", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          receiptUrl: "/claims/receipts/demo.png",
+          extraction: {
+            isRoute: true, distance: 23.4, unit: "KM", detectedDistance: 23.4, detectedUnit: "KM",
+            origin: "Bangsar South", destination: "i-City, Shah Alam", via: "Federal Hwy",
+            date: null, travelMode: null, otherRoutesShown: true,
+            description: "Drive from Bangsar South to i-City, Shah Alam", provider: "demo",
+          },
+        }),
+      }));
+    await openMileageRouteStep(page);
+    const buffer = await demoRoutePng(page);
+    await page.locator("#claimReceipt").setInputFiles({ name: "demo-route.png", mimeType: "image/png", buffer });
+    await page.getByRole("button", { name: "Read route & continue" }).click();
+    await page.getByText("Filled in from your route screenshot").waitFor({ timeout: 15000 });
+    await settle(page, 800);
+    // Pick the mileage item type (its rate sets the amount).
+    await page.getByText(/Select mileage claim item/).filter({ visible: true }).first().click();
+    await page.getByText(/Mileage/).filter({ visible: true }).last().click();
+    await settle(page, 800);
+    await scrollTo(page, "Filled in from your route screenshot", 20);
+    await shoot(page, "employee", "claim-route-read");
+    // Further down: where the trip was filled in, and the screenshot kept on the claim.
+    await scrollTo(page, "Route screenshot", 140, true);
+    await shoot(page, "employee", "claim-route-form");
+    await page.getByRole("button", { name: "Close" }).filter({ visible: true }).first().click().catch(() => {});
+  },
+  // A submitted mileage claim opened from My claims. The demo employee has none,
+  // so GET /claims and the stored file are stubbed in the browser.
+  "claim-route-view": async (page) => {
+    const route = await demoRoutePng(page);
+    await page.route(/\/claims\/receipts\/demo-/, (r) =>
+      r.fulfill({ status: 200, contentType: "image/png", body: route }));
+    await page.route(/\/claims$/, (r) => {
+      if (r.request().method() !== "GET") return r.continue();
+      return r.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([{
+          id: "demo-claim-2", claimNumber: "CLM-0413", title: "Client visit, Shah Alam",
+          description: "Drive from Bangsar South to i-City, Shah Alam",
+          category: "Motor Vehicle / Mileage", amount: 14.04, currency: "MYR", status: "PENDING",
+          xeroSyncStatus: "NOT_SYNCED", settlement: "NONE", currentStep: 0,
+          updatedAt: new Date().toISOString(), claimType: "MILEAGE", paymentType: "OWN_MONEY",
+          employeeId: "demo", spentAt: new Date().toISOString(), submittedAt: new Date().toISOString(),
+          exceedsLimit: false, distance: 23.4, mileageRateUsed: 0.6, mileageUnitUsed: "KM",
+          mileageOriginAddress: "Bangsar South", mileageDestinationAddress: "i-City, Shah Alam",
+          receiptUrl: "/claims/receipts/demo-route.png", supportingDocumentUrls: [],
+        }]),
+      });
+    });
+    await go(page, "claims");
+    await page.getByText("Client visit, Shah Alam").filter({ visible: true }).first().click();
+    await page.getByText("View route screenshot").waitFor({ timeout: 15000 });
+    await scrollTo(page, "Route screenshot", 140, true);
+    await shoot(page, "employee", "claim-route-view");
+    await page.getByRole("button", { name: "Close" }).filter({ visible: true }).first().click().catch(() => {});
+  },
   "overtime-list": async (page) => {
     await go(page, "attendance/att-overtime");
     await scrollTo(page, "Finishing the cable tray", 260);
@@ -806,7 +1166,7 @@ const evan = {
       { name: "permit-to-work.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n%%EOF") },
     ]);
     await settle(page, 2500);
-    await scrollTo(page, "Reason", 40);
+    await scrollTo(page, "Overtime type", 20);
     await shoot(page, "employee", "overtime-form");
     await page.keyboard.press("Escape");
   },
@@ -838,6 +1198,14 @@ const sara = {
     await page.getByRole("button", { name: "Account menu" }).click();
     await shoot(page, "employee", "account-menu");
     await page.keyboard.press("Escape");
+  },
+  // Claims queue: the field label follows the company (Claim item type without Xero).
+  "sup-claims-queue": async (page) => {
+    await go(page, "claims");
+    await page.getByText("Claims queue").filter({ visible: true }).first().click();
+    await page.getByText("Client lunch").filter({ visible: true }).first().waitFor({ timeout: 15000 });
+    await settle(page, 800);
+    await shoot(page, "employee", "sup-claims-queue");
   },
   "sup-leave-cancel": async (page) => {
     await go(page, "leave/leave-approvals");
@@ -884,6 +1252,14 @@ const exec = {
     await page.getByText(/View only/).first().waitFor({ timeout: 15000 });
     await settle(page);
     await shoot(page, "admin", "limited-settings");
+  },
+  // System Settings → Policies as an admin limited to one policy: only that
+  // policy, no New policy button, and the note about what only the owner can do.
+  "policies-limited": async (page) => {
+    await go(page, "settings/settings-policies");
+    await page.getByText(/Only the owner can create/).first().waitFor({ timeout: 15000 });
+    await settle(page);
+    await shoot(page, "admin", "policies-limited");
   },
   "limited-payroll-runs": async (page) => {
     await go(page, "payroll");

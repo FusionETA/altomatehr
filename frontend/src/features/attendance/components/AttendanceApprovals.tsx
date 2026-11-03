@@ -1224,6 +1224,7 @@ function OvertimeApprovalDetailsModal({
               <OvertimeFact label="Project" value={projectName ?? "Not assigned"} />
               <OvertimeFact label="Start" value={fmtTime(request.startAt)} />
               <OvertimeFact label="End" value={fmtTime(request.endAt)} />
+              <OvertimeFact label="Overtime type" value={request.overtimeTypeName ?? "Automatic"} />
             </div>
           </div>
         </section>

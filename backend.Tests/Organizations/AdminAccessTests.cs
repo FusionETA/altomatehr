@@ -169,6 +169,11 @@ public class AdminAccessTests
         Assert.Equal(ModuleLevel.View, await access.GetCallerLevelAsync("employees"));
         Assert.Equal(ModuleLevel.Manage, await access.GetCallerLevelAsync("documents"));
         Assert.Equal(ModuleLevel.None, await access.GetCallerLevelAsync("payroll"));
+        // Policies isn't granted per admin: every admin has it (what they may
+        // do in it is AdminAccess.CanEditPolicy / ManagesAllPolicies).
+        Assert.Equal(ModuleLevel.Manage, await access.GetCallerLevelAsync("policies"));
+        Assert.Contains("policies", await access.GetEnabledModulesAsync());
+        Assert.False((await access.GetAccessAsync()).ManagesAllPolicies);
     }
 
     // ─── Gates ──────────────────────────────────────────────────────────

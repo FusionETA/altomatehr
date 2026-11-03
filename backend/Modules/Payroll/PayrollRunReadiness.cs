@@ -39,7 +39,8 @@ public static class PayrollRunReadiness
 
             if (missing.Count > 0)
             {
-                employeeIssues.Add(new EmployeeIssue(row.EmployeeName, row.EmployeeCode, missing));
+                employeeIssues.Add(new EmployeeIssue(
+                    row.EmployeeName, row.EmployeeCode, missing, row.Payslip.UserId));
             }
         }
 
@@ -87,8 +88,10 @@ public static class PayrollRunReadiness
         return missing;
     }
 
+    // UserId: whose record to open to fix it — the run page links each gap
+    // straight to the field on that person's profile.
     public sealed record EmployeeIssue(
-        string Name, string EmployeeCode, IReadOnlyList<string> Missing);
+        string Name, string EmployeeCode, IReadOnlyList<string> Missing, string? UserId = null);
 
     public sealed record Result(
         IReadOnlyList<string> OrgIssues, IReadOnlyList<EmployeeIssue> EmployeeIssues)

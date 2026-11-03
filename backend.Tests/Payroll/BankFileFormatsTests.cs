@@ -422,9 +422,146 @@ public class BankFileFormatsTests
 
     // ─── Shared across the formats ──────────────────────────────────────
 
+    // ─── OCBC Velocity GIRO ─────────────────────────────────────────────
+
+    private static StatutoryFileResult Ocbc(
+        PayrollDocumentModel? model = null, string? tapeId = "1", bool idCheck = false,
+        string? reference = null, string? account = "701-123425-6") =>
+        PayrollBankFileOcbc.RenderGiroTxt(model ?? Model(), ValueDate, account, tapeId, idCheck, reference);
+
+    // 1-based, inclusive positions, as the spec writes them.
+    private static string At(string line, int from, int to) => line[(from - 1)..to];
+
+    // Every bank the register can resolve must be payable from OCBC.
+    [Fact]
+    public void Ocbc_HasARoutingIdForEveryBankInTheRegister()
+    {
+        var missing = MalaysianBanks.All.Where(b => PayrollBankFileOcbc.RoutingIdFor(b) is null).Select(b => b.Name);
+        Assert.Empty(missing);
+        Assert.All(MalaysianBanks.All, b => Assert.Matches("^[0-9]{9}$", PayrollBankFileOcbc.RoutingIdFor(b)!));
+    }
+
+    [Fact]
+    public void Ocbc_EveryRecordIsExactly480Characters()
+    {
+        var lines = Lines(Ocbc(Model([Row(), Row(name: "Bala", bankName: "CIMB")])).Content!);
+
+        Assert.Equal(4, lines.Length);   // header, two details, trailer
+        Assert.All(lines, l => Assert.Equal(480, l.Length));
+        Assert.Equal(["01", "02", "02", "03"], lines.Select(l => l[..2]));
+    }
+
+    // Laid out like OCBC's own sample: "0100200701A999999 … 00000000007011234256DN18102015".
+    [Fact]
+    public void Ocbc_HeaderFieldsSitAtTheirDocumentedPositions()
+    {
+        var header = Lines(Ocbc(tapeId: "2").Content!)[0];
+
+        Assert.Equal("002", At(header, 3, 5));                       // tape id
+        Assert.Equal("00701", At(header, 6, 10));                    // "00" + first 3 of the account
+        Assert.Equal("A999999".PadRight(20), At(header, 11, 30));    // company CIF
+        Assert.Equal("Globe Engineering Sdn Bhd".PadRight(30), At(header, 31, 60));
+        Assert.Equal("00000000007011234256", At(header, 61, 80));    // debiting account, zero-padded
+        Assert.Equal("DN", At(header, 81, 82));
+        Assert.Equal("31032026", At(header, 83, 90));                // DDMMYYYY
+        Assert.Equal("SALARY MAR 2026".PadRight(16), At(header, 131, 146));
+    }
+
+    [Fact]
+    public void Ocbc_DetailFieldsSitAtTheirDocumentedPositions()
+    {
+        var detail = Lines(Ocbc(reference: "MARCH PAY").Content!)[1];
+
+        Assert.Equal("123456789012".PadRight(20), At(detail, 3, 22));   // digits only
+        Assert.Equal("00000000000310810", At(detail, 23, 39));          // RM 3,108.10 in sen
+        Assert.Equal("C", At(detail, 40, 40));
+        Assert.Equal("900101145567", At(detail, 41, 52));               // new IC, digits
+        Assert.Equal("MARCH PAY".PadRight(20), At(detail, 61, 80));     // the statement reference
+        Assert.Equal("100002270", At(detail, 121, 129));                // Maybank's routing ID
+        Assert.Equal("Aisyah Binti Rahman".PadRight(22), At(detail, 130, 151));
+        Assert.Equal("N", At(detail, 247, 247));
+        Assert.Equal(new string(' ', 233), At(detail, 248, 480));       // payment type + filler
+    }
+
+    [Fact]
+    public void Ocbc_TrailerCountsAndTotalsTheDetails()
+    {
+        var model = Model([Row(net: 1000.50m), Row(name: "Bala", bankName: "RHB", net: 2000.25m)]);
+
+        var trailer = Lines(Ocbc(model).Content!)[^1];
+
+        Assert.Equal("000002", At(trailer, 3, 8));
+        Assert.Equal("0000000000000300075", At(trailer, 9, 27));
+        Assert.Equal(new string(' ', 453), At(trailer, 28, 480));       // hash total unused on Velocity
+    }
+
+    // A passport holder's number goes in the Police/Army/Passport field, not New IC.
+    [Fact]
+    public void Ocbc_PutsAPassportInItsOwnField()
+    {
+        var detail = Lines(Ocbc(Model([Row(idType: IdType.PASSPORT, idNumber: "A1234567")])).Content!)[1];
+
+        Assert.Equal(new string(' ', 12), At(detail, 41, 52));
+        Assert.Equal("A1234567".PadRight(20), At(detail, 152, 171));
+    }
+
+    [Fact]
+    public void Ocbc_IdCheckIsOffUnlessTicked_AndThenNeedsAnId()
+    {
+        Assert.Equal("Y", At(Lines(Ocbc(idCheck: true).Content!)[1], 247, 247));
+
+        var result = Ocbc(Model([Row(), Row(name: "Bala", idNumber: null)]), idCheck: true);
+        Assert.False(result.Ok);
+        Assert.Contains("Bala", result.Error!);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("1000")]
+    [InlineData("abc")]
+    public void Ocbc_RefusesATapeIdOutside001To999(string tapeId)
+    {
+        Assert.False(Ocbc(tapeId: tapeId).Ok);
+    }
+
+    [Fact]
+    public void Ocbc_RefusesWithoutADebitingAccount()
+    {
+        var result = Ocbc(account: null);
+        Assert.False(result.Ok);
+        Assert.Contains("debiting account", result.Error!);
+    }
+
+    // The field is 20 wide but the spec keeps its last 3 as filler.
+    [Fact]
+    public void Ocbc_RefusesAnAccountLongerThanSeventeenDigits()
+    {
+        var result = Ocbc(Model([Row(accountNumber: "123456789012345678")]));
+        Assert.False(result.Ok);
+        Assert.Contains("17 digits", result.Error!);
+    }
+
+    // The run's name is added once, by StatutoryFileService — not here too.
+    [Fact]
+    public void Ocbc_FileNameCarriesTheTapeIdButNotTheRunName()
+    {
+        var model = Model();
+        model.Run.Name = "Workers";
+
+        Assert.Equal("OCBC_GIRO_Payroll_032026_T002.txt", Ocbc(model, tapeId: "2").FileName);
+    }
+
+    // "Only characters visible in standard English keyboard."
+    [Fact]
+    public void Ocbc_KeepsNamesToKeyboardCharacters()
+    {
+        var detail = Lines(Ocbc(Model([Row(name: "José Müller")])).Content!)[1];
+        Assert.Equal("Jose Muller".PadRight(22), At(detail, 130, 151));
+    }
+
     // A row skipped for zero pay is correct; a row skipped because the bank
     // name didn't resolve is someone who doesn't get paid.
-    public static TheoryData<string> Renderers => ["mbb", "cimb", "hlb-txt", "hlb-xlsx"];
+    public static TheoryData<string> Renderers => ["mbb", "cimb", "hlb-txt", "hlb-xlsx", "ocbc"];
 
     private static StatutoryFileResult RenderBy(string which, PayrollDocumentModel model) =>
         which switch
@@ -432,6 +569,7 @@ public class BankFileFormatsTests
             "mbb" => PayrollBankFileMbbTxt.Render(model, ValueDate, "514012345678", "MBB0099"),
             "cimb" => PayrollBankFileCimbXlsx.Render(model),
             "hlb-txt" => PayrollBankFileHlb.RenderConnectFirstTxt(model, "SALARY"),
+            "ocbc" => PayrollBankFileOcbc.RenderGiroTxt(model, ValueDate, "7011234256", "1", false, null),
             _ => PayrollBankFileHlb.RenderConnectBizXlsx(model, "SALARY"),
         };
 

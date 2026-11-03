@@ -41,6 +41,7 @@ public static class PayslipMapper
         OtNormalHours = p.OtNormalHours,
         OtRestHours = p.OtRestHours,
         OtPublicHours = p.OtPublicHours,
+        OtCustom = PayrollRunAdjustments.ParseOtCustomLines(p.OtCustomJson),
         OtPay = p.OtPay,
         TotalAllowances = p.TotalAllowances,
         TotalReimbursements = p.TotalReimbursements,
@@ -69,6 +70,7 @@ public static class PayslipMapper
         GrossShown = PayrollGrossShown.Of(p),
         NetPay = p.NetPay,
         TotalCostToEmployer = p.TotalCostToEmployer,
+        PcbBorneByEmployer = p.PcbBorneByEmployer,
 
         StatutoryWarnings = string.IsNullOrWhiteSpace(p.StatutoryWarnings)
             ? []

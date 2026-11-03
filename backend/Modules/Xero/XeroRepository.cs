@@ -28,6 +28,16 @@ public class XeroRepository : IXeroRepository
         await _db.SaveChangesAsync();
     }
 
+    public Task<XeroOAuthState?> GetPendingChoiceAsync(string organizationId, string userId)
+    {
+        var now = DateTime.UtcNow;
+        return _db.XeroOAuthStates
+            .Where(s => s.OrganizationId == organizationId && s.UserId == userId
+                        && s.PendingChoiceProtected != null && s.PendingChoiceExpiresAt > now)
+            .OrderByDescending(s => s.CreatedAt)
+            .FirstOrDefaultAsync();
+    }
+
     public Task<XeroConnection?> GetConnectionAsync(string organizationId) =>
         _db.XeroConnections.FirstOrDefaultAsync(c => c.OrganizationId == organizationId);
 
@@ -67,6 +77,7 @@ public class XeroRepository : IXeroRepository
         existing.RefreshTokenProtected = connection.RefreshTokenProtected;
         existing.AccessTokenExpiresAt = connection.AccessTokenExpiresAt;
         existing.UpdatedAt = connection.UpdatedAt;
+        existing.XeroAppId = connection.XeroAppId;
         existing.DisconnectedAt = null;
         existing.ReconnectRequiredAt = null;
         await _db.SaveChangesAsync();
@@ -117,6 +128,23 @@ public class XeroRepository : IXeroRepository
             .ExecuteUpdateAsync(s => s
                 .SetProperty(p => p.IsArchived, true)
                 .SetProperty(p => p.ArchivedByXeroConnect, true));
+
+    public Task<int> ArchiveDefaultAccountsAsync(string organizationId) =>
+        _db.ChartOfAccounts
+            .Where(a => a.OrganizationId == organizationId
+                && a.IsDefault
+                && a.XeroAccountId == null
+                && !a.IsArchived)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(a => a.IsArchived, true)
+                .SetProperty(a => a.ArchivedByXeroConnect, true));
+
+    public Task<int> RestoreAccountsArchivedByXeroConnectAsync(string organizationId) =>
+        _db.ChartOfAccounts
+            .Where(a => a.OrganizationId == organizationId && a.ArchivedByXeroConnect)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(a => a.IsArchived, false)
+                .SetProperty(a => a.ArchivedByXeroConnect, false));
 
     public Task<int> RestoreProjectsArchivedByXeroConnectAsync(string organizationId) =>
         _db.Projects

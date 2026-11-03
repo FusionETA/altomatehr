@@ -85,7 +85,8 @@ public static class PayItemColumns
             Travelling = Sum(PayrollAdjustmentCategories.AllowanceTravelPrivate),
             Meal = Sum(PayrollAdjustmentCategories.AllowanceMeal),
             Parking = Sum(PayrollAdjustmentCategories.AllowanceParking),
-            OtHours = p.OtNormalHours + p.OtRestHours + p.OtPublicHours,
+            OtHours = p.OtNormalHours + p.OtRestHours + p.OtPublicHours
+                + PayrollRunAdjustments.ParseOtCustomLines(p.OtCustomJson).Sum(c => c.Hours),
             Ot = p.OtPay + Sum(PayrollAdjustmentCategories.WagesOvertime),
             Commission = Sum(PayrollAdjustmentCategories.WagesCommission),
             Bonus = Sum(PayrollAdjustmentCategories.WagesBonusNonAnnual),

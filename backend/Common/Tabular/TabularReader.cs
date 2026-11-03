@@ -56,6 +56,7 @@ public static class TabularReader
 
                 var lastColumn = used.LastColumn().ColumnNumber();
                 var rows = new List<List<string>>();
+                var numbers = new List<int>();
                 foreach (var row in used.RowsUsed())
                 {
                     var cells = new List<string>(lastColumn);
@@ -64,9 +65,10 @@ public static class TabularReader
                         cells.Add(row.Cell(c).GetFormattedString());
                     }
                     rows.Add(cells);
+                    numbers.Add(row.RowNumber());
                 }
 
-                sheets.Add(new TabularSheetContent(worksheet.Name, rows));
+                sheets.Add(new TabularSheetContent(worksheet.Name, rows, numbers));
             }
 
             return sheets;
@@ -202,6 +204,8 @@ public static class TabularReader
     }
 }
 
-// One sheet read out of a workbook: its name, and its rows.
+// One sheet read out of a workbook: its name, and its rows. RowNumbers is each
+// row's number in the sheet (blank rows are skipped, so it can jump); null for
+// a CSV, whose rows are simply counted.
 public sealed record TabularSheetContent(
-    string Name, IReadOnlyList<IReadOnlyList<string>> Rows);
+    string Name, IReadOnlyList<IReadOnlyList<string>> Rows, IReadOnlyList<int>? RowNumbers = null);

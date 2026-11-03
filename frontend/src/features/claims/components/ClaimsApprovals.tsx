@@ -34,6 +34,7 @@ import {
 } from "@/shared/components/BulkApprove";
 import { useBulkSelection } from "@/shared/lib/use-bulk-selection";
 import { useRealtimeEvent } from "@/shared/lib/use-realtime";
+import { useAccountTerms } from "@/features/settings/lib/account-terms";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 shadow-ambient backdrop-blur-sm";
@@ -41,6 +42,7 @@ const CARD =
 // onDecided lets the shell refresh its sidebar badge — the count lives up
 // there and has no other way to learn a claim just left the queue.
 export function ClaimsApprovals({ onDecided }: { onDecided?: () => void } = {}) {
+  const terms = useAccountTerms();
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<ClaimStatusFilter>("ALL");
   const [searchTerm, setSearchTerm] = useState("");
@@ -467,7 +469,7 @@ export function ClaimsApprovals({ onDecided }: { onDecided?: () => void } = {}) 
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Account</p>
+                    <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">{terms.singular}</p>
                     <p className="mt-1 text-sm font-semibold">{accountLabel(claim)}</p>
                   </div>
                   <div>
@@ -503,7 +505,7 @@ export function ClaimsApprovals({ onDecided }: { onDecided?: () => void } = {}) 
                         above, so this is a spacer that keeps the header aligned
                         with the rows rather than a second control. */}
                     {selection.mode ? <th className="h-12 w-12 pl-6 text-left" /> : null}
-                    {["Employee", "Claim", "Account", "Submitted", "Amount", "Status", "Action"].map((h) => (
+                    {["Employee", "Claim", terms.singular, "Submitted", "Amount", "Status", "Action"].map((h) => (
                       <th
                         key={h}
                         className="h-12 px-4 text-left text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground last:pr-6"

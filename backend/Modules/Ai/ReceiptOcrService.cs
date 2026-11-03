@@ -1,6 +1,4 @@
-using System.Globalization;
 using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Accounts;
@@ -160,94 +158,18 @@ public partial class ReceiptOcrService : IReceiptOcrService
         string? SuggestedAccountId,
         double SuggestedAccountConfidence);
 
-    // Defensive on purpose. responseMimeType: "application/json" is a strong hint,
-    // not a guarantee — models still occasionally wrap output in ```json fences or
-    // add a stray sentence. Strip fences, then take the outermost { ... }.
     private static ParsedReceipt ParseResponse(string raw)
     {
-        var text = StripCodeFences(raw).Trim();
-
-        var start = text.IndexOf('{');
-        var end = text.LastIndexOf('}');
-        if (start >= 0 && end > start) text = text[start..(end + 1)];
-
-        JsonElement root;
-        try
-        {
-            using var doc = JsonDocument.Parse(text);
-            root = doc.RootElement.Clone();
-        }
-        catch (JsonException ex)
-        {
-            var snippet = raw.Length > 200 ? raw[..200] : raw;
-            throw new AiProviderException($"Gemini returned non-JSON: {ex.Message}. Raw: {snippet}");
-        }
-
-        if (root.ValueKind != JsonValueKind.Object)
-            throw new AiProviderException("Gemini returned non-object JSON.");
+        var root = GeminiJson.ParseObject(raw);
 
         return new ParsedReceipt(
-            StringOrNull(root, "supplier"),
-            NormalizeCurrency(StringOrNull(root, "currency")),
-            DecimalOrNull(root, "total"),
-            StringOrNull(root, "date"),
-            StringOrNull(root, "description"),
-            StringOrNull(root, "suggestedAccountId"),
-            Clamp01(DoubleOrNull(root, "suggestedAccountConfidence")));
-    }
-
-    private static string StripCodeFences(string value)
-    {
-        var trimmed = value.Trim();
-        if (!trimmed.StartsWith("```", StringComparison.Ordinal)) return trimmed;
-
-        var firstNewline = trimmed.IndexOf('\n');
-        if (firstNewline < 0) return trimmed;
-
-        trimmed = trimmed[(firstNewline + 1)..];
-        var closing = trimmed.LastIndexOf("```", StringComparison.Ordinal);
-        return closing >= 0 ? trimmed[..closing] : trimmed;
-    }
-
-    // The model is told to emit null, but it sometimes emits "" or the string
-    // "null" instead — treat all three the same.
-    private static string? StringOrNull(JsonElement root, string name)
-    {
-        if (!root.TryGetProperty(name, out var el)) return null;
-        if (el.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return null;
-
-        var s = el.ValueKind == JsonValueKind.String ? el.GetString() : el.ToString();
-        s = s?.Trim();
-        if (string.IsNullOrEmpty(s)) return null;
-        return string.Equals(s, "null", StringComparison.OrdinalIgnoreCase) ? null : s;
-    }
-
-    private static decimal? DecimalOrNull(JsonElement root, string name)
-    {
-        if (!root.TryGetProperty(name, out var el)) return null;
-        if (el.ValueKind == JsonValueKind.Number && el.TryGetDecimal(out var d)) return d;
-
-        // Numbers sometimes come back quoted despite the instruction.
-        if (el.ValueKind == JsonValueKind.String
-            && decimal.TryParse(el.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed))
-        {
-            return parsed;
-        }
-
-        return null;
-    }
-
-    private static double? DoubleOrNull(JsonElement root, string name)
-    {
-        if (!root.TryGetProperty(name, out var el)) return null;
-        if (el.ValueKind == JsonValueKind.Number && el.TryGetDouble(out var d)) return d;
-        if (el.ValueKind == JsonValueKind.String
-            && double.TryParse(el.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed))
-        {
-            return parsed;
-        }
-
-        return null;
+            GeminiJson.StringOrNull(root, "supplier"),
+            NormalizeCurrency(GeminiJson.StringOrNull(root, "currency")),
+            GeminiJson.DecimalOrNull(root, "total"),
+            GeminiJson.StringOrNull(root, "date"),
+            GeminiJson.StringOrNull(root, "description"),
+            GeminiJson.StringOrNull(root, "suggestedAccountId"),
+            Clamp01(GeminiJson.DoubleOrNull(root, "suggestedAccountConfidence")));
     }
 
     private static double Clamp01(double? value) => value is null ? 0 : Math.Clamp(value.Value, 0, 1);

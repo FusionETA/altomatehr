@@ -231,7 +231,9 @@ export function PayrollRunActions({
           </>
         ) : null}
 
-        {run.status === "SUBMITTED" ? (
+        {/* An imported month is the previous system's history: it is corrected
+            by re-importing it, never reverted (the server refuses that too). */}
+        {run.status === "SUBMITTED" && run.source !== "IMPORTED" ? (
           <button
             type="button"
             className={BUTTON_DANGER}
@@ -243,6 +245,13 @@ export function PayrollRunActions({
           </button>
         ) : null}
       </div>
+
+      {run.status === "SUBMITTED" && run.source === "IMPORTED" ? (
+        <p className={HINT}>
+          Imported from your previous payroll system. To correct this month, import it again under
+          “Import earlier payroll” at the foot of the Payroll runs page — that replaces it.
+        </p>
+      ) : null}
 
       {run.status === "DRAFT" ? (
         <label htmlFor="skipProration" className="flex cursor-pointer items-start gap-3">
@@ -295,7 +304,7 @@ export function PayrollRunActions({
       {rejecting ? (
         <div className={WARN_PANEL}>
           <label className={LABEL} htmlFor="rejectReason">
-            Send {run.periodLabel} back to draft
+            Send {run.label} back to draft
           </label>
           <p className="mt-1 mb-2 text-xs">
             Whoever picks this run back up sees this note on it. Optional.
@@ -349,7 +358,7 @@ export function PayrollRunActions({
       {revertImpact !== null ? (
         <div className={WARN_PANEL}>
           <p className="font-semibold">
-            Revert {run.periodLabel} back to draft?
+            Revert {run.label} back to draft?
           </p>
 
           {revertImpact.length > 0 ? (

@@ -66,6 +66,24 @@ async function demoAdmin() {
   return r.data.token;
 }
 
+// A token for "AB Test Co A", a local company the demo admin also owns.
+async function abToken() {
+  const orgs = (await call(admin, "GET", "/auth/orgs")).data;
+  const org = (Array.isArray(orgs) ? orgs : orgs.organizations).find((o) => o.name === "AB Test Co A");
+  if (!org) throw new Error("no AB Test Co A on this machine");
+  const r = await call(admin, "POST", `/auth/switch-org/${org.organizationId}`);
+  return { t: r.data.token };
+}
+
+async function setAbOutletOt(on) {
+  const { t } = await abToken();
+  const policies = (await call(t, "GET", "/policies")).data ?? [];
+  const p = policies.find((x) => x.name === "Outlet Staff");
+  if (!p) throw new Error("no Outlet Staff policy in AB Test Co A");
+  const r = await call(t, "PUT", `/policies/${p.id}`, { ...p, otEnabled: on });
+  console.log("Outlet Staff overtime", on ? "on" : "off", "→", r.status, r.status === 200 ? "" : JSON.stringify(r.data));
+}
+
 // Malaysia "today" + n days, as yyyy-MM-dd.
 function mytDate(n = 0) {
   const d = new Date(Date.now() + 8 * 3600_000 + n * 86400_000);
@@ -79,6 +97,19 @@ async function profileIdOf(name) {
   return row.employeeProfileId;
 }
 
+// Sets (or, with "", clears) an employee's nickname in the demo company. The
+// update replaces role/policy/shift, so they are sent back as they were.
+async function setNickname(userId, nickname) {
+  const t = await demoAdmin();
+  const list = (await call(t, "GET", "/employees")).data ?? [];
+  const e = list.find((x) => x.id === userId);
+  if (!e) throw new Error(`no ${userId} in the demo company`);
+  const r = await call(t, "PUT", `/employees/${userId}`, {
+    role: e.role, policyId: e.policyId, shiftId: e.shiftId, modules: e.modules, nickname,
+  });
+  console.log("nickname", userId, JSON.stringify(nickname), "→", r.status);
+}
+
 const steps = {
   // Two foreign workers with permits for the Executive Overview "Work permits"
   // card and the profile's work permit fields: one expired, one due soon.
@@ -86,14 +117,15 @@ const steps = {
   "work-permits": async () => {
     // Gender, birth date, passport and marital status are made up too, so the
     // profile screen doesn't show red "Required" outlines in the guide shot.
+    const adminToken = await demoAdmin(); // the demo company, wherever sign-in landed
     for (const [userId, nationality, number, days, gender, passport] of [
       ["usr-demo-arjun", "Indian", "PLKS-DEMO-0001", 24, "MALE", "X0000001"],
       ["usr-demo-priya", "Indonesian", "PLKS-DEMO-0002", -6, "FEMALE", "X0000002"],
     ]) {
-      const got = await call(admin, "GET", `/employees/${userId}/profile`);
+      const got = await call(adminToken, "GET", `/employees/${userId}/profile`);
       if (got.status !== 200) { console.log(userId, "profile:", got.status, got.data); continue; }
       const p = got.data;
-      const r = await call(admin, "PUT", `/employees/${userId}/profile`, {
+      const r = await call(adminToken, "PUT", `/employees/${userId}/profile`, {
         ...p,
         nationality,
         gender,
@@ -108,6 +140,61 @@ const steps = {
       });
       console.log("work permit", userId, nationality, mytDate(days), "→", r.status, r.status === 200 ? "" : JSON.stringify(r.data));
     }
+  },
+
+  // For the payroll "Needs attention" shot: blank one demo employee's (Aisyah's)
+  // ID number so the January 2027 draft lists "IC number" under "fields the
+  // statutory files need". (The app refuses a placeholder EPF number when
+  // saving, so the ID number is the gap we can make.) The original is kept in
+  // .out/id-gap.json; run `payroll-gap-restore` afterwards.
+  "payroll-gap": async () => {
+    const adminToken = await demoAdmin();
+    const list = (await call(adminToken, "GET", "/employees")).data ?? [];
+    const evanRow = list.find((e) => e.email === "aisyah.rahman@altomate.com");
+    if (!evanRow) throw new Error("no Aisyah in the demo company");
+    const got = await call(adminToken, "GET", `/employees/${evanRow.id}/profile`);
+    if (got.status !== 200) throw new Error(`profile: ${got.status}`);
+    mkdirSync(new URL("./.out/", import.meta.url), { recursive: true });
+    const saved = new URL("./.out/id-gap.json", import.meta.url);
+    if (!existsSync(saved)) writeFileSync(saved, JSON.stringify({ userId: evanRow.id, idNumber: got.data.idNumber ?? null }));
+    const r = await call(adminToken, "PUT", `/employees/${evanRow.id}/profile`, { ...got.data, idNumber: "" });
+    console.log("ID number cleared on Aisyah:", r.status, r.status === 200 ? "" : JSON.stringify(r.data));
+  },
+
+  "payroll-gap-restore": async () => {
+    const saved = new URL("./.out/id-gap.json", import.meta.url);
+    if (!existsSync(saved)) { console.log("nothing to restore"); return; }
+    const { userId, idNumber } = JSON.parse(readFileSync(saved, "utf8"));
+    const adminToken = await demoAdmin();
+    const got = await call(adminToken, "GET", `/employees/${userId}/profile`);
+    const r = await call(adminToken, "PUT", `/employees/${userId}/profile`, { ...got.data, idNumber });
+    console.log("ID number restored:", r.status);
+    if (r.status === 200) rmSync(saved);
+  },
+
+  // For the payroll "Download files" bank section: switch the demo company's
+  // payroll bank to OCBC. The full original settings are kept in
+  // .out/payroll-bank.json; run `payroll-bank-restore` afterwards.
+  "payroll-bank-ocbc": async () => {
+    const t = await demoAdmin();
+    const got = await call(t, "GET", "/payroll/settings");
+    if (got.status !== 200) throw new Error(`settings: ${got.status}`);
+    mkdirSync(new URL("./.out/", import.meta.url), { recursive: true });
+    const saved = new URL("./.out/payroll-bank.json", import.meta.url);
+    if (!existsSync(saved)) writeFileSync(saved, JSON.stringify(got.data));
+    const { isConfigured, updatedAt, abPayEnabled, ...rest } = got.data;
+    const r = await call(t, "PUT", "/payroll/settings", { ...rest, payrollBankName: "OCBC Bank (Malaysia) Berhad" });
+    console.log("payroll bank → OCBC:", r.status, r.status === 200 ? "" : JSON.stringify(r.data));
+  },
+
+  "payroll-bank-restore": async () => {
+    const saved = new URL("./.out/payroll-bank.json", import.meta.url);
+    if (!existsSync(saved)) { console.log("nothing to restore"); return; }
+    const t = await demoAdmin();
+    const { isConfigured, updatedAt, abPayEnabled, ...rest } = JSON.parse(readFileSync(saved, "utf8"));
+    const r = await call(t, "PUT", "/payroll/settings", rest);
+    console.log("payroll bank restored to", rest.payrollBankName, "→", r.status);
+    if (r.status === 200) rmSync(saved);
   },
 
   // Approve one of Evan's future leaves (approved, not started) — for the
@@ -264,6 +351,28 @@ const steps = {
     console.log("policy restored:", r.status);
   },
 
+  // AB Test Co A (local only): a second, named run for November 2026 beside the
+  // existing draft, holding whoever isn't in it yet, worked out. Not rerunnable
+  // while it exists; undo with `split-run-remove`.
+  "split-run": async () => {
+    const { t } = await abToken();
+    const picker = (await call(t, "GET", "/payroll/runs/picker?year=2026&month=11")).data;
+    const policyIds = picker.policies.filter((p) => p.members.some((m) => !m.takenByRunId)).map((p) => p.id);
+    const c = await call(t, "POST", "/payroll/runs", { periodYear: 2026, periodMonth: 11, name: "Workers", policyIds, excludedEmployeeProfileIds: [] });
+    console.log("create Workers:", c.status, c.data?.id ?? JSON.stringify(c.data));
+    if (c.status >= 300) process.exit(1);
+    const g = await call(t, "POST", `/payroll/runs/${c.data.id}/generate`);
+    console.log("generate:", g.status, g.status === 200 ? "ok" : JSON.stringify(g.data));
+  },
+
+  "split-run-remove": async () => {
+    const { t } = await abToken();
+    const runs = (await call(t, "GET", "/payroll/runs")).data ?? [];
+    const run = runs.find((r) => r.periodYear === 2026 && r.periodMonth === 11 && r.name === "Workers" && r.status === "DRAFT");
+    if (!run) { console.log("no Workers draft"); return; }
+    console.log("delete Workers:", (await call(t, "DELETE", `/payroll/runs/${run.id}`)).status);
+  },
+
   // Maternity (Female only) and Paternity (Male only) in the demo company, next
   // to the seeded Annual / Medical / Unpaid. Existing codes are skipped, so
   // rerunnable. (Not /leave-types/defaults: that would also add a second
@@ -295,6 +404,58 @@ const steps = {
       console.log("account", code, r.status, r.data?.message ?? "");
     }
   },
+
+  // Switches mileage on for one claim item type so the mileage claim shots have
+  // something to pick (the starter 449 Motor Vehicle / Mileage item starts with
+  // mileage off). Does it in the demo company AND in whichever company Evan
+  // signs in to (on a machine where he was transferred, that is another demo
+  // company). Creates "6150 Motor Vehicle / Mileage" if there is no mileage
+  // item. Rerunnable.
+  "mileage-account": async () => {
+    const evanOrg = JSON.parse(Buffer.from(evan.split(".")[1], "base64url").toString()).org;
+    for (const orgId of new Set(["org-altomate", evanOrg])) {
+      const sw = await call(admin, "POST", `/auth/switch-org/${orgId}`);
+      if (sw.status !== 200 || !sw.data?.token) { console.log(orgId, "switch:", sw.status); continue; }
+      const t = sw.data.token;
+      const rows = (await call(t, "GET", "/accounts")).data ?? [];
+      const found = rows.find((a) => a.type === "EXPENSE" && !a.isArchived && /mileage/i.test(a.name));
+      const body = (a) => ({
+        code: a.code, name: a.name, type: "EXPENSE", isSelectable: true,
+        limitAmount: a.limitAmount ?? null, allowMileageClaim: true, mileageRate: 0.6,
+      });
+      const r = found
+        ? await call(t, "PUT", `/accounts/${found.id}`, body(found))
+        : await call(t, "POST", "/accounts", body({ code: "6150", name: "Motor Vehicle / Mileage" }));
+      console.log("mileage item type", orgId, found?.code ?? "6150", "→", r.status, r.status === 200 ? "" : JSON.stringify(r.data));
+    }
+  },
+
+  // A company-own overtime type, "Night shift" at 1.5x, in AltomateHR Demo Co,
+  // AB Test Co A and Demo Transfer Co, so the Overtime types card, the policy editor, the
+  // overtime form's "Overtime type" picker and the payroll adjustments drawer
+  // have one to show. Rerunnable (skips a company that already has it).
+  "overtime-types": async () => {
+    const orgs = (await call(admin, "GET", "/auth/orgs")).data;
+    const list = Array.isArray(orgs) ? orgs : orgs.organizations;
+    const tokens = [await demoAdmin(), (await abToken()).t];
+    // Evan's phone sessions open in Demo Transfer Co on this machine.
+    const transfer = list.find((o) => o.name === "Demo Transfer Co");
+    if (transfer) tokens.push((await call(admin, "POST", `/auth/switch-org/${transfer.organizationId}`)).data.token);
+    for (const t of tokens) {
+      const types = (await call(t, "GET", "/overtime-types")).data ?? [];
+      if (types.some((x) => x.kind === "CUSTOM" && !x.isArchived && x.name === "Night shift")) {
+        console.log("Night shift already there"); continue;
+      }
+      const r = await call(t, "POST", "/overtime-types", { name: "Night shift", multiplier: 1.5 });
+      console.log("overtime type:", r.status, r.data?.name ?? JSON.stringify(r.data));
+    }
+  },
+
+  // AB Test Co A's "Outlet Staff" policy has overtime off, so a payroll
+  // adjustments drawer there shows no overtime boxes. Switch it on for the
+  // shot (`ab-outlet-ot-on`) and back off afterwards (`ab-outlet-ot-off`).
+  "ab-outlet-ot-on": async () => setAbOutletOt(true),
+  "ab-outlet-ot-off": async () => setAbOutletOt(false),
 
   // Evan's overtime with two before-work files and one after-work file.
   // Adds a request each run.
@@ -346,6 +507,15 @@ const steps = {
       notes: "Moving to the Penang office",
     });
     console.log("queue transfer:", r.status, r.data?.transfer?.status ?? JSON.stringify(r.data));
+  },
+
+  // A nickname on two demo employees so the employee list and the record show
+  // "Full name (Nickname)". Rerunnable; `nicknames-remove` clears them again.
+  "nicknames": async () => {
+    for (const [id, nick] of [["usr-demo-mei", "Mei"], ["usr-demo-aisyah", "Ica"], ["usr-demo-arjun", "Arj"]]) await setNickname(id, nick);
+  },
+  "nicknames-remove": async () => {
+    for (const id of ["usr-demo-mei", "usr-demo-aisyah", "usr-demo-arjun"]) await setNickname(id, "");
   },
 
   // Cancels the queued demo transfer again (after the shots).

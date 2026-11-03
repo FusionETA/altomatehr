@@ -55,6 +55,12 @@ public interface IPayslipRepository
 
     Task<List<PayslipLineItem>> GetLineItemsAsync(string payslipId);
 
+    // Every payslip in this year's months before `beforeMonth`, with its run —
+    // for settling unpaid leave decided after its month was filed.
+    // (Default keeps hand-written test doubles compiling.)
+    Task<List<(Payslip Payslip, PayrollRun Run)>> GetEarlierInYearAsync(int year, int beforeMonth) =>
+        Task.FromResult(new List<(Payslip, PayrollRun)>());
+
     // Wipe the run's payslips and line items and write these instead. One
     // transaction, because a half-regenerated run is worse than a stale one.
     Task ReplaceForRunAsync(
@@ -87,7 +93,17 @@ public interface IPayslipRepository
     // the run is named rather than added.
     Task<IReadOnlyDictionary<string, PayslipYtdSummary>> GetYtdThroughPeriodAsync(
         int year, int month, string? includeRunId);
+
+    // Each person's months that sit in a SUBMITTED or PENDING_APPROVAL run,
+    // optionally for one person. What a loan's "paid" and "locked" months
+    // are read from: the borrower's own payslip, not just "the month has a
+    // run" — once a month can hold several runs, another group's approved run
+    // says nothing about this borrower. (Default keeps test doubles compiling.)
+    Task<IReadOnlyList<PayslipFiledPeriod>> GetFiledPeriodsAsync(string? employeeProfileId = null) =>
+        Task.FromResult<IReadOnlyList<PayslipFiledPeriod>>([]);
 }
+
+public sealed record PayslipFiledPeriod(string EmployeeProfileId, int Year, int Month, PayrollRunStatus Status);
 
 public sealed record PayslipYtdSummary
 {

@@ -37,6 +37,13 @@ public class OrganizationMembership : ITenantScoped
     [MaxLength(120)]
     public string? JobTitle { get; set; }
 
+    // What colleagues call them IN THIS org ("Mat"), set by admins. Shown
+    // beside the legal name across the app (PersonName.WithNickname) — never
+    // in its place, and never on payslips, statutory files, EA/LHDN forms,
+    // letters or bank files, which carry the legal name.
+    [MaxLength(60)]
+    public string? Nickname { get; set; }
+
     // Banked overtime time-off, in minutes (the monolith's otTimeBalanceMin).
     public int OtTimeBalanceMin { get; set; }
 

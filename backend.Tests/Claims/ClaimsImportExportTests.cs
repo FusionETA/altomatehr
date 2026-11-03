@@ -197,6 +197,26 @@ public class ClaimsImportExportTests
         Assert.Equal(1, result.Imported);
     }
 
+    // A starter claim item type archived when Xero came in keeps its code, so
+    // the code now names two accounts: the import must land on Xero's.
+    [Fact]
+    public async Task ACodeTwoAccountsShare_ResolvesToTheLiveXeroOne()
+    {
+        var service = ClaimsTestFactory.CreateService(
+            [],
+            employees: new FakeEmployeeDirectory(Ahmad),
+            accounts: new FakeChartOfAccountService(
+                new() { Id = "starter-400", Code = "400", Name = "Advertising & Marketing", Type = "EXPENSE", IsArchived = true },
+                new() { Id = "xero-400", Code = "400", Name = "Advertising", Type = "EXPENSE", IsSelectable = true, XeroAccountId = "x-400" }));
+
+        var result = await service.ImportAsync(
+            Csv(Header + ",Account Code", "ahmad@x.com,Flyers,OTHER,120,MYR,2026-01-15,APPROVED,400"),
+            TabularFormat.Csv);
+
+        Assert.Empty(result.Errors);
+        Assert.Equal("xero-400", Assert.Single(await service.GetMineAsync("usr-ahmad")).ChartOfAccountId);
+    }
+
     // ---- Export ----
 
     [Fact]

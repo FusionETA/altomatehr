@@ -1,3 +1,5 @@
+using AltomateHR.Api.Modules.Accounts;
+using AltomateHR.Api.Modules.Accounts.Entities;
 using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Policies;
@@ -118,6 +120,43 @@ public class OrganizationDefaultsTests
 
         Assert.True(result.ProjectCreated);
         Assert.True(result.TeamCreated);
+    }
+
+    // Without Xero, claims need something to be filed against from day one:
+    // a new company gets the starter claim item types, for its own org.
+    [Fact]
+    public async Task ANewOrganisationGetsTheStarterClaimItemTypes()
+    {
+        var accounts = new FakeAccounts();
+        var service = new OrganizationDefaultsService(new FakePolicies(), new FakeProjects(), new FakeTeams(), accounts);
+
+        var result = await service.EnsureForOrganizationAsync(Org, "Acme Sdn Bhd");
+
+        Assert.Equal(DefaultClaimItemTypes.All.Count, result.AccountsCreated);
+        Assert.All(accounts.Rows, a => Assert.True(a.IsDefault && a.IsSelectable && a.OrganizationId == Org));
+        Assert.Contains(accounts.Rows, a => a.Code == "429" && a.Name == "General Expenses");
+        Assert.Contains(accounts.Rows, a => a.Code == "090" && a.Type == ChartOfAccountTypes.Bank);
+    }
+
+    // A company that already has any account keeps its own list.
+    [Fact]
+    public async Task AnOrgWithAnyAccountGetsNoStarterList()
+    {
+        var accounts = new FakeAccounts();
+        accounts.Rows.Add(new ChartOfAccount { OrganizationId = Org, Code = "600", Name = "Mine" });
+        var service = new OrganizationDefaultsService(new FakePolicies(), new FakeProjects(), new FakeTeams(), accounts);
+
+        Assert.Equal(0, (await service.EnsureForOrganizationAsync(Org, "Acme")).AccountsCreated);
+        Assert.Single(accounts.Rows);
+    }
+
+    private sealed class FakeAccounts : IChartOfAccountRepository
+    {
+        public List<ChartOfAccount> Rows { get; } = [];
+        public Task<List<ChartOfAccount>> GetAllAsync() => Task.FromResult(Rows);
+        public Task<ChartOfAccount?> GetByIdAsync(string id) => Task.FromResult(Rows.FirstOrDefault(a => a.Id == id));
+        public Task<ChartOfAccount> AddAsync(ChartOfAccount account) { Rows.Add(account); return Task.FromResult(account); }
+        public Task UpdateAsync(ChartOfAccount account) => Task.CompletedTask;
     }
 
     private static (IOrganizationDefaultsService, FakePolicies, FakeProjects, FakeTeams) Build()

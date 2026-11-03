@@ -100,6 +100,11 @@ public class PayrollAdjustmentContextDto
     // zero is a zero payslip.
     public bool AttendanceApplies { get; set; }
 
+    // The employer HRDF levy the formula gives this person, from the run's
+    // last payroll (HRDF wage × levy rate) — shown greyed behind the
+    // "Employer HRDF levy" box. Null until payroll has been run.
+    public decimal? ComputedHrdfLevy { get; set; }
+
     // False when the policy banks overtime as time off or disables it. Typed
     // OT hours are then IGNORED by generation, so the form must say so rather
     // than accept a number that silently does nothing.
@@ -114,8 +119,26 @@ public class PayrollAdjustmentContextDto
     public decimal ApprovedOtRestHours { get; set; }
     public decimal ApprovedOtPublicHours { get; set; }
 
+    // Every overtime box the form shows, in order: the three built-in types
+    // (under the company's names) and the company's own types this person's
+    // policy offers — plus any other with hours approved or typed, so nothing
+    // owed is hidden. Multiplier is what this person's policy pays.
+    public IReadOnlyList<AdjustmentOvertimeTypeDto> OvertimeTypes { get; set; } = [];
+
     public IReadOnlyList<LoanInstallmentPreviewDto> LoanInstallments { get; set; } = [];
 
     // Only a DRAFT run accepts an edit.
     public bool Editable { get; set; }
+}
+
+public class AdjustmentOvertimeTypeDto
+{
+    // "normalDay" / "restDay" / "publicHoliday" for the built-ins (the boxes
+    // the OtNormalHours / OtRestHours / OtPublicHours fields fill); otherwise
+    // the overtime type id, the key in OtCustomHours.
+    public string Key { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public bool BuiltIn { get; set; }
+    public decimal Multiplier { get; set; }
+    public decimal ApprovedHours { get; set; }
 }

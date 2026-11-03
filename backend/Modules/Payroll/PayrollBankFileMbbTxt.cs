@@ -70,7 +70,9 @@ public static class PayrollBankFileMbbTxt
         var maybank = MalaysianBanks.Find("Malayan Banking Berhad")!;
         var reference = PayrollBankRows.Reference(model);
         var valueDateText = valueDate.ToString("ddMMyyyy");
-        var periodTag = $"{model.Run.PeriodYear}{model.Run.PeriodMonth:D2}";
+        // A month's later runs add R2, R3, … so each upload's batch ID differs.
+        var periodTag = $"{model.Run.PeriodYear}{model.Run.PeriodMonth:D2}"
+                        + (model.Run.RunNumber > 1 ? $"R{model.Run.RunNumber}" : "");
 
         var lines = new List<string>
         {

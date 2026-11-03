@@ -31,6 +31,8 @@ public static class AuditActions
     // Fusioneta support: opening a customer's org, and provisioning a company.
     public const string SupportEnter = "support.enter";
     public const string SupportCompanyCreate = "support.company.create";
+    public const string SupportCompanyDeactivate = "support.company.deactivate";
+    public const string SupportCompanyReactivate = "support.company.reactivate";
     public const string PayrollLoanUpdate = "payroll.loan.update";
     public const string PayrollLoanDelete = "payroll.loan.delete";
     // Changes to a loan already repaying: the balance re-spread, months
@@ -103,6 +105,7 @@ public static class AuditActions
     // People
     public const string EmployeeCreate = "employee.create";
     public const string EmployeeUpdate = "employee.update";
+    public const string EmployeeWelcomeResend = "employee.welcome.resend";
     public const string EmployeeTransferSchedule = "employee.transfer.schedule";
     public const string EmployeeTransferCancel = "employee.transfer.cancel";
     public const string EmployeeTransferExecute = "employee.transfer.execute";
@@ -128,6 +131,10 @@ public static class AuditActions
     public const string XeroReconnectRequired = "xero.reconnect_required";
     public const string XeroSyncAccounts = "xero.accounts.sync";
     public const string XeroProjectTrackingSet = "xero.project-tracking.set";
+    // Superadmin: the Xero apps, and which one an owner's companies use.
+    public const string XeroAppSave = "xero.app.save";
+    public const string XeroAppDelete = "xero.app.delete";
+    public const string XeroAppChoiceSet = "xero.app.choice";
 
     // Auth. Successful sign-ins are recorded as well as failed ones: "has this
     // supervisor been in this week" is a question the log gets asked, and a feed
@@ -194,6 +201,7 @@ public static class AuditActions
         [ProjectRestore] = "Project restored",
         [EmployeeCreate] = "Employee added",
         [EmployeeUpdate] = "Employee updated",
+        [EmployeeWelcomeResend] = "Welcome email resent",
         [EmployeeTransferSchedule] = "Employee transfer scheduled",
         [EmployeeTransferCancel] = "Employee transfer cancelled",
         [EmployeeTransferExecute] = "Employee transferred",
@@ -210,6 +218,9 @@ public static class AuditActions
         [XeroReconnectRequired] = "Xero reconnect required",
         [XeroSyncAccounts] = "Xero accounts synced",
         [XeroProjectTrackingSet] = "Project tracking category set",
+        [XeroAppSave] = "Xero app saved",
+        [XeroAppDelete] = "Xero app deleted",
+        [XeroAppChoiceSet] = "Xero app changed",
         [AuthLogin] = "Signed in",
         [AuthLoginFailed] = "Failed sign-in",
         [AuthPasswordChange] = "Password changed",

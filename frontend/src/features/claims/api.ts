@@ -193,6 +193,38 @@ export function analyzeClaimReceipt(file: File) {
   return apiPostForm<AnalyzeReceiptResponse>("/claims/receipts/analyze", formData);
 }
 
+// What the scan read off a route screenshot (Google Maps, Waze, ...). Pre-fill
+// only, like the receipt read. `distance` is already in the org's unit.
+export type MileageExtraction = {
+  isRoute: boolean;
+  distance: number | null;
+  unit: "KM" | "MILE";
+  detectedDistance: number | null;
+  detectedUnit: "KM" | "MILE" | null;
+  origin: string | null;
+  destination: string | null;
+  via: string | null;
+  date: string | null;               // yyyy-MM-dd
+  /** Set only when the route isn't a driving one (WALK, TRANSIT, ...). */
+  travelMode: string | null;
+  otherRoutesShown: boolean;
+  description: string | null;
+  provider: string;
+};
+
+export type AnalyzeMileageResponse = {
+  receiptUrl: string;
+  extraction: MileageExtraction;
+};
+
+// Uploads a route screenshot AND reads the trip off it. Stored either way, and
+// kept as the mileage claim's main document.
+export function analyzeMileageScreenshot(file: File) {
+  const formData = new FormData();
+  formData.append("receiptFile", file);
+  return apiPostForm<AnalyzeMileageResponse>("/claims/mileage/analyze", formData);
+}
+
 export function uploadClaimReceipt(file: File) {
   const formData = new FormData();
   formData.append("receiptFile", file);

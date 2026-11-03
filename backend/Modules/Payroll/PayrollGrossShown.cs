@@ -20,16 +20,22 @@ namespace AltomateHR.Api.Modules.Payroll;
 // clamped: the formula is linear, so a run's total (from its summed figures)
 // always equals its rows added up — even when kept deductions exceed pay and
 // a row shows below zero.
+//
+// PCB borne by the employer is in cost too, but was never pay: it's taken out
+// with the employer's contributions, or it would read as gross the employee
+// earned and then had PCB deducted from.
 public static class PayrollGrossShown
 {
     public static decimal Of(Payslip p) =>
-        Shown(p.TotalCostToEmployer, p.EpfEmployer + p.SocsoEmployer + p.EisEmployer + p.Hrdf);
+        Shown(p.TotalCostToEmployer,
+            p.EpfEmployer + p.SocsoEmployer + p.EisEmployer + p.Hrdf + p.PcbBorneByEmployer);
 
     public static decimal Of(PayrollRun r) =>
         Shown(r.TotalCostToEmployer,
-            r.TotalEmployerEpf + r.TotalEmployerSocso + r.TotalEmployerEis + r.TotalHrdf);
+            r.TotalEmployerEpf + r.TotalEmployerSocso + r.TotalEmployerEis + r.TotalHrdf
+            + r.TotalPcbBorneByEmployer);
 
     // = gross − kept, where kept = gross + employer contributions − cost.
-    private static decimal Shown(decimal cost, decimal employerContributions) =>
-        Money.Round2(cost - employerContributions);
+    private static decimal Shown(decimal cost, decimal employerPaid) =>
+        Money.Round2(cost - employerPaid);
 }

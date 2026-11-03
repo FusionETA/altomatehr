@@ -60,11 +60,14 @@ public class PayrollRunsController : ControllerBase
     public async Task<IActionResult> GetAll() => Ok(await _runs.GetAllAsync());
 
     // Policies + their payable employees, for the "Start a payroll run" picker.
-    // Literal segment, so it wins over the {id} route below.
+    // With a period, each employee already in another run that month is marked
+    // with that run (exceptRunId leaves one run out of that). Literal segment,
+    // so it wins over the {id} route below.
     [RequireScope("payroll:read")]
     [HttpGet("picker")]
-    public async Task<IActionResult> GetPicker([FromQuery] int? year, [FromQuery] int? month) =>
-        Ok(await _runs.GetPickerAsync(year, month));
+    public async Task<IActionResult> GetPicker(
+        [FromQuery] int? year, [FromQuery] int? month, [FromQuery] string? exceptRunId) =>
+        Ok(await _runs.GetPickerAsync(year, month, exceptRunId));
 
     [RequireScope("payroll:read")]
     [HttpGet("{id}")]
@@ -80,15 +83,17 @@ public class PayrollRunsController : ControllerBase
     {
         var result = await _runs.CreateAsync(dto);
 
-        // A period that already has a run is a conflict, not a bad request —
-        // the client's fix is to open the existing run, not to resend.
+        // A second run for a month without a name, a name the month already
+        // uses, or only people already in another run that month — conflicts
+        // with what exists, not a bad request.
         return result.Ok
             ? CreatedAtAction(nameof(Get), new { id = result.Run!.Id }, result.Run)
             : Conflict(new { error = result.Error });
     }
 
-    // Change a draft run's settings — today only SkipProration, which an
-    // integration sets on a run that already existed when it imported.
+    // Change a run's settings: its name (any status), or SkipProration (draft
+    // only), which an integration sets on a run that already existed when it
+    // imported.
     [RequireScope("payroll:write")]
     [HttpPatch("{id}")]
     public async Task<IActionResult> Update(string id, UpdatePayrollRunDto dto)
@@ -175,6 +180,9 @@ public class PayrollRunsController : ControllerBase
     // What a revert would drag back with it — for the confirm dialog, so the
     // admin is told before rather than after. Empty is the common case.
     [RequireScope("payroll:read")]
+    // Only someone who may revert needs it, and a policy-limited admin sees
+    // runs outside their scope as empty — the list would be wrong for them.
+    [RequireFullEmployeeScope(IncludeReads = true)]
     [HttpGet("{id}/revert-impact")]
     public async Task<IActionResult> RevertImpact(string id)
     {
@@ -221,6 +229,42 @@ public class PayrollRunsController : ControllerBase
     [RequireFullEmployeeScope(IncludeReads = true)]
     [HttpGet("{id}/files/pcb")]
     public Task<IActionResult> PcbTxt(string id) => File(_statutory.RenderPcbTxtAsync(id));
+
+    // GET /payroll/runs/{id}/files/statutory — the four files above in one zip.
+    //
+    // A file that can't be produced is left out and its key named in
+    // X-Bundle-Skipped, as with the full bundle. When none can be, the 409
+    // carries each file's reason under `skipped`.
+    [RequireScope("payroll:read")]
+    [RequireFullEmployeeScope(IncludeReads = true)]
+    [HttpGet("{id}/files/statutory")]
+    public async Task<IActionResult> StatutoryZip(string id) =>
+        Zip(await _statutory.RenderStatutoryBundleAsync(id));
+
+    // GET /payroll/runs/{id}/documents/allowances-deductions — the two reports
+    // below in one zip. Same answers as the statutory zip.
+    [RequireScope("payroll:read")]
+    [RequireFullEmployeeScope(IncludeReads = true)]
+    [HttpGet("{id}/documents/allowances-deductions")]
+    public async Task<IActionResult> LineReportsZip(string id) =>
+        Zip(await _statutory.RenderLineReportsZipAsync(id));
+
+    private IActionResult Zip(PayrollBundleResult bundle)
+    {
+        if (!bundle.Ok)
+        {
+            if (bundle.Error is null) return NotFound();
+            return bundle.Skipped.Count > 0
+                ? Conflict(new { error = bundle.Error, skipped = bundle.Skipped })
+                : Conflict(new { error = bundle.Error });
+        }
+
+        Response.Headers["X-Bundle-File-Count"] = bundle.Included.Count.ToString();
+        if (bundle.Skipped.Count > 0)
+            Response.Headers["X-Bundle-Skipped"] = string.Join(",", bundle.Skipped.Keys);
+
+        return File(bundle.Content!, "application/zip", bundle.FileName);
+    }
 
     // What the files above still need. The run page shows this as a banner,
     // and submission refuses while it is not ok.
@@ -284,6 +328,23 @@ public class PayrollRunsController : ControllerBase
         };
     }
 
+    // Every run in a month as one summary — for checking a month split into
+    // several runs as a whole. Read-only; each run still files on its own.
+    [RequireScope("payroll:read")]
+    [RequireFullEmployeeScope(IncludeReads = true)]
+    [HttpGet("month/{year:int}/{month:int}/summary")]
+    public async Task<IActionResult> MonthSummary(int year, int month, [FromQuery] string? format)
+    {
+        if (month is < 1 or > 12) return BadRequest(new { error = "month must be 1–12." });
+
+        return format?.ToLowerInvariant() switch
+        {
+            null or "" or "pdf" => await File(_statutory.RenderMonthSummaryAsync(year, month, xlsx: false)),
+            "xlsx" => await File(_statutory.RenderMonthSummaryAsync(year, month, xlsx: true)),
+            _ => BadRequest(new { error = "format must be pdf or xlsx." }),
+        };
+    }
+
     [RequireScope("payroll:read")]
     [RequireFullEmployeeScope(IncludeReads = true)]
     [HttpGet("{id}/documents/payment-schedule")]
@@ -324,8 +385,9 @@ public class PayrollRunsController : ControllerBase
 
     // The bank disbursement file, in the layout of the company's own payroll
     // bank. `paymentDate` is the value date; omitted means the last day of the
-    // payroll period. `recipientReference` and `channel` apply to Hong Leong
-    // only — every other bank ignores them.
+    // payroll period. `channel` applies to Hong Leong only; `recipientReference`
+    // to Hong Leong (required) and OCBC (optional); `tapeId` and `idCheck` to
+    // OCBC only — every other bank ignores them.
     [RequireScope("payroll:read")]
     [RequireFullEmployeeScope(IncludeReads = true)]
     [HttpGet("{id}/documents/bank-file")]
@@ -333,8 +395,10 @@ public class PayrollRunsController : ControllerBase
         string id,
         [FromQuery] DateTime? paymentDate,
         [FromQuery] string? recipientReference,
-        [FromQuery] HlbChannel? channel) =>
-        File(_statutory.RenderBankFileAsync(id, paymentDate, recipientReference, channel));
+        [FromQuery] HlbChannel? channel,
+        [FromQuery] string? tapeId,
+        [FromQuery] bool idCheck = false) =>
+        File(_statutory.RenderBankFileAsync(id, paymentDate, recipientReference, channel, tapeId, idCheck));
 
     // Everyone the bank file doesn't pay (other banks / e-wallets, cash,
     // cheque, missing accounts), as an Excel sheet to pay from by hand.
@@ -509,6 +573,9 @@ public class PayrollRunsController : ControllerBase
         return context is null ? NotFound() : Ok(context);
     }
 
+    private static readonly string[] PayloadErrors =
+        ["Unknown adjustment category", "Unknown overtime type", "Overtime hours must be"];
+
     // Replaces the row wholesale — see SavePayrollRunAdjustmentDto for why a
     // partial patch would be ambiguous.
     [RequireScope("payroll:write")]
@@ -520,11 +587,12 @@ public class PayrollRunsController : ControllerBase
 
         if (!result.Found) return NotFound();
 
-        // A non-draft run is a state conflict; an unknown category is the
-        // client's mistake to fix in the payload.
+        // A non-draft run is a state conflict; an unknown category or overtime
+        // type, or out-of-range overtime hours, is the client's mistake to fix
+        // in the payload.
         if (!result.Ok)
         {
-            return result.Error!.StartsWith("Unknown adjustment category", StringComparison.Ordinal)
+            return PayloadErrors.Any(p => result.Error!.StartsWith(p, StringComparison.Ordinal))
                 ? BadRequest(new { error = result.Error })
                 : Conflict(new { error = result.Error });
         }

@@ -38,4 +38,30 @@ public class SupportController : ControllerBase
             return BadRequest(new { message = ex.Message });
         }
     }
+
+    // POST /support/organizations/{id}/deactivate — close a company to
+    // everyone in it (data kept). A reason is required.
+    [HumanOnly]
+    [HttpPost("organizations/{organizationId}/deactivate")]
+    public async Task<IActionResult> Deactivate(string organizationId, DeactivateCompanyDto dto)
+    {
+        try
+        {
+            var row = await _support.DeactivateAsync(organizationId, dto.Reason);
+            return row is null ? NotFound() : Ok(row);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    // POST /support/organizations/{id}/reactivate — open it again.
+    [HumanOnly]
+    [HttpPost("organizations/{organizationId}/reactivate")]
+    public async Task<IActionResult> Reactivate(string organizationId)
+    {
+        var row = await _support.ReactivateAsync(organizationId);
+        return row is null ? NotFound() : Ok(row);
+    }
 }

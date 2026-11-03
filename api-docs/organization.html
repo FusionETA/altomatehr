@@ -118,6 +118,7 @@
             <tr><td><code>claimRunCutoffDay</code></td><td>integer</td><td>Day of the month (1–28) the claims run closes. Read-only here.</td></tr>
             <tr><td><code>claimSettlementRoute</code></td><td>string</td><td>Where approved claims are paid out: <code>"XERO_BILL"</code> or <code>"PAYROLL"</code>. Read-only here.</td></tr>
             <tr><td><code>xeroBillStage</code></td><td>string</td><td>Status a claim bill is created with in Xero: <code>"AwaitingPayment"</code> or <code>"Draft"</code>. Read-only here.</td></tr>
+            <tr><td><code>xeroConnected</code></td><td>boolean</td><td><code>true</code> when the company is connected to Xero. Read-only.</td></tr>
             <tr><td><code>supervisorSlaMinutes</code></td><td>integer</td><td>The line the attendance performance report measures supervisors against. Read-only here.</td></tr>
             <tr><td><code>plan</code></td><td>string</td><td><code>"DIY"</code> or <code>"EXPERT"</code>. Read-only.</td></tr>
             <tr><td><code>tier</code></td><td>string | null</td><td><code>"FREE"</code> or <code>"PAID"</code>; <code>null</code> when none is set. Read-only.</td></tr>
@@ -156,6 +157,7 @@
   "claimRunCutoffDay": 25,
   "claimSettlementRoute": "XERO_BILL",
   "xeroBillStage": "AwaitingPayment",
+  "xeroConnected": true,
   "supervisorSlaMinutes": 60,
   "plan": "DIY",
   "tier": "PAID",
@@ -202,7 +204,9 @@
           its default is then saved. See below.
         </p>
         <h3>Response <code>200</code></h3>
-        <p>The updated <a href="#settings">organization object</a>.</p>
+        <p>
+          The updated <a href="#settings">organization object</a>.
+        </p>
         <h3>Errors</h3>
         <ul>
           <li><code>400</code> <code>{ "errors": { … } }</code> — a field is out of range, malformed, or not a valid <code>mileageUnit</code>.</li>
@@ -242,7 +246,7 @@
           <span class="tag scope">organizations:read</span>
         </div>
         <p>
-          Which modules the company's plan enables, alongside every module key that exists.
+          Which modules the company's plan enables, alongside every module the owner can grant to an admin.
           Check it before calling an endpoint of a gated module, which otherwise answers
           <code>403</code> when the plan lacks it.
         </p>
@@ -251,11 +255,12 @@
           <table>
             <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
-              <tr><td><code>all</code></td><td>string[]</td><td>Every module key: <code>employees</code>, <code>leave</code>, <code>projects</code>, <code>teams</code>, <code>accounts</code>, <code>policies</code>, <code>overtime</code>, <code>payroll</code>, <code>audit</code>, <code>claims</code>, <code>attendance</code>.</td></tr>
+              <tr><td><code>all</code></td><td>string[]</td><td>The modules an owner can grant per admin: <code>employees</code>, <code>leave</code>, <code>projects</code>, <code>teams</code>, <code>accounts</code>, <code>overtime</code>, <code>payroll</code>, <code>audit</code>, <code>documents</code>, <code>claims</code>, <code>attendance</code>. <code>policies</code> is <strong>not</strong> listed: it isn't granted per admin (see <code>managesAllPolicies</code>), though it still appears in <code>enabled</code> and <code>levels</code> when the plan includes it.</td></tr>
               <tr><td><code>enabled</code></td><td>string[]</td><td>The modules the company's plan includes. For a key this is the plan's full set: a key isn't narrowed by any per-admin grant, only by its <a href="index.html#scopes">scopes</a>. The order isn't guaranteed.</td></tr>
-              <tr><td><code>levels</code></td><td>object</td><td>The caller's access per enabled module: <code>"Manage"</code> or <code>"View"</code>. For a key every enabled module is <code>"Manage"</code>.</td></tr>
+              <tr><td><code>levels</code></td><td>object</td><td>The caller's access per enabled module: <code>"Manage"</code> or <code>"View"</code>. For a key every enabled module is <code>"Manage"</code>. For a signed-in admin <code>policies</code> is always <code>"Manage"</code>, whatever else they were granted; <code>managesAllPolicies</code> says what that covers.</td></tr>
               <tr><td><code>canChangeSettings</code></td><td>boolean</td><td>Always <code>true</code> for a key.</td></tr>
               <tr><td><code>allEmployees</code></td><td>boolean</td><td>Always <code>true</code> for a key: it sees every employee. (A signed-in admin limited to some policies would get <code>false</code>.)</td></tr>
+              <tr><td><code>managesAllPolicies</code></td><td>boolean</td><td>Whether the caller may create, archive or restore policies and choose the default. Always <code>true</code> for a key. <code>false</code> for every signed-in admin: only the owner can.</td></tr>
             </tbody>
           </table>
         </div>
@@ -265,11 +270,12 @@
           on a DIY plan with the FREE tier.
         </div>
 <pre><code>{
-  "all": ["employees", "leave", "projects", "teams", "accounts", "policies", "overtime", "payroll", "audit", "claims", "attendance"],
+  "all": ["employees", "leave", "projects", "teams", "accounts", "overtime", "payroll", "audit", "documents", "claims", "attendance"],
   "enabled": ["employees", "leave", "projects", "teams", "accounts", "policies", "overtime", "payroll", "audit"],
   "levels": { "employees": "Manage", "leave": "Manage", "payroll": "Manage" },
   "canChangeSettings": true,
-  "allEmployees": true
+  "allEmployees": true,
+  "managesAllPolicies": true
 }</code></pre>
         <h3>Errors</h3>
         <ul><li><code>403</code> — the key lacks <code>organizations:read</code>.</li></ul>
@@ -600,6 +606,13 @@
         decides which company they act on, so a caller can only ever make an administrator of
         the company it already integrates with.
       </p>
+      <div class="callout warn">
+        <strong>API keys only.</strong> Both endpoints refuse a signed-in person's session,
+        whatever their role: it gets <code>403</code>
+        <code>{ "error": { "status": 403, "message": "This endpoint is for API keys only." } }</code>.
+        Only a company key (or a partner token) can call them. This is so that an
+        employee's session can never make anyone an administrator.
+      </div>
       <p>
         Roles here are <code>"Owner"</code> and <code>"Admin"</code>. An Owner is a company's
         top administrator; everyone else with admin access is an Admin.
@@ -645,7 +658,7 @@
         <h3>Errors</h3>
         <ul>
           <li><code>400</code> <code>{ "errors": { … } }</code> — <code>email</code> missing or not an email address, or <code>name</code> too long.</li>
-          <li><code>403</code> — the key lacks <code>organizations:write</code>.</li>
+          <li><code>403</code> <code>{ "error": { "status": 403, "message": … } }</code> — the key lacks <code>organizations:write</code>, or the caller is a signed-in person rather than an API key ("This endpoint is for API keys only.").</li>
         </ul>
         <h3>Things that bite</h3>
         <ul>
@@ -675,14 +688,14 @@
           <span class="path">/admin/users</span>
           <span class="tag scope">organizations:read</span>
         </div>
-        <p>Who administers the company: its Owners and Admins.</p>
+        <p>Who administers the company: its Owners and Admins, plus the AltomateHR AI when the deployment has one configured (see below).</p>
         <h3>Query</h3>
         <div class="table-wrap">
           <table>
             <thead><tr><th>Param</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
               <tr><td><code>role</code></td><td>string</td><td>Comma-separated roles to keep, matched case-insensitively, e.g. <code>OWNER,ADMIN</code>. Omit for both. Anything other than Owner or Admin matches nobody, because only administrative seats are ever listed.</td></tr>
-              <tr><td><code>limit</code></td><td>integer</td><td>Return at most this many rows. Ignored when missing or not above 0.</td></tr>
+              <tr><td><code>limit</code></td><td>integer</td><td>Return at most this many rows. Ignored when missing or not above 0. A read with a <code>limit</code> lists real administrators only; the AltomateHR AI row is left out.</td></tr>
             </tbody>
           </table>
         </div>
@@ -691,19 +704,35 @@
           <table>
             <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
-              <tr><td><code>data</code></td><td>array</td><td>Each row is <code>{ userId, email, name, role }</code>, sorted by email. <code>role</code> is <code>"Owner"</code> or <code>"Admin"</code>.</td></tr>
+              <tr><td><code>data</code></td><td>array</td><td>Each row is <code>{ userId, email, name, role, isAi }</code>. Real administrators come first, sorted by email. <code>role</code> is <code>"Owner"</code> or <code>"Admin"</code>. <code>isAi</code> is <code>true</code> only on the AltomateHR AI row, <code>false</code> on every real administrator.</td></tr>
               <tr><td><code>total</code></td><td>integer</td><td>The number of rows in <code>data</code>. After <code>limit</code> or <code>role</code> narrow the list, this is the narrowed count, not the company's full count.</td></tr>
             </tbody>
           </table>
         </div>
 <pre><code>{
   "data": [
-    { "userId": "user_123", "email": "jane@example.com", "name": "Jane Example", "role": "Owner" }
+    { "userId": "user_123", "email": "jane@example.com", "name": "Jane Example", "role": "Owner", "isAi": false },
+    { "userId": "ai:ai@example.com", "email": "ai@example.com", "name": "AltomateHR AI", "role": "Admin", "isAi": true }
   ],
-  "total": 1
+  "total": 2
 }</code></pre>
         <h3>Errors</h3>
-        <ul><li><code>403</code> — the key lacks <code>organizations:read</code>.</li></ul>
+        <ul><li><code>403</code> <code>{ "error": { "status": 403, "message": … } }</code> — the key lacks <code>organizations:read</code>, or the caller is a signed-in person rather than an API key ("This endpoint is for API keys only.").</li></ul>
+        <h3>Things that bite</h3>
+        <ul>
+          <li><strong>The AltomateHR AI row is not an account.</strong> When AltomateHR has
+            configured one or more AI acting-admin emails on the server, an unlimited read
+            also lists each as an <code>"Admin"</code> named <code>"AltomateHR AI"</code>,
+            with <code>userId</code> <code>"ai:&lt;email&gt;"</code> and
+            <code>isAi: true</code>, after the real administrators. It has no sign-in, no SSO
+            link and takes no seat, so don't offer it to <a href="#sso-ticket">POST /sso/ticket</a>,
+            store it as an owner or use it as an approver. Skip rows with
+            <code>isAi: true</code> when you need a real person.</li>
+          <li><strong>It is omitted from a <code>limit</code> read</strong>, and when
+            <code>role</code> excludes <code>Admin</code>. If a real member already holds
+            that email, only the real row is listed.</li>
+          <li><strong><code>total</code> counts the AI row</strong> when it is listed.</li>
+        </ul>
 <pre><code>curl "https://&lt;api-host&gt;/admin/users?role=OWNER,ADMIN&amp;limit=10" \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
       </section>
@@ -801,7 +830,8 @@
       <h2>Not available to API keys</h2>
       <p>
         Listing admins and setting their module access (<code>GET /organizations/admins</code>,
-        <code>PUT /organizations/admins/{userId}/access</code>), removing an admin
+        <code>PUT /organizations/admins/{userId}/access</code>), editing an admin's name and login email
+        (<code>PUT /organizations/admins/{userId}</code>), removing an admin
         (<code>DELETE /organizations/admins/{userId}</code>), creating a company
         (<code>POST /organizations</code>) and changing a company's plan
         (<code>PUT /organizations/{organizationId}/plan</code>) answer <code>403</code> to any
