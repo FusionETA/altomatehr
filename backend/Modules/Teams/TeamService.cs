@@ -469,11 +469,13 @@ public class TeamService : ITeamService
     }
 
     // A policy-limited admin may build and run teams for their own people, but
-    // not re-route approvals for staff outside their policies. So a change is
-    // refused when the team (or the person being added or removed) holds staff
-    // they can't see. Admins and the owner don't count: they're never in a
-    // scope, and approval routing skips administrative seats anyway. A new team
-    // is empty, so creating one is never refused.
+    // not re-route approvals for anyone outside their policies. So a change is
+    // refused when the team (or the person being added or removed) holds
+    // someone they can't see. That includes other admins and the owner: they
+    // never approve from a team, but their own leave and claims still go up its
+    // chain, and the clean-up after an edit can't reach requests this admin
+    // can't see. The admin themselves is always in scope. A new team is empty,
+    // so creating one is never refused.
     private async Task<string?> OutsideScopeAsync(string teamId, string? employeeId = null)
     {
         if (_scope is not { IsLimited: true }) return null;
@@ -481,8 +483,7 @@ public class TeamService : ITeamService
         var ids = (await _memberships.GetByTeamAsync(teamId)).Select(m => m.EmployeeId).ToList();
         if (employeeId is not null) ids.Add(employeeId);
 
-        var administrative = await _supervision.GetAdministrativeUserIdsAsync();
-        var outside = ids.Distinct().Where(id => !administrative.Contains(id) && !_scope.Contains(id)).ToList();
+        var outside = ids.Distinct().Where(id => !_scope.Contains(id)).ToList();
         if (outside.Count == 0) return null;
 
         if (employeeId is not null && outside.Contains(employeeId))

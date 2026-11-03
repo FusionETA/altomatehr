@@ -15,6 +15,7 @@ public class LimitedAdminTeamTests
     private const string TeamId = "team-1";
     private const string Mine = "usr-mine";       // on a policy the admin covers
     private const string NotMine = "usr-other";   // on a policy they don't
+    private const string Me = "usr-me";           // the limited admin
     private const string OtherAdmin = "usr-admin";
 
     private static (TeamService Service, List<TeamMembership> Rows, List<string> Deleted) Make(
@@ -25,7 +26,7 @@ public class LimitedAdminTeamTests
             .ToList();
         var deleted = new List<string>();
         var scope = new EmployeeScope();
-        if (limited) scope.Limit(["usr-me", Mine], []);
+        if (limited) scope.Limit([Me, Mine], []);
 
         var service = new TeamService(
             new StubTeams(deleted), new StubMemberships(rows), new StubSupervision(),
@@ -51,8 +52,8 @@ public class LimitedAdminTeamTests
     [Fact]
     public async Task ALimitedAdminCanRunATeamOfTheirOwnPeople()
     {
-        // An admin approver doesn't count against them: admins are never in a scope.
-        var (service, rows, deleted) = Make(limited: true, (OtherAdmin, 1));
+        // Being on the team themselves doesn't count against them.
+        var (service, rows, deleted) = Make(limited: true, (Me, 1));
 
         Assert.True((await service.AddOrUpdateMemberAsync(TeamId, new() { EmployeeId = Mine, Layer = 0 })).Ok);
         Assert.True((await service.UpdateAsync(TeamId, Edit())).Ok);
@@ -88,6 +89,21 @@ public class LimitedAdminTeamTests
             e => Assert.Contains("1 person outside the policies", e!));
         Assert.Empty(deleted);
         Assert.Equal(2, rows.Count);
+    }
+
+    // Another admin's own leave and claims go up the team's chain too, and the
+    // clean-up after an edit can't see their requests from a limited scope.
+    [Fact]
+    public async Task ALimitedAdminCannotChangeATeamHoldingAnotherAdmin()
+    {
+        var (service, _, deleted) = Make(limited: true, (OtherAdmin, 0), (Mine, 1));
+
+        var remove = await service.RemoveMemberAsync(TeamId, Mine);
+        var delete = await service.DeleteAsync(TeamId);
+
+        Assert.Contains("1 person outside the policies", remove.Error!);
+        Assert.False(delete.Ok);
+        Assert.Empty(deleted);
     }
 
     [Fact]
