@@ -41,6 +41,18 @@ public enum SocsoScheme
 {
     EMPLOYMENT_INJURY_INVALIDITY,
     EMPLOYMENT_INJURY_ONLY,
+    // Explicitly outside SOCSO — payroll treats it exactly like null. Exists
+    // because rows written outside the app carried it, and an unmapped string
+    // makes EF throw on every query that loads the profile (2026-11-03 outage).
+    NOT_COVERED,
+}
+
+public static class SocsoSchemeExtensions
+{
+    // True only for a scheme PERKESO actually bills. Null and NOT_COVERED both
+    // mean no SOCSO contribution and no SOCSO number required.
+    public static bool IsCovered(this SocsoScheme? scheme) =>
+        scheme is SocsoScheme.EMPLOYMENT_INJURY_INVALIDITY or SocsoScheme.EMPLOYMENT_INJURY_ONLY;
 }
 
 // The three approvals LHDN taxes at a flat 15% instead of the resident bands
