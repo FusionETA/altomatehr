@@ -265,6 +265,24 @@ builder.Services.AddRateLimiter(options =>
                 AutoReplenishment = true,
             }));
 
+    // The companion endpoints that carry NO password — /auth/access,
+    // /auth/organizations and /whoami. None is the guessing oracle
+    // /auth/verify is, so each only needs a bound against a runaway loop. A
+    // companion asks once per company at sign-in, again on refresh, and again
+    // before each payroll run, all from ONE server address, so the login limit
+    // of 5 (shared with /auth/login and /auth/verify) throttled an ordinary
+    // afternoon.
+    options.AddPolicy("partner-access", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: GetClientPartitionKey(httpContext, "partner-access"),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 60,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            }));
+
     options.AddPolicy("auth-refresh", httpContext =>
         RateLimitPartition.GetFixedWindowLimiter(
             partitionKey: GetClientPartitionKey(httpContext, "auth-refresh"),
@@ -303,6 +321,7 @@ builder.Services.AddScoped<IOrganizationSignatureRepository, OrganizationSignatu
 builder.Services.AddScoped<IOrganizationSignatureService, OrganizationSignatureService>();
 builder.Services.AddScoped<IOrganizationDefaultsService, OrganizationDefaultsService>();
 builder.Services.AddScoped<IModuleAccessService, ModuleAccessService>();
+builder.Services.AddScoped<IAdminAccessResolver, AdminAccessResolver>();
 // The request's employee scope, read by AppDbContext's filters; filled by EmployeeScopeMiddleware.
 builder.Services.AddScoped<AltomateHR.Api.Common.EmployeeScope>();
 builder.Services.AddScoped<AltomateHR.Api.Common.IEmployeeScope>(sp => sp.GetRequiredService<AltomateHR.Api.Common.EmployeeScope>());
@@ -450,6 +469,7 @@ builder.Services.AddScoped<IOrganizationMembershipRepository, OrganizationMember
 // The shared identity/membership read surface every module depends on — see
 // IDirectoryService. Keeps the Employees/Auth repositories out of other modules.
 builder.Services.AddScoped<IDirectoryService, DirectoryService>();
+builder.Services.AddScoped<IEmployeeScopeResolver, EmployeeScopeResolver>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 builder.Services.AddScoped<IEmployeeImportService, EmployeeImportService>();
 builder.Services.AddScoped<IEmployeeProfileRepository, EmployeeProfileRepository>();

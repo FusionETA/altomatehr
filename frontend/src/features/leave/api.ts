@@ -106,6 +106,11 @@ export type LeaveBalance = {
   /** False for a type that isn't for them (e.g. maternity for a man), listed
    *  only because they already have leave of it this year. Don't offer it. */
   eligible: boolean;
+  /** Employment Act 1955 minimum for this type at their years of service
+   *  (annual / sick leave, join date on file); null otherwise. */
+  statutoryMinimumDays?: number | null;
+  /** The policy figure was below that minimum and was lifted to it. */
+  raisedToStatutoryMinimum?: boolean;
 };
 
 export type OnLeaveToday = {

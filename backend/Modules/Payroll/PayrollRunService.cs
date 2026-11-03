@@ -396,13 +396,19 @@ public class PayrollRunService : IPayrollRunService
     public async Task<PayrollRunPickerDto> GetPickerAsync(
         int? year = null, int? month = null, string? exceptRunId = null)
     {
+        // Judged at the chosen month's end, as generation prices it; today
+        // only when the picker is asked without a month.
+        var asOf = year is { } y && month is { } m
+            ? PayrollProfileReadiness.PeriodEnd(y, m)
+            : DateTime.UtcNow.Date;
+
         // Who is already in another run this month: shown, but not pickable.
-        var taken = year is { } y && month is { } m
-            ? await TakenInMonthAsync(y, m, exceptRunId)
+        var taken = year is { } ty && month is { } tm
+            ? await TakenInMonthAsync(ty, tm, exceptRunId)
             : new Dictionary<string, PayrollRun>(StringComparer.Ordinal);
 
         var eligible = (await _directory.PayrollProfilesAsync())
-            .Where(p => PayableIn(p, year, month) && PayrollProfileReadiness.IsComplete(p))
+            .Where(p => PayableIn(p, year, month) && PayrollProfileReadiness.IsComplete(p, asOf))
             .ToList();
 
         var memberships = (await _directory.GetMembershipsForCurrentOrgAsync())
@@ -461,7 +467,8 @@ public class PayrollRunService : IPayrollRunService
         List<string>? policyIds, List<string>? excludedProfileIds, int year, int month)
     {
         var eligible = (await _directory.PayrollProfilesAsync())
-            .Where(p => PayableIn(p, year, month) && PayrollProfileReadiness.IsComplete(p))
+            .Where(p => PayableIn(p, year, month)
+                        && PayrollProfileReadiness.IsComplete(p, PayrollProfileReadiness.PeriodEnd(year, month)))
             .ToList();
 
         var policyByUser = await _policies.GetEffectivePoliciesForEmployeesAsync(
@@ -1411,6 +1418,7 @@ public class PayrollRunService : IPayrollRunService
 
             SalaryType = profile.SalaryType,
             MonthlySalary = profile.MonthlySalary,
+            BasicPayOverride = profile.SalaryType == SalaryType.MONTHLY ? adjustment?.BasicPayOverride : null,
             HourlyRate = profile.HourlyRate,
             // The profile's recurring rows with this run's overrides applied,
             // followed by this run's one-off rows. Merged into ONE list on
@@ -1423,7 +1431,11 @@ public class PayrollRunService : IPayrollRunService
                     .. WithUnpaidLeave(
                         PayrollRunAdjustments.Merge(
                             ParseFixedAllowances(profile.FixedAllowancesJson), adjustment),
-                        profile, unpaidLeaveDays, run.PeriodYear, run.PeriodMonth),
+                        profile,
+                        // Days typed on the run always count; approved Leave-module
+                        // days don't when the run has its own unpaid-leave line.
+                        adjustment?.UnpaidLeaveDays is null && HasOwnUnpaidLeaveLine(adjustment) ? 0m : unpaidLeaveDays,
+                        run.PeriodYear, run.PeriodMonth),
                     .. (carries ?? []).Select(c => c.Row),
                     .. (taxBornePerquisite is null ? [] : new[] { taxBornePerquisite }),
                 ],
@@ -1447,7 +1459,12 @@ public class PayrollRunService : IPayrollRunService
             EpfEmployeeVoluntary = profile.EpfEmployeeVoluntary,
             EpfEmployerVoluntary = profile.EpfEmployerVoluntary,
 
-            SocsoScheme = profile.SocsoScheme,
+            // The saved scheme, or the one suggested from age when none was
+            // chosen — never "no SOCSO" just because the field was left blank.
+            SocsoScheme = SocsoSchemeAdvisor.Effective(
+                profile.SocsoScheme, profile.DateOfBirth, profile.Nationality,
+                new DateTime(run.PeriodYear, run.PeriodMonth,
+                    DateTime.DaysInMonth(run.PeriodYear, run.PeriodMonth))),
             ContributeToEis = profile.ContributeToEis,
             ContributeToSkbbk = profile.ContributeToSkbbk,
 
@@ -1558,6 +1575,19 @@ public class PayrollRunService : IPayrollRunService
             Amount = amount,
         }];
     }
+
+    // The run already carries its own unpaid-leave line for this person — the
+    // U/L column of an ABPay timesheet, or one an admin typed. That line IS the
+    // month's unpaid leave, so approved unpaid leave from the Leave module is
+    // not docked on top: the same days recorded in both places came off twice
+    // (go-live test EMP-8). The approved days are still shown on the payslip
+    // (UnpaidLeaveDays), only the money is not taken again. Days an admin
+    // TYPED on the run (PayrollRunAdjustment.UnpaidLeaveDays) are a deliberate
+    // instruction and are still docked.
+    private static bool HasOwnUnpaidLeaveLine(PayrollRunAdjustment? adjustment) =>
+        adjustment is not null
+        && PayrollRunAdjustments.ParseManualLineItems(adjustment.ManualLineItemsJson)
+            .Any(i => i.Category == PayrollAdjustmentCategories.DeductUnpaidLeave && i.Amount != 0m);
 
     // Earlier months of this year, filed here, whose unpaid leave has changed
     // since — see UnpaidLeaveCarryForward. Keyed by employee profile.

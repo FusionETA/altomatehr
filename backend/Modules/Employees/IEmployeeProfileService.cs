@@ -33,4 +33,17 @@ public interface IEmployeeProfileService
     // org-wide grids; anyone without a gender on file is simply absent.
     Task<IReadOnlyDictionary<string, Entities.Gender>> GetGendersAsync() =>
         Task.FromResult<IReadOnlyDictionary<string, Entities.Gender>>(new Dictionary<string, Entities.Gender>());
+
+    // The join date on a current-org member's profile, or null when none is on
+    // file — what the Employment Act leave minimums (years of service) read.
+    // (Default keeps hand-written test doubles compiling.)
+    Task<DateTime?> GetJoinDateAsync(string userId) => Task.FromResult<DateTime?>(null);
+
+    // Every profile's join date, with its org: scoped to the current org in a
+    // request, and spanning all orgs when there is no tenant (the leave crons),
+    // which is why the org travels with each row. No join date → absent.
+    Task<IReadOnlyList<EmployeeJoinDate>> GetJoinDatesAsync() =>
+        Task.FromResult<IReadOnlyList<EmployeeJoinDate>>([]);
 }
+
+public sealed record EmployeeJoinDate(string OrganizationId, string UserId, DateTime JoinDate);

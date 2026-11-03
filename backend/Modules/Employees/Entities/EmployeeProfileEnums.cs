@@ -41,9 +41,15 @@ public enum SocsoScheme
 {
     EMPLOYMENT_INJURY_INVALIDITY,
     EMPLOYMENT_INJURY_ONLY,
-    // Explicitly outside SOCSO — payroll treats it exactly like null. Exists
-    // because rows written outside the app carried it, and an unmapped string
-    // makes EF throw on every query that loads the profile (2026-11-03 outage).
+    // Deliberately outside SOCSO (e.g. a director the Act doesn't cover).
+    // Exists because rows written outside the app carried it, and an unmapped
+    // string makes EF throw on every query that loads the profile (2026-11-03
+    // outage).
+    //
+    // NOT the same as a profile with NO scheme, which means "not chosen yet":
+    // payroll resolves that one from age (SocsoSchemeAdvisor.Effective) rather
+    // than silently deducting nothing. Both bill nothing once they reach
+    // PerkesoCalculator; they differ in whether a scheme gets chosen first.
     NOT_COVERED,
 }
 

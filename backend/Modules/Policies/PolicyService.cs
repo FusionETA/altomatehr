@@ -1,4 +1,5 @@
 using AltomateHR.Api.Modules.Employees;
+using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Modules.Policies.Dtos;
 using AltomateHR.Api.Modules.Policies.Entities;
 
@@ -204,19 +205,38 @@ public class PolicyService : IPolicyService
         if (ids.Count == 0) return new Dictionary<string, EmployeePolicy>(StringComparer.Ordinal);
 
         var memberships = await _directory.GetMembershipsForCurrentOrgAsync();
-        var policyByUser = memberships.ToDictionary(m => m.UserId, m => m.PolicyId, StringComparer.Ordinal);
 
         // The org's policies are a handful of rows, so one read beats a lookup
         // per distinct id and keeps the default resolution in the same pass.
-        var all = await _policies.GetAllAsync();
-        var byId = all.ToDictionary(p => p.Id, StringComparer.Ordinal);
-        // Mirrors GetDefaultAsync: an archived policy is never the fallback,
-        // though an explicitly ASSIGNED one still resolves (same as
-        // GetEffectivePolicyAsync, which looks the assignment up by id).
-        var fallback = all.FirstOrDefault(p => p.IsDefault && !p.IsArchived);
+        return Resolve(ids, memberships, await _policies.GetAllAsync());
+    }
+
+    public async Task<IReadOnlyDictionary<string, EmployeePolicy>> GetEffectivePoliciesForOrgAsync(
+        string organizationId)
+    {
+        var memberships = await _directory.GetMembershipsForOrgAsync(organizationId);
+        return Resolve(
+            memberships.Select(m => m.UserId),
+            memberships,
+            await _policies.GetForOrgAsync(organizationId));
+    }
+
+    // One resolution, whichever way the org was reached: the person's assigned
+    // policy, else the org default. Mirrors GetDefaultAsync — an archived
+    // policy is never the fallback, though an explicitly ASSIGNED one still
+    // resolves (same as GetEffectivePolicyAsync, which looks the assignment up
+    // by id). Employees with no policy and no org default are absent.
+    private static IReadOnlyDictionary<string, EmployeePolicy> Resolve(
+        IEnumerable<string> employeeIds,
+        IEnumerable<OrganizationMembership> memberships,
+        List<EmployeePolicy> orgPolicies)
+    {
+        var policyByUser = memberships.ToDictionary(m => m.UserId, m => m.PolicyId, StringComparer.Ordinal);
+        var byId = orgPolicies.ToDictionary(p => p.Id, StringComparer.Ordinal);
+        var fallback = orgPolicies.FirstOrDefault(p => p.IsDefault && !p.IsArchived);
 
         var result = new Dictionary<string, EmployeePolicy>(StringComparer.Ordinal);
-        foreach (var id in ids)
+        foreach (var id in employeeIds.Distinct(StringComparer.Ordinal))
         {
             var assigned = policyByUser.GetValueOrDefault(id);
             var policy = assigned is not null ? byId.GetValueOrDefault(assigned) : null;

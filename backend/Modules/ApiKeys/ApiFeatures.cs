@@ -16,5 +16,9 @@ public static class ApiFeatures
     // POST /sso/ticket mints an inbound hand-off for an admin of this org.
     public const string InboundSso = "sso.inbound";
 
-    public static readonly IReadOnlyList<string> All = [OnboardingBulk, InboundSso];
+    // POST /auth/access answers what one person may reach in one company, so a
+    // companion can honour Manage access.
+    public const string AuthAccess = "auth.access";
+
+    public static readonly IReadOnlyList<string> All = [OnboardingBulk, InboundSso, AuthAccess];
 }

@@ -245,6 +245,8 @@ export const SPECIAL_TAX_SCHEME_LABELS: Record<SpecialTaxScheme, string> = {
   C_SUITE: "C-suite — resident non-citizen",
 };
 
+// NOT_COVERED = deliberately outside SOCSO (e.g. a director). Left unset,
+// payroll uses the scheme suggested from age instead of deducting nothing.
 export type SocsoScheme = "EMPLOYMENT_INJURY_INVALIDITY" | "EMPLOYMENT_INJURY_ONLY" | "NOT_COVERED";
 // BANK_TRANSFER = a Malaysian bank, paid through the bank payroll file.
 // OTHER_TRANSFER = a bank or e-wallet the file can't reach (Merchantrade, an

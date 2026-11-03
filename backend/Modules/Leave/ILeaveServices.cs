@@ -64,7 +64,9 @@ public interface ILeaveService
     // Re-derives PRO_RATED accrued days from the employee's join date. Called
     // when that date changes — nothing else recalculates it, because the
     // monthly cron only ever adds. Returns how many rows moved.
-    Task<int> RecomputeProRatedAccrualAsync(string employeeId, int year);
+    // `previousJoinDate` is the date being replaced (null = there was none),
+    // so a row opened under it is still recognised as the system's own figure.
+    Task<int> RecomputeProRatedAccrualAsync(string employeeId, int year, DateTime? previousJoinDate);
 
     Task<double> GetApprovedDaysInRangeAsync(string employeeId, DateTime from, DateTime to);
 

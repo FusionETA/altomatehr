@@ -1169,6 +1169,9 @@ export type PayrollRunAdjustment = {
   fixedAllowanceOverrides: Record<string, FixedAllowanceOverride>;
   workedHours: number | null;
   expectedHours: number | null;
+  // This month's basic pay in place of the salary (monthly staff only), e.g.
+  // a part-month Basic from an ABPay timesheet. The salary itself is unchanged.
+  basicPayOverride: number | null;
   // Null = use approved unpaid leave from the Leave module; a number replaces it.
   unpaidLeaveDays: number | null;
   // Employer HRDF levy entered for this person: replaces the computed levy.
@@ -1194,6 +1197,7 @@ export type SavePayrollRunAdjustment = {
   fixedAllowanceOverrides: Record<string, FixedAllowanceOverride>;
   workedHours: number | null;
   expectedHours: number | null;
+  basicPayOverride: number | null;
   unpaidLeaveDays: number | null;
   // Null = computed (levy rate × HRDF wages); an amount is the final figure.
   hrdfLevy: number | null;

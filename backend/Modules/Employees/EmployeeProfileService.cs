@@ -49,6 +49,15 @@ public class EmployeeProfileService : IEmployeeProfileService
             .GroupBy(p => p.UserId)
             .ToDictionary(g => g.Key, g => g.First().Gender!.Value);
 
+    public async Task<DateTime?> GetJoinDateAsync(string userId) =>
+        (await _profiles.GetByUserAsync(userId))?.JoinDate;
+
+    public async Task<IReadOnlyList<EmployeeJoinDate>> GetJoinDatesAsync() =>
+        (await _profiles.GetAllForCurrentOrgAsync())
+            .Where(p => p.JoinDate is not null)
+            .Select(p => new EmployeeJoinDate(p.OrganizationId, p.UserId, p.JoinDate!.Value))
+            .ToList();
+
     public async Task<EmployeeProfileDto?> GetAsync(string userId)
     {
         if (await _memberships.GetForUserInCurrentOrgAsync(userId) is null)

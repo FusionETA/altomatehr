@@ -17,14 +17,19 @@ public class LeaveCronService : ILeaveCronService
     private readonly ILeaveTypeRepository _types;
     private readonly ILeaveApplicationRepository _apps;
     private readonly IPolicyService _policies;
+    // Optional so hand-built instances in tests need not supply it; the app
+    // always does. Without it only the membership's join date is known.
+    private readonly IEmployeeProfileService? _profiles;
 
     public LeaveCronService(
         ILeaveEntitlementRepository entitlements,
         ILeaveTypeRepository types,
         ILeaveApplicationRepository apps,
         IPolicyService policies,
-        IDirectoryService directory)
+        IDirectoryService directory,
+        IEmployeeProfileService? profiles = null)
     {
+        _profiles = profiles;
         _entitlements = entitlements;
         _types = types;
         _apps = apps;
@@ -92,12 +97,23 @@ public class LeaveCronService : ILeaveCronService
         var existing = (await _entitlements.GetByYearAsync(targetYear))
             .Select(r => (r.EmployeeId, r.LeaveTypeId))
             .ToHashSet();
+        // Keyed by org too: the cron spans tenants, and one person can hold a
+        // profile in more than one company.
+        var profileJoinDates = _profiles is null
+            ? new Dictionary<(string, string), DateTime>()
+            : (await _profiles.GetJoinDatesAsync())
+                .GroupBy(j => (j.OrganizationId, j.UserId))
+                .ToDictionary(g => g.Key, g => g.First().JoinDate);
 
         var created = 0;
         var skipped = 0;
 
         foreach (var member in members)
         {
+            // Profile join date first, else the membership's — as LeaveService.
+            DateTime? joinDate = profileJoinDates.TryGetValue(
+                (member.OrganizationId, member.UserId), out var jd) ? jd : member.JoinDate;
+
             // Only types belonging to THIS member's org — the cron spans tenants.
             foreach (var type in ctx.TypesById.Values.Where(
                          t => !t.IsArchived && t.OrganizationId == member.OrganizationId))
@@ -110,11 +126,14 @@ public class LeaveCronService : ILeaveCronService
 
                 prevRows.TryGetValue((member.UserId, type.Id), out var prev);
 
-                var entitledDays = ctx.EntitledDaysFor(member.UserId, type);
+                // Policy / type figure, lifted to the Employment Act minimum for
+                // their completed years of service on 1 January of the new year.
                 // The employee-layer override rides along to the new row so an
                 // explicit per-person customisation survives the rollover.
                 var employeeMethod = prev?.AccrualMethod;
                 var method = ctx.Resolve(member.UserId, type, employeeMethod);
+                var entitledDays = StatutoryLeaveMinimum.Apply(
+                    ctx.EntitledDaysFor(member.UserId, type), type, joinDate, targetYear, method);
 
                 var (carriedDays, carriedExpiresAt) = CarryForward(type, prev, method, ctx, targetYear);
 

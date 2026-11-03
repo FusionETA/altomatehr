@@ -24,8 +24,40 @@ public interface IPartnerIdentityService
     Task<IReadOnlyList<PartnerOrganization>> AdminOrganizationsAsync(
         PartnerCaller caller, string? userId, string? email);
 
+    // What ONE person may reach in ONE company, for a companion app that holds
+    // the company's key (which sees everything) and must narrow itself to the
+    // signed-in admin's Manage access. Master key only.
+    //
+    // Null → no such user, not an admin or owner of that company, or the
+    // company is deactivated. One answer for all three, like VerifyAsync.
+    Task<PartnerAccess?> AccessAsync(PartnerCaller caller, string userId, string organizationId);
+
     Task<string?> KeyNameAsync(string apiKeyId);
 }
+
+// `Employees` is null when `AllEmployees` — nobody wants a list of thousands
+// of ids that only says "no restriction".
+public sealed record PartnerAccess(
+    string UserId,
+    string OrganizationId,
+    string Role,
+    bool AllEmployees,
+    bool CanRunPayroll,
+    bool CanChangeSettings,
+    IReadOnlyDictionary<string, string> Modules,
+    IReadOnlyList<PartnerAccessEmployee>? Employees);
+
+// `UserId` is what GET /employees returns as `id`, and what GET
+// /payroll/employees returns as `userId` — the id to MATCH people by, on both.
+//
+// `EmployeeProfileId` is their payroll identity (payslips, run members), null
+// for someone whose payroll details were never saved. Do not filter the
+// payroll roster by it: that endpoint stands a BLANK profile in for such a
+// person, so the `employeeProfileId` it shows them under is a throwaway Guid
+// that differs on every call (`hasPayrollProfile: false` is how it says so).
+// Filtering on it would hide exactly the people the roster exists to flag as
+// not ready to file.
+public sealed record PartnerAccessEmployee(string UserId, string? EmployeeProfileId);
 
 public sealed record PartnerCaller(bool IsMaster, string? OrganizationId);
 
@@ -40,7 +72,19 @@ public sealed record PartnerIdentity(
 
 // `OrganizationId` duplicates `Id` for callers written against the earlier
 // shape of /auth/organizations ({ organizationId, role }).
-public sealed record PartnerOrganization(string Id, string Name, string Role)
+//
+// `AllEmployees` and `CanRunPayroll` are this person's Manage access in that
+// company, so a companion knows at sign-in which companies it must narrow
+// (POST /auth/access) and in which it must hide the payroll actions. Both are
+// always true for an Owner.
+//
+// NULL for a company (wp_live_) key: "we are not telling you". These endpoints
+// take a bare email with no password, so answering them for an org key would
+// let a company key walk its own address list and build a directory of which
+// of its admins are restricted — the very thing /auth/access 403s it for.
+// Only the platform's master key is told.
+public sealed record PartnerOrganization(
+    string Id, string Name, string Role, bool? AllEmployees = null, bool? CanRunPayroll = null)
 {
     public string OrganizationId => Id;
 }

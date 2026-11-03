@@ -37,6 +37,10 @@ public class EmployeeProfileRepository : IEmployeeProfileRepository
     public Task<List<EmployeeProfile>> GetAllForCurrentOrgAsync() =>
         _db.EmployeeProfiles.ToListAsync();
 
+    public Task<List<EmployeeProfile>> GetAllForOrgAsync(string organizationId) =>
+        _db.EmployeeProfiles.IgnoreQueryFilters()
+            .Where(p => p.OrganizationId == organizationId).ToListAsync();
+
     public async Task<EmployeeProfile> AddAsync(EmployeeProfile profile)
     {
         var now = DateTime.UtcNow;
