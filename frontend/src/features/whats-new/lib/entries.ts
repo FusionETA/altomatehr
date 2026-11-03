@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 28f436f
+// whats-new-covered-up-to: 0293ef8
 
 // A line is for everyone, or — wrapped in admins(…) — for admins and owners
 // only. Employees and supervisors never see an admins line, so it doesn't
@@ -131,6 +131,8 @@ export const WHATS_NEW: WhatsNewEntry[] = [
       admins("A month can now be paid in several runs, such as one for office staff and one for workers. Each person can be in only one run a month, and the picker greys out anyone already in another."),
       admins("A month with several runs gets an \"all runs\" row showing its combined totals, plus a combined Summary to download as PDF or Excel. It's marked as a draft until every run is approved."),
       admins("Rename any run with the pencil next to its title, whatever its status. Its payroll files and Xero journal narration carry the new name."),
+      admins("In a run's adjustments, Basic this month pays a monthly employee a set basic for that month, such as a part-month joiner's basic. Their salary doesn't change."),
+      admins("SOCSO scheme now has Not covered, for someone PERKESO doesn't cover, such as a director. No SOCSO or SKBBK is deducted or paid for them."),
     ],
     improved: [
       admins("In a run's Needs attention, each missing number links to that person's record in a new tab, at the right field. Names link there too, and a draft run refreshes when you return."),
@@ -141,6 +143,14 @@ export const WHATS_NEW: WhatsNewEntry[] = [
       admins("Reverting a run now only sends back later approved runs that share people with it."),
       "EA forms count a month with several runs only once every run is approved. PCB 2(II) shows each person's own run's LHDN receipt. Single-run months don't change.",
       admins("A staff loan installment now counts as paid only once the borrower's own payslip for that month is approved — a month they weren't paid in (left out of the run, or in another group's run) no longer shows as repaid."),
+      "Annual and sick leave now meet the Employment Act minimum for years of service: annual 8, 12 or 16 days, sick 14, 18 or 22 days.",
+      admins("The minimum uses each profile's join date, and is pro-rated for lump-sum annual leave in the join year. Reset a balance below it to raise it."),
+      admins("A Malaysian aged 55–59 with no SOCSO scheme is flagged incomplete on their profile, and left out of runs until one is chosen."),
+    ],
+    fixed: [
+      admins("Staff with a SOCSO number but no scheme were paid no SOCSO; now the age-based scheme applies. Re-run a draft payroll to apply; approved months keep what was filed."),
+      "A run's own unpaid-leave line no longer stacks with approved Leave days, so those days are docked once, not twice. Re-run a draft payroll to apply; approved months keep what was filed.",
+      admins("In Payroll, a run's generated and approved times now show the right time, not 8 hours early."),
     ],
   },
   {

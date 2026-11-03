@@ -39,6 +39,14 @@ public interface IPolicyService
     // policy and no org default are absent from the result.
     Task<IReadOnlyDictionary<string, EmployeePolicy>>
         GetEffectivePoliciesForEmployeesAsync(IEnumerable<string> employeeIds);
+
+    // The same resolution for EVERY member of a NAMED org, with no request
+    // context — the master-key access endpoint answers about a company the
+    // caller is not signed into, so the tenant filter can't do the scoping.
+    // (Default keeps hand-written test doubles compiling.)
+    Task<IReadOnlyDictionary<string, EmployeePolicy>> GetEffectivePoliciesForOrgAsync(string organizationId) =>
+        Task.FromResult<IReadOnlyDictionary<string, EmployeePolicy>>(
+            new Dictionary<string, EmployeePolicy>(StringComparer.Ordinal));
     // Whether attendance geofence enforcement applies to this employee.
     Task<bool> RequiresGeofenceAsync(string employeeId);
     // Per-leave-type entitlement overrides for the employee's policy.

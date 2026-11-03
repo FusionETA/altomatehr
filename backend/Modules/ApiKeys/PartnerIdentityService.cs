@@ -19,6 +19,7 @@ public class PartnerIdentityService : IPartnerIdentityService
     private readonly IDirectoryService _directory;
     private readonly IOrganizationService _organizations;
     private readonly IApiKeyService _apiKeys;
+    private readonly IAdminAccessResolver _access;
 
     private readonly IOrganizationStatus? _status;
 
@@ -28,9 +29,11 @@ public class PartnerIdentityService : IPartnerIdentityService
         IDirectoryService directory,
         IOrganizationService organizations,
         IApiKeyService apiKeys,
+        IAdminAccessResolver access,
         IOrganizationStatus? status = null)
     {
         _status = status;
+        _access = access;
         _provisioning = provisioning;
         _auth = auth;
         _directory = directory;
@@ -59,7 +62,7 @@ public class PartnerIdentityService : IPartnerIdentityService
         var user = await _auth.VerifyPasswordAsync(email.Trim(), password);
         if (user is null) return null;
 
-        var organizations = await NamedAsync(await AdminMembershipsAsync(caller, user.Id));
+        var organizations = await NamedAsync(caller, await AdminMembershipsAsync(caller, user.Id));
         if (organizations.Count == 0) return null;
 
         var primary = organizations[0];
@@ -80,7 +83,28 @@ public class PartnerIdentityService : IPartnerIdentityService
 
         return string.IsNullOrEmpty(id)
             ? []
-            : await NamedAsync(await AdminMembershipsAsync(caller, id));
+            : await NamedAsync(caller, await AdminMembershipsAsync(caller, id));
+    }
+
+    public async Task<PartnerAccess?> AccessAsync(PartnerCaller caller, string userId, string organizationId)
+    {
+        // A company key sees its own company in full; letting it ask what
+        // ANOTHER person may reach would turn it into a directory of who is
+        // restricted. Only the platform's own master key may ask.
+        if (!caller.IsMaster) return null;
+
+        var snapshot = await _access.ResolveAsync(organizationId, userId);
+        if (snapshot is null) return null;
+
+        return new PartnerAccess(
+            userId,
+            organizationId,
+            snapshot.Role,
+            snapshot.AllEmployees,
+            snapshot.CanRunPayroll,
+            snapshot.CanChangeSettings,
+            snapshot.Modules.ToDictionary(m => m.Key, m => m.Value.ToString(), StringComparer.OrdinalIgnoreCase),
+            snapshot.Employees?.Select(e => new PartnerAccessEmployee(e.UserId, e.EmployeeProfileId)).ToList());
     }
 
     public async Task<string?> KeyNameAsync(string apiKeyId) =>
@@ -99,13 +123,22 @@ public class PartnerIdentityService : IPartnerIdentityService
             .ToList();
     }
 
-    private async Task<List<PartnerOrganization>> NamedAsync(IEnumerable<OrganizationMembership> memberships)
+    // Each company with this person's role in it and — for a MASTER caller
+    // only — their Manage access there, so a companion knows up front where it
+    // must narrow itself. An org key is told nothing about a person's limits
+    // (see PartnerOrganization). The flags are two membership columns and the
+    // org's package: no employee resolution, which is what /auth/access is for.
+    private async Task<List<PartnerOrganization>> NamedAsync(
+        PartnerCaller caller, IEnumerable<OrganizationMembership> memberships)
     {
         var named = new List<PartnerOrganization>();
         foreach (var m in memberships)
         {
             var org = await _organizations.GetByIdAsync(m.OrganizationId);
-            named.Add(new PartnerOrganization(m.OrganizationId, org?.Name ?? m.OrganizationId, m.Role));
+            var flags = caller.IsMaster ? await _access.FlagsAsync(m.OrganizationId, m) : null;
+            named.Add(new PartnerOrganization(
+                m.OrganizationId, org?.Name ?? m.OrganizationId, m.Role,
+                flags?.AllEmployees, flags?.CanRunPayroll));
         }
         return named;
     }

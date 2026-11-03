@@ -302,6 +302,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
             FixedAllowanceOverridesJson = PayrollRunAdjustments.Serialize(overrides),
             WorkedHours = dto.WorkedHours,
             ExpectedHours = dto.ExpectedHours,
+            BasicPayOverride = dto.BasicPayOverride is { } basic ? Math.Round(basic, 2, MidpointRounding.AwayFromZero) : null,
             UnpaidLeaveDays = dto.UnpaidLeaveDays,
             HrdfLevy = dto.HrdfLevy is { } levy ? Money.Round2(levy) : null,
             Notes = string.IsNullOrWhiteSpace(dto.Notes) ? null : dto.Notes.Trim(),
@@ -327,6 +328,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
                 saved.HrdfLevy,
                 ManualLineItemCount = items.Count,
                 OverrideCount = overrides.Count,
+                saved.BasicPayOverride,
             }));
 
         return new PayrollRunAdjustmentSaveResult(true, true, ToDto(saved), null);
@@ -427,6 +429,7 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
                 StringComparer.Ordinal),
         WorkedHours = a.WorkedHours,
         ExpectedHours = a.ExpectedHours,
+        BasicPayOverride = a.BasicPayOverride,
         UnpaidLeaveDays = a.UnpaidLeaveDays,
         HrdfLevy = a.HrdfLevy,
         Notes = a.Notes,

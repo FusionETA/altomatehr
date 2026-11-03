@@ -14,6 +14,12 @@ public interface IEmployeePolicyRepository
     // (Default keeps hand-written test doubles compiling; the real repository overrides.)
     Task<List<EmployeePolicy>> GetActiveForOrgsAsync(IReadOnlyCollection<string> organizationIds) =>
         Task.FromResult(new List<EmployeePolicy>());
+    // EVERY policy of a NAMED org, archived ones included, bypassing the
+    // tenant filter. Archived matters: a policy explicitly ASSIGNED to someone
+    // still governs them, so leaving them out would resolve that person onto
+    // the default instead. (Default keeps hand-written test doubles compiling.)
+    Task<List<EmployeePolicy>> GetForOrgAsync(string organizationId) =>
+        Task.FromResult(new List<EmployeePolicy>());
     Task<EmployeePolicy?> GetByIdAsync(string id);
     Task<EmployeePolicy?> GetByNameAsync(string name);
     Task<EmployeePolicy?> GetDefaultAsync();

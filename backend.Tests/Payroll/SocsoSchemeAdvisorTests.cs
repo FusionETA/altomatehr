@@ -101,4 +101,70 @@ public class SocsoSchemeAdvisorTests
     {
         Assert.Equal(0, SocsoSchemeAdvisor.CalculateAge(new DateTime(2030, 1, 1), AsOf));
     }
+
+    // ---- Effective: what payroll applies ----
+
+    private static readonly DateTime Oct2026 = new(2026, 10, 31);
+
+    [Fact]
+    public void Effective_KeepsASavedScheme()
+    {
+        Assert.Equal(SocsoScheme.EMPLOYMENT_INJURY_ONLY, SocsoSchemeAdvisor.Effective(
+            SocsoScheme.EMPLOYMENT_INJURY_ONLY, new DateTime(1990, 1, 1), "Malaysian", Oct2026));
+        Assert.Equal(SocsoScheme.NOT_COVERED, SocsoSchemeAdvisor.Effective(
+            SocsoScheme.NOT_COVERED, new DateTime(1990, 1, 1), "Malaysian", Oct2026));
+    }
+
+    [Fact]
+    public void Effective_FallsBackToTheAgeBasedSchemeWhenNoneIsSaved()
+    {
+        Assert.Equal(SocsoScheme.EMPLOYMENT_INJURY_INVALIDITY,
+            SocsoSchemeAdvisor.Effective(null, new DateTime(1975, 3, 12), "Malaysian", Oct2026));
+        Assert.Equal(SocsoScheme.EMPLOYMENT_INJURY_ONLY,
+            SocsoSchemeAdvisor.Effective(null, new DateTime(1964, 2, 14), "Malaysian", Oct2026));
+    }
+
+    // A Malaysian aged 55–59 has to be picked by hand — there is no safe guess.
+    [Fact]
+    public void Effective_IsNullWhenAMalaysianAged55To59HasNoScheme()
+    {
+        Assert.Null(SocsoSchemeAdvisor.Effective(null, new DateTime(1969, 5, 10), "Malaysian", Oct2026));
+    }
+
+    [Fact]
+    public void Readiness_FlagsA55To59YearOldWithNoSchemeAsIncomplete()
+    {
+        var p = new EmployeeProfile
+        {
+            Gender = Gender.FEMALE, DateOfBirth = DateTime.UtcNow.Date.AddYears(-57), Nationality = "Malaysian",
+            IdType = IdType.NRIC, IdNumber = "690510-12-5242", MaritalStatus = MaritalStatus.SINGLE,
+            SalaryType = AltomateHR.Api.Modules.Policies.Entities.SalaryType.MONTHLY, MonthlySalary = 3200m,
+            JoinDate = new DateTime(2015, 6, 1), ContributeToEpf = true, EpfNumber = "1", SocsoNumber = "1",
+            SocsoScheme = null,
+        };
+        Assert.Contains("Statutory", PayrollProfileReadiness.IncompleteSections(p));
+
+        p.SocsoScheme = SocsoScheme.EMPLOYMENT_INJURY_INVALIDITY;
+        Assert.Empty(PayrollProfileReadiness.IncompleteSections(p));
+    }
+
+    // A run judges readiness at its period end, as generation prices it: born
+    // 28 Oct 1971 is 54 on 22 Oct 2026 but 55 on the 31st, so the October run
+    // must not call them ready and then pay them no SOCSO.
+    [Fact]
+    public void Readiness_ForARun_IsJudgedAtThePeriodEnd()
+    {
+        var p = new EmployeeProfile
+        {
+            Gender = Gender.MALE, DateOfBirth = new DateTime(1971, 10, 28), Nationality = "Malaysian",
+            IdType = IdType.NRIC, IdNumber = "711028-12-5241", MaritalStatus = MaritalStatus.SINGLE,
+            SalaryType = AltomateHR.Api.Modules.Policies.Entities.SalaryType.MONTHLY, MonthlySalary = 3200m,
+            JoinDate = new DateTime(2015, 6, 1), ContributeToEpf = true, EpfNumber = "1", SocsoNumber = "1",
+            SocsoScheme = null,
+        };
+
+        Assert.True(PayrollProfileReadiness.IsComplete(p, new DateTime(2026, 10, 22)));
+        Assert.Equal(new DateTime(2026, 10, 31), PayrollProfileReadiness.PeriodEnd(2026, 10));
+        Assert.False(PayrollProfileReadiness.IsComplete(p, PayrollProfileReadiness.PeriodEnd(2026, 10)));
+    }
 }

@@ -246,6 +246,8 @@ function summarise(adjustment: PayrollRunAdjustment): string[] {
     Object.values(adjustment.otCustomHours ?? {}).reduce((sum, h) => sum + h, 0);
   if (ot > 0) chips.push(`${ot}h overtime`);
 
+  if (adjustment.basicPayOverride != null) chips.push(`basic RM ${rm(adjustment.basicPayOverride)}`);
+
   if (adjustment.manualLineItems.length > 0) {
     const total = adjustment.manualLineItems.reduce((sum, item) => sum + item.amount, 0);
     chips.push(

@@ -211,8 +211,10 @@
       <li><strong>Money</strong> is a number with two decimal places, in Malaysian ringgit.</li>
       <li><strong>Dates</strong> are ISO 8601. A payroll month is given as
         <code>periodYear</code> + <code>periodMonth</code> (1–12).</li>
-      <li><strong>Rate limits</strong>: none on API-key requests today. Keep calls sequential
-        for writes to the same payroll run.</li>
+      <li><strong>Rate limits</strong>: none on the data endpoints today. <a href="#whoami"><code>GET /whoami</code></a>
+        is capped at 60 requests a minute per address and answers <code>429</code> above it, with a
+        <code>Retry-After</code> header and a problem-details body that has no <code>message</code>
+        field. Keep calls sequential for writes to the same payroll run.</li>
     </ul>
     </section>
 
@@ -233,6 +235,7 @@
         <table>
           <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
           <tbody>
+            <tr><td><code>kind</code></td><td>string</td><td><code>"key"</code> for a company API key, <code>"user"</code> for a signed-in person, <code>"master"</code> for the platform key. Tells you what you are holding without inferring it from which fields came back empty.</td></tr>
             <tr><td><code>organizationId</code></td><td>string</td><td>The company the key belongs to.</td></tr>
             <tr><td><code>apiKeyId</code></td><td>string</td><td>The key's id.</td></tr>
             <tr><td><code>tokenName</code></td><td>string</td><td>The label the key was given in AltomateHR.</td></tr>
@@ -243,14 +246,24 @@
         </table>
       </div>
 <pre><code>{
+  "kind": "key",
   "organizationId": "org_123",
   "apiKeyId": "key_123",
   "tokenName": "Payroll converter",
   "role": "Admin",
   "scopes": ["employees:read", "payroll:read", "payroll:write"],
-  "features": ["onboarding.bulk", "sso.inbound"]
+  "features": ["onboarding.bulk", "sso.inbound", "auth.access"]
 }</code></pre>
       <p><code>401</code> when the key is unknown, revoked, or its company no longer exists. A deactivated company's key also gets <code>401</code>, with <code>code: "company_deactivated"</code> (see <a href="#authentication">Authentication</a>).</p>
+      <p>
+        This endpoint also answers the platform master key (<code>wp_master_</code>), which
+        first-party companion apps hold. That key belongs to no company, so it is told about
+        none: <code>kind: "master"</code>, the <code>features</code> list, and <code>null</code>
+        for <code>organizationId</code>, <code>apiKeyId</code>, <code>tokenName</code> and
+        <code>role</code>, with an empty <code>scopes</code>. Nothing else on this site accepts
+        it — the endpoints it is for are not part of the company API.
+      </p>
+      <p><code>429</code> when called more than 60 times a minute from one address.</p>
     </section>
     </section>
 

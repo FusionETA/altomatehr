@@ -86,23 +86,10 @@ public class ModuleAccessService : IModuleAccessService
         _access = membership is null
                   || !string.Equals(membership.Role, "Admin", StringComparison.OrdinalIgnoreCase)
             ? AdminAccess.Full
-            : new AdminAccess(
-                Restricted: true,
-                Grant: membership.Modules is null ? null : WithPolicies(OrgModules.ParseGrant(membership.Modules)),
-                CanChangeSettings: membership.CanChangeSettings,
-                PolicyScope: membership.PolicyScope is null ? null : OrgModules.Split(membership.PolicyScope));
+            : AdminAccess.ForAdmin(membership.Modules, membership.CanChangeSettings, membership.PolicyScope);
 
         return _access;
     }
-
-    // Policies isn't granted per admin (OrgModules.GrantableModules): every
-    // admin has it, and AdminAccess limits what they may do in it.
-    private static IReadOnlyDictionary<string, ModuleLevel> WithPolicies(
-        IReadOnlyDictionary<string, ModuleLevel> grant) =>
-        new Dictionary<string, ModuleLevel>(grant, StringComparer.OrdinalIgnoreCase)
-        {
-            [OrgModules.Policies] = ModuleLevel.Manage,
-        };
 
     public async Task<IReadOnlyCollection<string>> GetOrgModulesAsync()
     {

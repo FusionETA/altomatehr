@@ -34,6 +34,17 @@ public interface IDirectoryService
     // Every org a user belongs to — the org-picker on login.
     Task<List<OrganizationMembership>> GetMembershipsByUserAsync(string userId);
 
+    // Everyone in a NAMED org, and their employment records. The twins of the
+    // two reads above, for the flows that run with NO active org and so can't
+    // lean on the tenant filter — the master-key access endpoint answering
+    // about a company nobody is signed into.
+    // (Defaults keep hand-written test doubles compiling.)
+    Task<List<OrganizationMembership>> GetMembershipsForOrgAsync(string organizationId) =>
+        Task.FromResult(new List<OrganizationMembership>());
+
+    Task<List<EmployeeProfile>> GetProfilesForOrgAsync(string organizationId) =>
+        Task.FromResult(new List<EmployeeProfile>());
+
     // The same person's employment record in each org they belong to. Auth
     // uses it to tell a current employer from a former one (archived there —
     // left, or transferred out).

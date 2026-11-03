@@ -13,7 +13,7 @@ const OUT = new URL("./.out/", import.meta.url).pathname;
 mkdirSync(OUT, { recursive: true });
 const inContext = process.argv.slice(2);
 
-const browser = await chromium.launch();
+const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
 const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
 let broken = 0;
 for (const file of ["altomatehr-admin-guide.html", "altomatehr-employee-guide.html"]) {

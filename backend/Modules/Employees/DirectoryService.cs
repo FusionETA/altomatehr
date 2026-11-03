@@ -46,6 +46,12 @@ public class DirectoryService : IDirectoryService
     public Task<List<OrganizationMembership>> GetMembershipsByUserAsync(string userId) =>
         _memberships.GetByUserAsync(userId);
 
+    public Task<List<OrganizationMembership>> GetMembershipsForOrgAsync(string organizationId) =>
+        _memberships.GetForOrgAsync(organizationId);
+
+    public Task<List<EmployeeProfile>> GetProfilesForOrgAsync(string organizationId) =>
+        _profiles.GetAllForOrgAsync(organizationId);
+
     public Task<List<EmployeeProfile>> GetProfilesByUserAsync(string userId) =>
         _profiles.GetByUserAcrossOrgsAsync(userId);
 

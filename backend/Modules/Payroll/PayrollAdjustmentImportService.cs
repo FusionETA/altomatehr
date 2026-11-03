@@ -311,6 +311,7 @@ public class PayrollAdjustmentImportService : IPayrollAdjustmentImportService
                 FixedAllowanceOverrides = existing?.FixedAllowanceOverrides ?? [],
                 WorkedHours = existing?.WorkedHours,
                 ExpectedHours = existing?.ExpectedHours,
+                BasicPayOverride = existing?.BasicPayOverride,
                 UnpaidLeaveDays = existing?.UnpaidLeaveDays,
                 HrdfLevy = existing?.HrdfLevy,
                 Notes = existing?.Notes,
@@ -377,7 +378,8 @@ public class PayrollAdjustmentImportService : IPayrollAdjustmentImportService
         var payable = (await _directory.PayrollProfilesAsync())
             // Same rule as generation: a leaver is on their final month's run.
             .Where(p => PayrollRunService.PayableIn(p, run.PeriodYear, run.PeriodMonth)
-                        && PayrollProfileReadiness.IsComplete(p))
+                        && PayrollProfileReadiness.IsComplete(
+                            p, PayrollProfileReadiness.PeriodEnd(run.PeriodYear, run.PeriodMonth)))
             .ToList();
 
         var members = await _members.GetForRunAsync(run.Id);
