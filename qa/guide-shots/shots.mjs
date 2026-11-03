@@ -297,13 +297,25 @@ async function toAbTestCoA(page) {
 }
 
 const admin = {
-  // System Settings → Policies: the Overtime types card above the policies
-  // (needs `node setup.mjs overtime-types` for the Night shift row).
+  // System Settings → Work Schedule: the Overtime types card, after the
+  // Holidays and Calendar cards (needs `node setup.mjs overtime-types` for the
+  // Night shift row).
+  "overtime-types": async (page) => {
+    await inDemoCo(page);
+    await go(page, "settings/settings-work-schedule");
+    await page.getByText("Overtime types", { exact: true }).first().waitFor({ timeout: 15000 });
+    await page.getByPlaceholder("New type, e.g. Night shift").waitFor({ timeout: 15000 });
+    await settle(page);
+    await scrollTo(page, "Overtime types", 30, true);
+    await shoot(page, "admin", "overtime-types");
+  },
+  // System Settings → Policies: the policy list (the Overtime types card is on
+  // Work Schedule).
   "policy-editor": async (page) => {
     await inDemoCo(page);
     await go(page, "settings/settings-policies");
-    await page.getByText("Overtime types", { exact: true }).first().waitFor({ timeout: 15000 });
-    await page.getByPlaceholder("New type, e.g. Night shift").waitFor({ timeout: 15000 });
+    await page.getByRole("button", { name: "New policy" }).waitFor({ timeout: 15000 });
+    await page.getByRole("button", { name: "Edit", exact: true }).first().waitFor({ timeout: 15000 });
     await settle(page);
     await shoot(page, "admin", "policy-editor");
   },
@@ -1180,8 +1192,6 @@ const exec = {
     await go(page, "settings/settings-policies");
     await page.getByText(/Only the owner can create/).first().waitFor({ timeout: 15000 });
     await settle(page);
-    // The Overtime types card sits above the policies: scroll to the Policies card.
-    await scrollTo(page, "Policies", 30, true);
     await shoot(page, "admin", "policies-limited");
   },
   "limited-payroll-runs": async (page) => {
