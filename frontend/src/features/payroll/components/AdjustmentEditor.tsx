@@ -443,7 +443,7 @@ export function AdjustmentEditor({
             {/* ── Overtime ───────────────────────────────────────────── */}
             <Block
               title="Overtime"
-              hint="Approved overtime requests are paid automatically. Type hours only to correct them. Each type pays the employee's policy rate, or the company's (System Settings → Policies → Overtime types)."
+              hint="Approved overtime requests are paid automatically. Type hours only to correct them. Each type pays the employee's policy rate, or the company's (System Settings → Work Schedule → Overtime types)."
             >
               {/* Typed hours are silently ignored when the policy banks OT as
                   time off — paying cash for hours already credited as leave

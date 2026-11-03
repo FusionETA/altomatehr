@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 6c03895
+// whats-new-covered-up-to: 28f436f
 
 // A line is for everyone, or — wrapped in admins(…) — for admins and owners
 // only. Employees and supervisors never see an admins line, so it doesn't
@@ -32,7 +32,7 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     date: "2026-11-02",
     new: [
       admins("The Reimbursed claims card on a payroll run has a search for employee, staff ID or claim number, and an \"Add all\" button for the claims it shows."),
-      admins("System Settings → Policies has a new Overtime types card. The owner can rename or re-rate the three built-in types, and add their own, such as Night shift."),
+      admins("System Settings → Work Schedule has a new Overtime types card. The owner can rename or re-rate the three built-in types, and add their own, such as Night shift."),
       "When requesting overtime, you can now pick one of your company's own types, such as Night shift. Automatic lets the calendar pick, as before.",
       "Approvers see which overtime type each request is for.",
       admins("A payroll run's adjustments have a box for each overtime type, and the run's payslips list each type's hours."),

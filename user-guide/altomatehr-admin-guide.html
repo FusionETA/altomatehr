@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 530c662
+  user-guide-covered-up-to: 28f436f
 -->
 <html lang="en">
 <head>
@@ -551,7 +551,20 @@
       <li><h4>Work Schedule</h4>
         <p>The company's default hours and working days, and the <strong>public holidays</strong> —
           pick a <strong>Country</strong> and <strong>Year</strong> and press <span class="btn-name">Import</span>, then add
-          or remove any by hand. The calendar shows working days, rest days and holidays at a glance.</p></li>
+          or remove any by hand. The calendar shows working days, rest days and holidays at a glance.</p>
+        <p><strong>Overtime types.</strong> Below the calendar is an <strong>Overtime types</strong> card: what overtime pays, as a multiple of the hourly
+          rate (for example <em>1.5 ×</em>). Three types come with every company, tagged <strong>Built in</strong>:
+          <strong>Normal day</strong>, <strong>Rest day</strong> and <strong>Public holiday</strong>. Approved overtime
+          lands in one of them on its own, by the calendar. You can rename them and change their rate, but not remove
+          them.</p>
+        <ul>
+          <li><strong>Change one</strong> — edit the name or the number, then press <span class="btn-name">Save</span>
+            beside it.</li>
+          <li><strong>Add your own</strong> (for example <em>Night shift</em>) — type the name and the rate in the last
+            row, then press <span class="btn-name">Add</span>. Your employees can pick it when they submit overtime.</li>
+          <li><strong>Remove one of your own</strong> with the bin button. Hours already approved for it are still paid.</li>
+          <li>Only the owner can change this card. An admin sees it greyed out with a note saying so.</li>
+        </ul></li>
       <li><h4>Policies</h4>
         <p>Reusable rules you assign to people instead of setting each one individually: which modules they
           can use, the attendance checks (geofence, IP allowlist, capturing location, auto clock-out), salary type,
@@ -564,21 +577,8 @@
           owner sees <span class="btn-name">New policy</span>, <span class="btn-name">Make default</span> and
           <span class="btn-name">Archive</span> / <span class="btn-name">Restore</span>; an admin sees a short note
           saying so.</p>
-        <p><strong>Overtime types.</strong> The page starts with an <strong>Overtime types</strong> card: what overtime pays, as a multiple of the hourly
-          rate (for example <em>1.5 ×</em>). Three types come with every company, tagged <strong>Built in</strong>:
-          <strong>Normal day</strong>, <strong>Rest day</strong> and <strong>Public holiday</strong>. Approved overtime
-          lands in one of them on its own, by the calendar. You can rename them and change their rate, but not remove
-          them.</p>
-        <ul>
-          <li><strong>Change one</strong> — edit the name or the number, then press <span class="btn-name">Save</span>
-            beside it.</li>
-          <li><strong>Add your own</strong> (for example <em>Night shift</em>) — type the name and the rate in the last
-            row, then press <span class="btn-name">Add</span>. Your employees can pick it when they submit overtime.</li>
-          <li><strong>Remove one of your own</strong> with the bin button. Hours already approved for it are still paid.</li>
-          <li>Only the owner can change this card. An admin sees it greyed out with a note saying so.</li>
-        </ul>
         <p><strong>Overtime rates in a policy.</strong> In a policy's editor, once <strong>Overtime enabled</strong> is ticked and the <strong>Overtime method</strong> is <em>Cash (paid out)</em>, the rate boxes appear. A box left <strong>blank</strong> uses
-          the company's rate from the Overtime types card, which shows greyed inside the box. Type a number to give just
+          the company's rate from the <strong>Overtime types</strong> card (<strong>System Settings → Work Schedule</strong>), which shows greyed inside the box. Type a number to give just
           this policy its own rate. If your company has its own types, they're listed underneath with a tick:
           untick one to stop that policy's staff picking it, or type a rate to pay it differently. (The two <em>in shift</em> rates that used to be here are gone.)</p></li>
       <li><h4>Admins <span class="badge owner">Owner only</span></h4>
@@ -661,15 +661,19 @@
           <p class="shot-cap">Work Schedule</p>
         </div>
         <div class="shot-item">
-          <img src="shots/admin/policy-editor.png" alt="System Settings → Policies starting with the Overtime types card: Normal day, Rest day and Public holiday marked Built in, a Night shift type of the company's own, and a row to add a new one" loading="lazy">
-          <p class="shot-cap">Overtime types</p>
+          <img src="shots/admin/overtime-types.png" alt="System Settings → Work Schedule, the Overtime types card below the calendar: Normal day, Rest day and Public holiday marked Built in, a Night shift type of the company's own, and a row to add a new one" loading="lazy">
+          <p class="shot-cap">Overtime types (Work Schedule)</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/policy-editor.png" alt="System Settings → Policies: the list of policies with the Default tag, a New policy button, and Edit, Make default and Archive on each row" loading="lazy">
+          <p class="shot-cap">Policies</p>
         </div>
         <div class="shot-item">
           <img src="shots/admin/policy-overtime-rates.png" alt="The Edit policy dialog's overtime section: blank rate boxes showing the company's rates greyed, and a ticked Night shift type with its own rate box" loading="lazy">
           <p class="shot-cap">Overtime rates in a policy</p>
         </div>
         <div class="shot-item">
-          <img src="shots/admin/policies-limited.png" alt="System Settings → Policies as an admin limited to one policy: the Overtime types card marked owner only, no New policy button, and a note that only the owner can create, archive or change the default" loading="lazy">
+          <img src="shots/admin/policies-limited.png" alt="System Settings → Policies as an admin limited to one policy: that one policy marked Owner only, no New policy button, and a note that only the owner can create, archive or change the default" loading="lazy">
           <p class="shot-cap">Policies, as a limited admin</p>
         </div>
       </div>
