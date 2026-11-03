@@ -1264,7 +1264,7 @@ const exec = {
   "limited-payroll-runs": async (page) => {
     await go(page, "payroll");
     await clickText(page, "Payroll runs");
-    await page.getByText(/view runs but not start one|view only/i).first().waitFor({ timeout: 15000 });
+    await page.getByText(/runs you start include only their people|view only/i).first().waitFor({ timeout: 15000 });
     await settle(page);
     await shoot(page, "admin", "limited-payroll-runs");
   },

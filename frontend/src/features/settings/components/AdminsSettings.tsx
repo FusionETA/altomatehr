@@ -692,7 +692,7 @@ function AccessDialog({
                 <span>
                   All employees
                   <span className="block text-xs font-normal text-muted-foreground">
-                    Sees everyone, and can run company-wide payroll.
+                    Sees everyone, and can run payroll for the whole company.
                   </span>
                 </span>
               </label>
@@ -746,9 +746,9 @@ function AccessDialog({
                     </div>
                   )}
                   <p className="rounded-2xl border border-warning bg-warning/40 px-3 py-2 text-xs font-medium text-warning-foreground">
-                    Payroll covers the whole company, so with limited employees they can view payroll
-                    runs (only their people's payslips) but can't create, run or submit them, or
-                    download the EPF / SOCSO / PCB files, bank file or annual forms.
+                    With Payroll at Manage they can run payroll for these people only: start a run of
+                    them, and run, submit and file runs made up only of them. A run with anyone else
+                    on it, the month-wide summary and the annual forms stay view-only or out of reach.
                   </p>
                 </>
               ) : null}

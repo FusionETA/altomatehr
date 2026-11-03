@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: a9d9068
+  user-guide-covered-up-to: 35e5978
 -->
 <html lang="en">
 <head>
@@ -606,8 +606,9 @@
                 admin's sidebar.</li>
               <li><strong>Employees</strong> — <em>All employees</em>, or <em>Only employees on these policies</em>
                 with the policies ticked. Everyone else is hidden from that admin in employees, payroll, claims, leave
-                and attendance. Payroll covers the whole company, so an admin limited to some employees can view
-                payroll runs (and only their people's payslips) but can't run payroll or download company-wide files.
+                and attendance. With Payroll at <span class="btn-name">Manage</span>, an admin limited to some policies can
+                start payroll runs for their own people and run, submit, approve, revert and file any run made up only of
+                them; see <a href="#payroll-limited">Running payroll as an admin limited to some policies</a>.
                 They can still create teams and change any team made up only of their own people; see
                 <a href="#structure">Company Structure &amp; approvals</a>.</li>
               <li><strong>Settings</strong> — <em>Can change company settings</em>. Turn it off to let someone work
@@ -693,7 +694,7 @@
     <div class="note"><span class="nt">What a limited admin sees</span>
       <p>An admin without <em>Can change company settings</em> sees a <strong>View only</strong> note above
         Organization, Work Schedule and Payroll settings, and those forms are greyed out. If their payroll access is
-        view only, or they cover only some employees, the Payroll runs page shows a short message instead of
+        view only, the Payroll runs page shows <em>Your payroll access is view only</em> instead of
         <span class="btn-name">Create draft</span> and the run's action buttons. On the Employees page,
         <span class="btn-name">Add employee</span> needs Manage on Employees, and <span class="btn-name">Import</span>
         also needs <em>All employees</em>.</p>
@@ -704,12 +705,8 @@
           <img src="shots/admin/limited-settings.png" alt="System Settings → Organization for a limited admin: a View only note above the greyed-out company name" loading="lazy">
           <p class="shot-cap">Organization</p>
         </div>
-        <div class="shot-item">
-          <img src="shots/admin/limited-payroll-runs.png" alt="Payroll runs for an admin who covers only some employees: a message in place of the Create draft button" loading="lazy">
-          <p class="shot-cap">Payroll runs</p>
-        </div>
       </div>
-      <p class="shot-cap shot-cap-main">What a limited admin sees</p>
+      <p class="shot-cap shot-cap-main">What a limited admin sees in System Settings</p>
     </figure>
 
     </div>
@@ -1648,6 +1645,8 @@
       approval are sent back to draft as well, and are listed in the same message. If the company pays a month in several
       runs, a run for a completely different group of people is left alone. A month you imported from earlier payroll is
       never sent back this way.</p>
+    <p>An admin limited to some policies can revert only when everything it would send back is theirs too. If a later
+      month's run has anyone else on it, the revert is refused; ask an admin with access to all employees.</p>
     <p><strong>Revert is refused while next year's run uses this month's PCB.</strong> If this month has PCB the company paid
       for someone (see <a href="#payroll-borne-pcb">When the company pays someone's PCB</a>) and a run in the following
       year that is awaiting approval or approved has already added it, <span class="btn-name">Revert to draft</span>
@@ -1657,6 +1656,24 @@
       has no <span class="btn-name">Revert to draft</span> button. Its run page shows a note instead: <em>Imported from your
       previous payroll system. To correct this month, import it again under “Import earlier payroll” at the foot of the
       Payroll runs page — that replaces it.</em> See <a href="#ytd">Starting mid-year</a>.</p>
+
+    <h3 id="payroll-limited">Running payroll as an admin limited to some policies</h3>
+    <p>If your access covers only some policies (<em>Manage access → Employees → Only employees on these policies</em>)
+      and Payroll is set to <span class="btn-name">Manage</span>, you can run payroll for your own people.</p>
+    <ul>
+      <li><strong>Starting a run.</strong> The <strong>Start a payroll run</strong> card tells you that runs you start
+        include only your policies' people, and the list offers only your people. Pick the month and press
+        <span class="btn-name">Create draft</span> as usual.</li>
+      <li><strong>Your runs.</strong> For a run made up only of your people you can run, re-run, submit, approve,
+        revert, delete and download its files, the same as a full-access admin.</li>
+      <li><strong>Runs with anyone else.</strong> If a run has someone outside your policies on it, it stays view-only
+        for you. Its page says <em>This run includes people outside the policies your access covers, so you can view it
+        and your people's payslips but not run, submit or change it.</em> You see only your people's payslips on it.</li>
+      <li><strong>Reverting.</strong> A revert that would also send back a later month's run with other people on it is
+        refused.</li>
+      <li><strong>Full access only.</strong> The month-wide summary, <strong>Annual forms</strong>, the YTD import and
+        the bulk imports need access to all employees.</li>
+    </ul>
 
     <h3 id="payroll-split">Paying a month in several runs</h3>
     <p>Some companies pay one group of staff on a different day from another — say office staff and workers. Start a

@@ -663,6 +663,9 @@ function MemberRow({
 // A split month as a whole: its runs' combined figures and the combined
 // summary. Read-only — each run below it is opened, approved and filed alone.
 function MonthRow({ runs }: { runs: PayrollRun[] }) {
+  // The combined summary holds every run's people, so it needs access to all
+  // employees; an admin limited to some policies doesn't get the buttons.
+  const allEmployees = useMyAccess().allEmployees;
   const [busy, setBusy] = useState<"pdf" | "xlsx" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const sum = (pick: (run: PayrollRun) => number) => runs.reduce((t, run) => t + pick(run), 0);
@@ -697,7 +700,7 @@ function MonthRow({ runs }: { runs: PayrollRun[] }) {
       <td className={TD_NUM}>{rm(sum((r) => r.totalCostToEmployer))}</td>
       <td className={TD} colSpan={2}>
         <div className="flex items-center gap-1">
-          {(["pdf", "xlsx"] as const).map((format) => (
+          {(allEmployees ? (["pdf", "xlsx"] as const) : []).map((format) => (
             <button
               key={format}
               type="button"
