@@ -97,7 +97,28 @@ public class OrgAdminEndpointTests
         var rows = body.GetProperty("data").EnumerateArray()
             .Select(r => (r.GetProperty("email").GetString(), r.GetProperty("role").GetString()))
             .ToList();
-        Assert.Equal([("first@example.com", "Owner"), ("second@example.com", "Admin")], rows);
+        // The AltomateHR AI (AI_ACTOR_EMAILS) is listed as an Admin of every
+        // company, so the MCP server accepts it as the acting admin.
+        Assert.Equal(
+            [("ai@altomate.test", "Admin"), ("first@example.com", "Owner"), ("second@example.com", "Admin")], rows);
+    }
+
+    // It's never an Owner, and it's no seat: it holds no membership anywhere.
+    [Fact]
+    public async Task TheAi_IsListedAsAnAdminOnly_AndHoldsNoSeat()
+    {
+        using var app = new App();
+        var key = await app.ProvisionAsync("AI Sdn Bhd");
+        await app.GrantAsync(key, "owner@example.com");
+
+        var request = new HttpRequestMessage(HttpMethod.Get, "/admin/users?role=OWNER");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+        var owners = (await Json(await app.Client.SendAsync(request))).GetProperty("data").EnumerateArray()
+            .Select(r => r.GetProperty("email").GetString())
+            .ToList();
+
+        Assert.Equal(["owner@example.com"], owners);
+        Assert.Equal(1, await app.SeatsAsync("AI Sdn Bhd"));
     }
 
     // ─── Harness ────────────────────────────────────────────────────────
@@ -174,6 +195,7 @@ public class OrgAdminEndpointTests
                     ["Jwt:AccessTokenMinutes"] = "15",
                     ["Jwt:RefreshTokenDays"] = "7",
                     ["Seed:DemoData"] = "true",
+                    ["AI_ACTOR_EMAILS"] = "ai@altomate.test",
                 });
             });
             builder.ConfigureTestServices(services =>

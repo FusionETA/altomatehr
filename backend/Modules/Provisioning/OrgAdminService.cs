@@ -22,11 +22,15 @@ public class OrgAdminService : IOrgAdminService
     private readonly IOrganizationMembershipRepository _memberships;
     private readonly IDirectoryService _directory;
 
+    private readonly Auth.IAiActorRegistry? _aiActors;
+
     public OrgAdminService(
         IUserRepository users,
         IOrganizationMembershipRepository memberships,
-        IDirectoryService directory)
+        IDirectoryService directory,
+        Auth.IAiActorRegistry? aiActors = null)
     {
+        _aiActors = aiActors;
         _users = users;
         _memberships = memberships;
         _directory = directory;
@@ -91,13 +95,26 @@ public class OrgAdminService : IOrgAdminService
     {
         var users = (await _directory.GetUsersAsync()).ToDictionary(u => u.Id);
 
+        var rows = (await _directory.GetMembershipsForCurrentOrgAsync())
+            .Where(m => OrgRoles.IsAdministrative(m.Role))
+            .Where(m => roles.Count == 0 || roles.Contains(m.Role))
+            .Where(m => users.ContainsKey(m.UserId))
+            .Select(m => new OrgAdminRow(m.UserId, users[m.UserId].Email, users[m.UserId].Name, m.Role))
+            .ToList();
+
+        // The AltomateHR AI, as an Admin of every company — so the MCP server
+        // accepts it as the acting admin. Never a real seat (see
+        // IAiActorRegistry); skipped if a real member already has the email.
+        if (_aiActors is not null && (roles.Count == 0 || roles.Contains(OrgRoles.Admin)))
+        {
+            rows.AddRange(_aiActors.Emails
+                .Where(email => rows.All(r => !string.Equals(r.Email, email, StringComparison.OrdinalIgnoreCase)))
+                .Select(email => new OrgAdminRow($"ai:{email}", email, Auth.AiActorRegistry.DisplayName, OrgRoles.Admin)));
+        }
+
         return
         [
-            .. (await _directory.GetMembershipsForCurrentOrgAsync())
-                .Where(m => OrgRoles.IsAdministrative(m.Role))
-                .Where(m => roles.Count == 0 || roles.Contains(m.Role))
-                .Where(m => users.ContainsKey(m.UserId))
-                .Select(m => new OrgAdminRow(m.UserId, users[m.UserId].Email, users[m.UserId].Name, m.Role))
+            .. rows
                 .OrderBy(r => r.Email, StringComparer.OrdinalIgnoreCase)
                 .Take(limit is > 0 ? limit.Value : int.MaxValue),
         ];
