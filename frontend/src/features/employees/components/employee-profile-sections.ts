@@ -1,5 +1,5 @@
 import type { EmployeeProfile } from "../api";
-import { isMalaysianNationality, socsoSchemeNeedsManualChoice } from "../lib/statutory";
+import { isMalaysianNationality, isSocsoCovered, socsoSchemeNeedsManualChoice } from "../lib/statutory";
 
 // What "ready" means for one employee, section by section.
 //
@@ -83,7 +83,7 @@ const RULES: Record<SectionId, Rule[]> = {
     // NOT_COVERED is a deliberate "no SOCSO", so there is no number to ask for.
     {
       label: "SOCSO number",
-      applies: (p) => present(p.socsoScheme) && p.socsoScheme !== "NOT_COVERED",
+      applies: (p) => isSocsoCovered(p.socsoScheme),
       filled: (p) => present(p.socsoNumber),
     },
     // Mirrors the backend's PayrollProfileReadiness: no scheme saved and none

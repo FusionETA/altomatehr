@@ -41,11 +41,24 @@ public enum SocsoScheme
 {
     EMPLOYMENT_INJURY_INVALIDITY,
     EMPLOYMENT_INJURY_ONLY,
-    // Deliberately outside SOCSO (e.g. a director the Act doesn't cover). A
-    // profile with NO scheme is different: that is "not chosen yet", and
-    // payroll uses the scheme SocsoSchemeAdvisor suggests from age rather than
-    // silently deducting nothing.
+    // Deliberately outside SOCSO (e.g. a director the Act doesn't cover).
+    // Exists because rows written outside the app carried it, and an unmapped
+    // string makes EF throw on every query that loads the profile (2026-11-03
+    // outage).
+    //
+    // NOT the same as a profile with NO scheme, which means "not chosen yet":
+    // payroll resolves that one from age (SocsoSchemeAdvisor.Effective) rather
+    // than silently deducting nothing. Both bill nothing once they reach
+    // PerkesoCalculator; they differ in whether a scheme gets chosen first.
     NOT_COVERED,
+}
+
+public static class SocsoSchemeExtensions
+{
+    // True only for a scheme PERKESO actually bills. Null and NOT_COVERED both
+    // mean no SOCSO contribution and no SOCSO number required.
+    public static bool IsCovered(this SocsoScheme? scheme) =>
+        scheme is SocsoScheme.EMPLOYMENT_INJURY_INVALIDITY or SocsoScheme.EMPLOYMENT_INJURY_ONLY;
 }
 
 // The three approvals LHDN taxes at a flat 15% instead of the resident bands

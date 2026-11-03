@@ -288,7 +288,7 @@ export const SALARY_TYPES: SalaryType[] = ["MONTHLY", "HOURLY"];
 export const SOCSO_SCHEME_LABELS: Record<SocsoScheme, string> = {
   EMPLOYMENT_INJURY_INVALIDITY: "Injury + invalidity (First Category)",
   EMPLOYMENT_INJURY_ONLY: "Injury only (Second Category)",
-  NOT_COVERED: "Not covered — no SOCSO",
+  NOT_COVERED: "Not covered by SOCSO",
 };
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   BANK_TRANSFER: "Bank transfer (Malaysian bank)",

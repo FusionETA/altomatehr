@@ -22,6 +22,30 @@ public class PerkesoCalculatorTests
             ContributeToSkbbk = contributeToSkbbk,
         };
 
+    // ─── SOCSO: NOT_COVERED behaves like null ───────────────────────────
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(30)]
+    [InlineData(60)] // must not be age-flipped into Cat 2 and billed
+    public void NotCovered_ContributesNothing(int? age)
+    {
+        var result = PerkesoCalculator.CalculateSocso(
+            Socso(scheme: SocsoScheme.NOT_COVERED, ageAtPeriodEnd: age, periodMonth: 7, contributeToSkbbk: true));
+
+        Assert.Equal(0m, result.Employee);
+        Assert.Equal(0m, result.Employer);
+    }
+
+    [Fact]
+    public void IsCovered_OnlyForBilledSchemes()
+    {
+        Assert.True(((SocsoScheme?)SocsoScheme.EMPLOYMENT_INJURY_INVALIDITY).IsCovered());
+        Assert.True(((SocsoScheme?)SocsoScheme.EMPLOYMENT_INJURY_ONLY).IsCovered());
+        Assert.False(((SocsoScheme?)SocsoScheme.NOT_COVERED).IsCovered());
+        Assert.False(((SocsoScheme?)null).IsCovered());
+    }
+
     // ─── SOCSO: the Cat 1 → Cat 2 age flip ──────────────────────────────
 
     [Fact]

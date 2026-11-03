@@ -89,11 +89,11 @@ public static class PayrollProfileReadiness
     private static bool IsStatutoryComplete(EmployeeProfile p, DateTime asOf)
     {
         if (p.ContributeToEpf && string.IsNullOrWhiteSpace(p.EpfNumber)) return false;
-        if (p.SocsoScheme is not null && p.SocsoScheme != SocsoScheme.NOT_COVERED
-            && string.IsNullOrWhiteSpace(p.SocsoNumber)) return false;
+        if (p.SocsoScheme.IsCovered() && string.IsNullOrWhiteSpace(p.SocsoNumber)) return false;
         // No scheme chosen and none can be suggested (a Malaysian aged 55–59
         // must be picked by hand): incomplete, so a run leaves them out rather
-        // than paying them with no SOCSO.
+        // than paying them with no SOCSO. NOT_COVERED is a choice, so it
+        // passes — Effective() returns it unchanged.
         if (SocsoSchemeAdvisor.Effective(p.SocsoScheme, p.DateOfBirth, p.Nationality, asOf) is null
             && p.DateOfBirth is not null) return false;
         return true;
