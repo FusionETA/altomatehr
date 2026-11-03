@@ -25,7 +25,7 @@
   Bookmark: the pages that exist are correct as of this commit on main. The
   next update re-checks every controller/DTO changed after it — from any
   branch — then moves it forward.
-  api-docs-covered-up-to: 530c662
+  api-docs-covered-up-to: 6c03895
 -->
 <div class="layout">
   <nav class="sidebar" aria-label="Documentation">
@@ -106,7 +106,10 @@
       <li>Some endpoints are for people only and answer <code>403</code> to any key: a
         person's own actions (clocking in, applying for leave, filing a claim or overtime,
         notifications), account actions (passwords, switching company) and platform settings
-        (managing API keys and admin access, the activity log, accounting connections).</li>
+        (managing API keys and admin access, the activity log, accounting connections). The
+        reverse also exists: <code>POST /admin/admins</code> and <code>GET /admin/users</code>
+        are for keys only and answer <code>403</code>
+        <code>"This endpoint is for API keys only."</code> to a signed-in person.</li>
       <li>Every other endpoint needs a scope, listed on its page. Only <code>GET /whoami</code>
         and <code>GET /pending</code> work with any key.</li>
     </ul>
@@ -176,7 +179,7 @@
           <tr><td><code>400</code> / <code>404</code> / <code>409</code></td><td>A business rule refused it, in some modules (Accounts, Attendance, Claims, Documents, Leave, Organization, Overtime, Policies, Teams) — each page says where</td><td><code>{ "message": "…" }</code></td></tr>
           <tr><td><code>401</code></td><td>Missing, unknown or revoked key</td><td>empty</td></tr>
           <tr><td><code>401</code></td><td>The key's company has been deactivated. Match on <code>code</code>, not the wording</td><td><code>{ "error": "…", "code": "company_deactivated" }</code></td></tr>
-          <tr><td><code>403</code></td><td>Missing scope (including an <code>employees:*</code> scope a Documents action needs), module not in the plan, or a people-only endpoint</td><td><code>{ "error": { "status": 403, "message": "…" } }</code></td></tr>
+          <tr><td><code>403</code></td><td>Missing scope (including an <code>employees:*</code> scope a Documents action needs), module not in the plan, a people-only endpoint, or (for the two <code>/admin</code> endpoints) a signed-in person instead of a key</td><td><code>{ "error": { "status": 403, "message": "…" } }</code></td></tr>
           <tr><td><code>404</code></td><td>Not found in this company</td><td>empty or <code>{ "error": "…" }</code></td></tr>
         </tbody>
       </table>
