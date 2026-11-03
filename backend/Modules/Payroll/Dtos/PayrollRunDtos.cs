@@ -66,6 +66,11 @@ public class PayrollRunDto
     // Pay figures are final — joiners and leavers are not prorated.
     public bool SkipProration { get; set; }
 
+    // For an admin limited to some policies: the run has people outside them
+    // (or covers the whole company), so they may view it but not change it.
+    // Always false for everyone else.
+    public bool HasPeopleOutsideYourAccess { get; set; }
+
     public int EmployeeCount { get; set; }
 
     public decimal TotalGross { get; set; }

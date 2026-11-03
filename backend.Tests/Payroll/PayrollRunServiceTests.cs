@@ -24,6 +24,8 @@ public class PayrollRunServiceTests : IDisposable
 {
     private readonly AppDbContext _db;
     private readonly StubCurrentUser _currentUser = new();
+    // Unlimited unless a test narrows it, as EmployeeScopeMiddleware would.
+    private readonly AltomateHR.Api.Common.EmployeeScope _scope = new();
     private readonly FakeAuditService _audit = new();
     private readonly StubPayrollXeroSync _xeroSync = new();
     private EmployeeLoanService _loanService = null!;
@@ -41,7 +43,7 @@ public class PayrollRunServiceTests : IDisposable
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase($"payroll-runs-{Guid.NewGuid()}")
             .Options;
-        _db = new AppDbContext(options, _currentUser);
+        _db = new AppDbContext(options, _currentUser, _scope);
         _payslips = new PayslipRepository(_db);
         _adjustments = new PayrollRunAdjustmentRepository(_db);
         _runClaims = new PayrollRunClaimRepository(_db);
@@ -99,6 +101,7 @@ public class PayrollRunServiceTests : IDisposable
             _xeroSync,
             _loanService,
             _approvedOt,
+            scope: _scope,
             settlements: new UnpaidLeaveSettlementRepository(_db),
             drafts: new PayrollDraftStaleness(
                 new PayrollRunRepository(_db), _currentUser,
@@ -3008,5 +3011,131 @@ public class PayrollRunServiceTests : IDisposable
         var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
 
         Assert.Equal(20000m, TP3Breakdown(payslip).Y1);   // 2026's own RM 6,000 is untouched
+    }
+
+    // ─── An admin limited to some policies ──────────────────────────────
+    //
+    // They run payroll for their own people: Aisyah is on a policy they
+    // cover, Bala isn't. A run is theirs to change only when everyone on it
+    // is theirs; any other run they only view.
+
+    private (EmployeeProfile Mine, EmployeeProfile Other) TwoPolicyCompany() =>
+        (AddReadyEmployee("usr-1", "Aisyah", "E-001"), AddReadyEmployee("usr-2", "Bala", "E-002"));
+
+    private void LimitTo(EmployeeProfile mine) => _scope.Limit(["usr-admin", mine.UserId], [mine.Id]);
+
+    private Task<List<string>> RosterOfAsync(string runId) =>
+        _db.PayrollRunMembers.IgnoreQueryFilters()
+            .Where(m => m.PayrollRunId == runId)
+            .Select(m => m.EmployeeProfileId)
+            .ToListAsync();
+
+    [Fact]
+    public async Task ALimitedAdmin_RunsPayrollForTheirOwnPeople()
+    {
+        var (mine, _) = TwoPolicyCompany();
+        LimitTo(mine);
+
+        var created = await _service.CreateAsync(Period());
+        Assert.True(created.Ok, created.Error);
+
+        Assert.Null(await _service.OutsideScopeAsync(created.Run!.Id));
+        Assert.Equal([mine.Id], await RosterOfAsync(created.Run.Id));   // Bala isn't on it
+        Assert.Equal(1, (await _service.GenerateAsync(created.Run.Id)).Result!.PayslipCount);
+        Assert.False(Assert.Single(await _service.GetAllAsync()).HasPeopleOutsideYourAccess);
+    }
+
+    [Fact]
+    public async Task ALimitedAdmin_OnlyViewsARunWithAnyoneElse()
+    {
+        var (mine, _) = TwoPolicyCompany();
+        var run = await CreateRunAsync();   // made by an admin who sees everyone
+        LimitTo(mine);
+
+        Assert.Contains("1 person outside the policies", await _service.OutsideScopeAsync(run.Id));
+        Assert.True(Assert.Single(await _service.GetAllAsync()).HasPeopleOutsideYourAccess);
+    }
+
+    // Their filtered view must not mistake the other group's run for an
+    // empty one ("everyone"), or pin it to their people.
+    [Fact]
+    public async Task ALimitedAdmin_AddsTheirRunBesideAnotherGroupsRun()
+    {
+        var (mine, other) = TwoPolicyCompany();
+        var theirs = await _service.CreateAsync(new() { PeriodYear = 2026, PeriodMonth = 1, ExcludedEmployeeProfileIds = [mine.Id] });
+        Assert.True(theirs.Ok, theirs.Error);
+        LimitTo(mine);
+
+        var created = await _service.CreateAsync(new() { PeriodYear = 2026, PeriodMonth = 1, Name = "Outlet" });
+
+        Assert.True(created.Ok, created.Error);
+        Assert.Equal([mine.Id], await RosterOfAsync(created.Run!.Id));
+        Assert.Equal([other.Id], await RosterOfAsync(theirs.Run!.Id));
+        Assert.Null(await _service.OutsideScopeAsync(created.Run.Id));
+        Assert.NotNull(await _service.OutsideScopeAsync(theirs.Run.Id));
+    }
+
+    [Fact]
+    public async Task ALimitedAdmin_CannotStartARunOfNobody()
+    {
+        TwoPolicyCompany();
+        _scope.Limit(["usr-admin"], []);
+
+        var created = await _service.CreateAsync(Period());
+
+        Assert.False(created.Ok);
+        Assert.Contains("None of the people you picked", created.Error);
+        Assert.Empty(await _db.PayrollRuns.ToListAsync());
+    }
+
+    // A run with no roster is everyone: re-running it pulls in whoever is
+    // payable, so payslips that happen to be all theirs don't make it theirs.
+    [Fact]
+    public async Task ALimitedAdmin_OnlyViewsARunWithNoRoster_EvenIfItsPayslipsAreTheirs()
+    {
+        var mine = AddEmployee("usr-1", "Aisyah");   // not payroll-ready, so no roster is saved
+        var run = await CreateRunAsync();
+        Assert.Equal(1, (await _service.GenerateAsync(run.Id)).Result!.PayslipCount);
+        LimitTo(mine);
+
+        Assert.Contains("covers the whole company", await _service.OutsideScopeAsync(run.Id));
+    }
+
+    // Deleting a run takes its attached claims too; a scoped delete would
+    // strand one it can't see, so a claim for someone else makes it not theirs.
+    [Fact]
+    public async Task ALimitedAdmin_OnlyViewsARunWithSomeoneElsesClaimOnIt()
+    {
+        var (mine, other) = TwoPolicyCompany();
+        var run = await _service.CreateAsync(new() { PeriodYear = 2026, PeriodMonth = 1, ExcludedEmployeeProfileIds = [other.Id] });
+        _db.PayrollRunClaims.Add(new PayrollRunClaim
+        {
+            OrganizationId = "org-1", PayrollRunId = run.Run!.Id, ClaimId = "clm-1",
+            EmployeeProfileId = other.Id, Label = "Parking", Amount = 20m,
+        });
+        await _db.SaveChangesAsync();
+        LimitTo(mine);
+
+        Assert.Contains("1 person outside the policies", await _service.OutsideScopeAsync(run.Run.Id));
+    }
+
+    // January is all theirs, but February holds Bala too and was computed off
+    // January's year-to-date — reverting January would reopen it.
+    [Fact]
+    public async Task ALimitedAdmin_CannotRevertIntoSomeoneElsesMonth()
+    {
+        var (mine, other) = TwoPolicyCompany();
+        var january = await _service.CreateAsync(new() { PeriodYear = 2026, PeriodMonth = 1, ExcludedEmployeeProfileIds = [other.Id] });
+        Assert.True((await _service.GenerateAsync(january.Run!.Id)).Ok);
+        var february = await ApprovedMonthAsync(2);
+        (await _db.PayrollRuns.FirstAsync(r => r.Id == january.Run.Id)).Status = PayrollRunStatus.SUBMITTED;
+        await _db.SaveChangesAsync();
+        LimitTo(mine);
+
+        var reverted = await _service.RevertToDraftAsync(january.Run.Id);
+
+        Assert.False(reverted.Ok);
+        Assert.Contains("February 2026", reverted.Error);
+        Assert.Equal(PayrollRunStatus.SUBMITTED, (await _db.PayrollRuns.FirstAsync(r => r.Id == february.Id)).Status);
     }
 }

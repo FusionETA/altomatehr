@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 5e7a30e
+// whats-new-covered-up-to: 35e5978
 
 // A line is for everyone, or — wrapped in admins(…) — for admins and owners
 // only. Employees and supervisors never see an admins line, so it doesn't
@@ -31,10 +31,12 @@ export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-11-03",
     new: [
+      admins("If your access covers some policies and you can manage Payroll, you can now start a run for your own people, then run, submit, approve and download its files."),
       admins("If you're limited to some policies, you can now create teams in System Settings → Teams, and change any team whose staff are all on your policies."),
       admins("On an employee's Statutory tab, you can now pick \"Not covered by SOCSO\". Nothing is deducted, the same as leaving it blank, and no SOCSO number is needed."),
     ],
     improved: [
+      admins("A run with anyone outside your policies, or covering the whole company, stays view-only for you, and says why. A revert that would reopen another run with outsiders is refused."),
       admins("Any admin can now add, rename, re-rate or remove overtime types, not just the owner."),
       admins("If you're limited to some policies, you can't change a team with someone outside them, such as another admin or the owner. The message says how many."),
     ],

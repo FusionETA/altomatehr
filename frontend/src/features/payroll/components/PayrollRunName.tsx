@@ -9,7 +9,7 @@ import { BUTTON_GHOST_SM, BUTTON_SM, INPUT_SM } from "../lib/ui";
 // of a split month (and their files) apart.
 export function PayrollRunName({ run, onRenamed }: { run: PayrollRun; onRenamed: () => void }) {
   const access = useMyAccess();
-  const canRename = access.allEmployees && access.canManage("payroll");
+  const canRename = access.canManage("payroll") && !run.hasPeopleOutsideYourAccess;
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(run.name ?? "");
   const [saving, setSaving] = useState(false);

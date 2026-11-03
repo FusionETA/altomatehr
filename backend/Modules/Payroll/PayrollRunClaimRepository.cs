@@ -10,6 +10,14 @@ public class PayrollRunClaimRepository : IPayrollRunClaimRepository
 
     public PayrollRunClaimRepository(AppDbContext db) => _db = db;
 
+    // IgnoreQueryFilters drops the tenant filter too, so the company is
+    // re-applied by hand from the run itself.
+    public Task<List<string>> GetProfileIdsForRunUnscopedAsync(PayrollRun run) =>
+        _db.PayrollRunClaims.IgnoreQueryFilters()
+            .Where(x => x.OrganizationId == run.OrganizationId && x.PayrollRunId == run.Id)
+            .Select(x => x.EmployeeProfileId)
+            .ToListAsync();
+
     public Task<List<PayrollRunClaim>> GetForRunAsync(string payrollRunId) =>
         _db.PayrollRunClaims
             .Where(c => c.PayrollRunId == payrollRunId)

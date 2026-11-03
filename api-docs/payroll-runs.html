@@ -179,6 +179,44 @@
 
     <!-- ───────────────────────── Runs ───────────────────────── -->
 
+    <section class="section" id="limited-admins">
+      <h2>Callers limited to some policies</h2>
+      <p>
+        An API key is never limited: it sees every employee, so nothing in this section changes what a key gets.
+        It matters to a signed-in admin whose Manage access covers only some policies, and to a partner that
+        reads that admin's access and runs payroll on their behalf.
+      </p>
+      <ul>
+        <li><strong>A run is theirs to change only when everyone on it is theirs.</strong> The run's roster,
+          payslips, attached claims and adjustments must all belong to people on their policies. A run with no
+          roster counts as the whole company. Otherwise they may <em>view</em> it (seeing only their own people's
+          payslips), but every change to it &mdash; update, generate, submit, approve, reject, LHDN receipts,
+          revert, delete, adjustments, attached claims, payslip emails, Xero sync &mdash; answers <code>403</code>.</li>
+        <li><strong>The run-wide files and documents are refused too, reads included:</strong> the statutory files
+          and zips, the bank file, the run's reports (summary, payment schedule, PCB details, allowance,
+          deduction and manual-payment reports, the ABPay timesheet, TP1 claims list), the documents download,
+          <a href="#revert-impact">revert-impact</a> and the Xero preview. Run detail, readiness, a single
+          payslip PDF and the read-only adjustment and claim lists still answer, limited to their people.</li>
+        <li><strong>The month-wide summary still needs every employee.</strong>
+          <a href="#month-summary">GET /payroll/runs/month/{year}/{month}/summary</a> answers <code>403</code>
+          to anyone limited to some policies, whichever runs the month holds.</li>
+        <li><strong>The run object says which runs are view-only:</strong> <code>hasPeopleOutsideYourAccess</code>
+          (see <a href="#run-object">The run object</a>).</li>
+      </ul>
+      <p>The refusal is <code>403</code> <code>{ "error": { "status": 403, "message": "…" } }</code>, with one of two messages
+        (the run's <a href="#run-object">label</a> is filled in):</p>
+      <ul>
+        <li><code>"January 2026 includes 2 people outside the policies your admin access covers, so you can view it but not change it. Ask an admin with access to all employees."</code></li>
+        <li><code>"January 2026 covers the whole company, and your admin access covers only some policies. Ask an admin with access to all employees."</code> &mdash; the run has no roster.</li>
+      </ul>
+      <div class="callout warn">
+        If you run payroll for a limited admin, keep each run to the employees their access lists. Create it with
+        <code>policyIds</code> / <code>excludedEmployeeProfileIds</code> that stay inside their policies (see
+        <a href="#create">Create</a> for two further refusals): a run that picks up anyone else becomes view-only
+        for them.
+      </div>
+    </section>
+
     <section class="section" id="runs">
       <h2>Runs</h2>
 
@@ -337,6 +375,8 @@ curl "https://&lt;api-host&gt;/payroll/runs/picker?year=2026&amp;month=1&amp;exc
           <li><code>409</code> <code>{ "error": "A payroll run already exists for January 2026. To add another run for the month, give it a name — for example the staff group it pays." }</code> &mdash; no <code>name</code> sent while the month has an unnamed run. A client that never sends a name keeps getting this refusal once its month has a run, and can recreate its own run after deleting it.</li>
           <li><code>409</code> <code>{ "error": "January 2026 already has a run named \"Workers\". Choose another name." }</code> &mdash; or <code>"\"Team-1\" is too close to January 2026 – Team 1 — their files would have the same name. Choose a more different name."</code></li>
           <li><code>409</code> <code>{ "error": "Everyone you picked is already in another January 2026 run. A person can be in only one run a month." }</code> &mdash; nobody would be left.</li>
+          <li><code>409</code> <code>{ "error": "None of the people you picked are on the policies your admin access covers." }</code> &mdash; only for a caller limited to some policies (never a key): the roster would be empty, which would otherwise mean everyone.</li>
+          <li><code>409</code> <code>{ "error": "January 2026 covers the whole company, so another run for January 2026 needs an admin with access to all employees." }</code> &mdash; only for a caller limited to some policies (never a key): another run that month has no roster. That run's label is filled in as in the other messages.</li>
           <li><code>409</code> <code>{ "error": "Another January 2026 payroll run was started at the same moment. Reload and try again." }</code> &mdash; two creates raced and the database refused one; nothing was saved. Retry after reloading the picker.</li>
         </ul>
 <pre><code># the month's first run, unnamed
@@ -430,6 +470,7 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
             <tr><td><code>status</code></td><td>string</td><td><code>"DRAFT"</code> · <code>"PENDING_APPROVAL"</code> · <code>"SUBMITTED"</code>.</td></tr>
             <tr><td><code>source</code></td><td>string</td><td><code>"COMPUTED"</code> (the normal path) or <code>"IMPORTED"</code> (seeded from a migration — its statutory files, bank file and run reports are refused; its payslips are still downloadable).</td></tr>
             <tr><td><code>skipProration</code></td><td>boolean</td><td>True when the pay figures are final and joiners/leavers are not prorated. See <a href="#update">PATCH</a>.</td></tr>
+            <tr><td><code>hasPeopleOutsideYourAccess</code></td><td>boolean</td><td>True when the caller is an admin limited to some policies and the run holds anyone outside them (or has no roster, i.e. the whole company): they may view it but not change it &mdash; see <a href="#limited-admins">Callers limited to some policies</a>. Always <code>false</code> for an API key. Filled in on the list and on the run inside run detail; any other response that returns a run leaves it <code>false</code>.</td></tr>
             <tr><td><code>employeeCount</code></td><td>number</td><td></td></tr>
             <tr><td><code>totalGross</code> / <code>totalNet</code></td><td>number</td><td>MYR, run totals. <code>totalGross</code> is the statutory figure: everything earned, before any deduction.</td></tr>
             <tr><td><code>totalGrossShown</code></td><td>number</td><td>MYR. <code>totalGross</code> less the deductions the company keeps (<code>deduct_miscellaneous</code>, <code>deduct_loan_repayment</code>), which is the Gross the payroll screens and the <a href="#doc-summary">run summary</a> show. Worked out as <code>totalCostToEmployer</code> minus the employer EPF, SOCSO, EIS and HRDF totals and minus the PCB the company paid for staff (<a href="#pcb-borne">PCB borne by the employer</a>), rounded to 2 decimals &mdash; borne PCB sits in the cost but was never pay, so it is not counted as gross. It is <strong>display only</strong>: <code>totalGross</code> is what EPF, SOCSO, EIS and PCB are worked on and what the statutory files carry. It equals the sum of the payslips' <code>grossShown</code>, and can be negative when the kept deductions exceed pay. For a limited admin the totals cover only the payslips in their scope. Equal to <code>totalGross</code> on a run stored before kept deductions came off the cost.</td></tr>
@@ -824,6 +865,8 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
           <li><code>404</code> — no such run.</li>
           <li><code>409</code> <code>{ "error": "Only a submitted run can be reverted to draft." }</code></li>
           <li><code>409</code> <code>{ "error": "Revert January 2027 first — it added 2026's PCB borne by the employer as a taxable perquisite, and reverting this month could change that amount." }</code> &mdash; the blocking run's <a href="#run-object">label</a> and this run's year are filled in. Nothing is changed.</li>
+          <li><code>403</code> <code>{ "error": { "status": 403, "message": "…" } }</code> &mdash; only for a caller limited to some policies (never a key): this run holds people outside their policies (see <a href="#limited-admins">Callers limited to some policies</a>).</li>
+          <li><code>409</code> <code>{ "error": "Reverting this run would also send January 2026 back to draft, and that run has people outside the policies your admin access covers. Ask an admin with access to all employees." }</code> &mdash; only for a caller limited to some policies (never a key): the cascade (later submitted runs, and later runs awaiting approval) reaches a run that is not all theirs. Nothing is changed.</li>
           <li><code>409</code> <code>{ "error": "This month was imported from your previous payroll system, so it can't go back to draft. To correct it, import it again under Payroll runs → Import earlier payroll — that replaces the imported month." }</code> — the run has <code>source: "IMPORTED"</code>. Nothing is changed.</li>
         </ul>
 <pre><code>curl -X POST https://&lt;api-host&gt;/payroll/runs/run_123/revert \
@@ -838,14 +881,14 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
         </div>
         <p>What a revert of this run would also pull back to draft — for a confirmation step before calling <a href="#revert">revert</a>. It lists exactly the set <a href="#revert"><code>alsoReverted</code></a> would return: later submitted runs (reached through shared people, directly or through another run), then later runs awaiting approval.</p>
         <p>
-          This endpoint needs access to <strong>every employee</strong> in the company, reads included, because for
-          an admin limited to some policies the list would be wrong. API keys have that, so you will not meet the
-          <code>403</code> a limited human admin gets.
+          Reads are gated here, because only someone who may revert this run needs the list. For an admin limited to
+          some policies it answers <code>403</code> when the run holds anyone outside their policies (see
+          <a href="#limited-admins">Callers limited to some policies</a>). An API key is never limited, so you will not meet it.
         </p>
         <h3>Response <code>200</code></h3>
         <p><code>{ "alsoReverted": string[] }</code> — run <a href="#run-object">labels</a>. Empty if the run is not SUBMITTED or is an <code>IMPORTED</code> run (not an error — there is simply nothing to cascade, and an imported run cannot be reverted anyway). Imported months are never listed among the runs a revert would pull back.</p>
         <h3>Errors</h3>
-        <p><code>404</code> — no such run. <code>403</code> — only for a caller without access to every employee (not an API key).</p>
+        <p><code>404</code> — no such run. <code>403</code> — only for a caller limited to some policies when the run holds people outside them (not an API key).</p>
 <pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/revert-impact \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
       </section>

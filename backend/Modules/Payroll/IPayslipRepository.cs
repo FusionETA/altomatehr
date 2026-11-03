@@ -38,6 +38,11 @@ public interface IPayslipRepository
 {
     Task<List<Payslip>> GetForRunAsync(string payrollRunId);
 
+    // Whose payslips are on the run — ALL of them, whatever the caller's
+    // employee scope (still only within the run's company). For deciding what
+    // a run covers, which a policy-limited admin's filtered view can't tell.
+    Task<List<string>> GetProfileIdsForRunUnscopedAsync(PayrollRun run);
+
     Task<List<PayslipLineItem>> GetLineItemsForRunAsync(string payrollRunId);
 
     // One employee's payslips WITH their runs, newest period first, restricted

@@ -67,6 +67,11 @@ public interface IPayrollRunService
     // admin is told before confirming rather than after. Empty is the common case.
     Task<IReadOnlyList<string>> GetRevertImpactAsync(string id);
 
+    // Why a policy-limited admin may not change or file this run — it has
+    // people outside their policies — or null when they may (and always null
+    // for an admin who sees every employee, or a run that doesn't exist).
+    Task<string?> OutsideScopeAsync(string id);
+
     // Delete a DRAFT run and everything hanging off it.
     Task<PayrollRunSaveResult> DeleteDraftAsync(string id);
 }

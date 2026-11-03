@@ -33,9 +33,11 @@ Two consequences that matter to ABPay:
   policy is their own, or the company default when they have none. So "everyone
   on Monthly Workers" includes people who are on it by default. AltomateHR
   resolves this to concrete people for you — you never see policy ids.
-- **A limited admin can never run company-wide payroll.** A run must cover
-  every employee, so AltomateHR already makes payroll **view-only** for an
-  admin limited to some policies, whatever their Payroll module grant.
+- **A limited admin runs payroll for their own people only.** With Payroll at
+  Manage they may start, run, submit and file a run, but only one whose people
+  are all on their policies (a month can be split into several runs). Any run
+  holding someone else is **view-only** for them. *(Changed 2026-11-03: before
+  that, payroll was view-only for every limited admin.)*
 
 **There is no per-project / per-outlet restriction.** Projects are not part of
 Manage access. The only project-level limit possible is the `projects` **module**
@@ -109,7 +111,7 @@ after `Retry-After`, never as a sign-in failure shown to the user.
       "name": "EMJ RENOVATION SDN. BHD.",
       "role": "Admin",
       "allEmployees": false,
-      "canRunPayroll": false
+      "canRunPayroll": true
     }
   ]
 }
@@ -121,7 +123,9 @@ after `Retry-After`, never as a sign-in failure shown to the user.
 - **`allEmployees`** *(new)* — `false` means this person is limited in that
   company and ABPay must call `/auth/access` for it.
 - **`canRunPayroll`** *(new)* — `false` means hide/disable creating, generating
-  and posting a run for that company. Both are always `true` for an Owner.
+  and posting a run for that company. `true` for a limited admin too: they may
+  post a run, but only of the people `/auth/access` lists for them. Both are
+  always `true` for an Owner.
 - Both are **`null` when called with a company (`wp_live_`) key**, not `true`.
   These endpoints take a bare email with no password, so telling an org key
   which of its admins are restricted would hand it the directory that
@@ -188,7 +192,7 @@ across several admins will not throttle.
 | `employees` | present **only** when `allEmployees` is `false`. May be a short list; see the note below about it never being empty. |
 | `employees[].userId` | **the id to match people by.** Exactly the `id` that `GET /employees` returns, and exactly the `userId` that `GET /payroll/employees` returns |
 | `employees[].employeeProfileId` | their payroll identity (payslips, run members). **`null`** when their payroll details were never saved. ⚠️ **Do not filter `GET /payroll/employees` by this field** — see below |
-| `canRunPayroll` | may create / generate / submit a run. `false` when the Payroll module is below Manage **or** `allEmployees` is `false` |
+| `canRunPayroll` | may create / generate / submit a run. `false` when the Payroll module is below Manage. A limited admin (`allEmployees` `false`) gets `true`, but only for a run of the people in `employees` |
 | `canChangeSettings` | may change the company's configuration (not needed by ABPay today; included because it is part of the same setting) |
 | `modules` | the modules this person actually has, and at what level: `"Manage"` or `"View"`. A module that is **off** for them is **absent from the map**. Use `modules.projects` to decide whether to show outlets at all. |
 

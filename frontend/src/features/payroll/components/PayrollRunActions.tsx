@@ -58,10 +58,11 @@ export function PayrollRunActions({
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Running payroll is company-wide: Manage on Payroll AND every employee in
-  // scope. Anyone else sees the run, not its buttons (the server refuses too).
+  // Manage on Payroll, and — for an admin limited to some policies — a run of
+  // only their people. Anyone else sees the run, not its buttons (the server
+  // refuses too).
   const access = useMyAccess();
-  const canRun = access.allEmployees && access.canManage("payroll");
+  const canRun = access.canManage("payroll") && !run.hasPeopleOutsideYourAccess;
 
   // The cascade a revert will cause, fetched before it happens so the admin
   // sees which later months go back to draft with it.
@@ -135,9 +136,9 @@ export function PayrollRunActions({
   if (!canRun) {
     return (
       <p className={HINT}>
-        {access.allEmployees
-          ? "Your payroll access is view only, so this run can't be changed from your account."
-          : "Your access covers some employees, not the whole company, so you can view this run and your people's payslips but not run, submit or change it."}
+        {access.canManage("payroll")
+          ? "This run includes people outside the policies your access covers, so you can view it and your people's payslips but not run, submit or change it."
+          : "Your payroll access is view only, so this run can't be changed from your account."}
       </p>
     );
   }

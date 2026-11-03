@@ -121,7 +121,11 @@ public class PayrollRunService : IPayrollRunService
 
         var result = new List<PayrollRunDto>(runs.Count);
         foreach (var run in runs)
-            result.Add(WithTotalsOf(run, await _payslips.GetForRunAsync(run.Id)));   // filtered to scope
+        {
+            var dto = WithTotalsOf(run, await _payslips.GetForRunAsync(run.Id));   // filtered to scope
+            dto.HasPeopleOutsideYourAccess = await OutsideScopeOfAsync(run) is not null;
+            result.Add(dto);
+        }
         return result;
     }
 
@@ -165,7 +169,11 @@ public class PayrollRunService : IPayrollRunService
             .ToList();
 
         var detail = BuildDetail(run, payslips, lineItems, memberIds);
-        if (_scope is { IsLimited: true }) detail.Run = WithTotalsOf(run, payslips);
+        if (_scope is { IsLimited: true })
+        {
+            detail.Run = WithTotalsOf(run, payslips);
+            detail.Run.HasPeopleOutsideYourAccess = await OutsideScopeOfAsync(run) is not null;
+        }
         return detail;
     }
 
@@ -204,6 +212,27 @@ public class PayrollRunService : IPayrollRunService
         // run a month. The picker greys them out; this is the guarantee.
         var members = await ResolveScopeAsync(
             dto.PolicyIds, dto.ExcludedEmployeeProfileIds, dto.PeriodYear, dto.PeriodMonth);
+
+        // A policy-limited admin sees only their people, so the roster above
+        // already holds no one else. Two cases would still reach further: an
+        // empty roster (a month's sole run with none means EVERYONE), and a
+        // month whose existing run has no roster (it is everyone, and pinning
+        // it from their filtered view would write down only their people).
+        if (_scope is { IsLimited: true })
+        {
+            if (members.Count == 0)
+                return Refused("None of the people you picked are on the policies your admin access covers.");
+            foreach (var other in monthRuns)
+            {
+                if (await PeopleOfAsync(other) is null)
+                {
+                    return Refused(
+                        $"{RunLabel(other)} covers the whole company, so another run for {month} needs an "
+                        + "admin with access to all employees.");
+                }
+            }
+        }
+
         var takenAtCreation = new List<string>();
         if (monthRuns.Count > 0)
         {
@@ -303,7 +332,7 @@ public class PayrollRunService : IPayrollRunService
     // whoever becomes payable later — and so a newcomer can go to either.
     private async Task PinRosterAsync(PayrollRun run)
     {
-        if ((await _runMembers.GetForRunAsync(run.Id)).Count > 0) return;
+        if ((await _runMembers.GetProfileIdsForRunUnscopedAsync(run)).Count > 0) return;
         var people = await PeopleOfAsync(run)
                      ?? [.. await ResolveScopeAsync(null, null, run.PeriodYear, run.PeriodMonth)];
         if (people.Count > 0) await _runMembers.ReplaceForRunAsync(run, people);
@@ -909,13 +938,53 @@ public class PayrollRunService : IPayrollRunService
     // (someone on the roster but skipped — not yet joined, say — is still
     // its, and an imported or legacy run has payslips but no roster). Null
     // means everyone: a run with neither, which overlaps any other.
+    // Read past the caller's employee scope: what a run covers (the month's
+    // other runs, the revert cascade, submission order) is a fact about the
+    // run, and a policy-limited admin's filtered view would see a run of
+    // other people as empty — which here means "everyone".
     private async Task<HashSet<string>?> PeopleOfAsync(PayrollRun run)
     {
-        var people = (await _payslips.GetForRunAsync(run.Id))
-            .Select(p => p.EmployeeProfileId)
-            .Concat((await _runMembers.GetForRunAsync(run.Id)).Select(m => m.EmployeeProfileId))
+        var people = (await _payslips.GetProfileIdsForRunUnscopedAsync(run))
+            .Concat(await _runMembers.GetProfileIdsForRunUnscopedAsync(run))
             .ToHashSet(StringComparer.Ordinal);
         return people.Count > 0 ? people : null;
+    }
+
+    public async Task<string?> OutsideScopeAsync(string id)
+    {
+        if (_scope is not { IsLimited: true }) return null;
+        var run = await _runs.GetByIdAsync(id);
+        return run is null ? null : await OutsideScopeOfAsync(run);
+    }
+
+    // A policy-limited admin may run payroll for their own people: a run is
+    // theirs to change or file only when everyone on it is on their policies.
+    // Everyone means its roster, payslips, attached claims and adjustments —
+    // deleting a run takes all of them, and a scoped delete would strand the
+    // rows it can't see. A run with no roster is the whole company, payslips
+    // or not: re-running it pulls in everyone payable.
+    private async Task<string?> OutsideScopeOfAsync(PayrollRun run)
+    {
+        if (_scope is not { IsLimited: true }) return null;
+
+        var roster = await _runMembers.GetProfileIdsForRunUnscopedAsync(run);
+        if (roster.Count == 0)
+        {
+            return $"{RunLabel(run)} covers the whole company, and your admin access covers only some "
+                   + "policies. Ask an admin with access to all employees.";
+        }
+
+        var people = roster
+            .Concat(await _payslips.GetProfileIdsForRunUnscopedAsync(run))
+            .Concat(await _runClaims.GetProfileIdsForRunUnscopedAsync(run))
+            .Concat(await _adjustments.GetProfileIdsForRunUnscopedAsync(run))
+            .ToHashSet(StringComparer.Ordinal);
+        var outside = people.Count(p => !_scope.Contains(p));
+        return outside == 0
+            ? null
+            : $"{RunLabel(run)} includes {outside} {(outside == 1 ? "person" : "people")} outside the policies "
+              + "your admin access covers, so you can view it but not change it. Ask an admin with access to "
+              + "all employees.";
     }
 
     public async Task<PayrollRunSaveResult> ApproveAsync(string id)
@@ -1084,6 +1153,21 @@ public class PayrollRunService : IPayrollRunService
         // goes back to draft, needing a re-run, rather than being approved
         // on figures that are about to change.
         var (later, pending) = await LaterRunsReachedAsync(run);
+
+        // A policy-limited admin's revert must not reopen anyone else's pay:
+        // every run it would drag back has to be all their people too.
+        foreach (var dragged in later.Concat(pending))
+        {
+            if (await OutsideScopeOfAsync(dragged) is not null)
+            {
+                return new PayrollRunRevertResult(
+                    false, null, [],
+                    $"Reverting this run would also send {RunLabel(dragged)} back to draft, and that run "
+                    + "has people outside the policies your admin access covers. Ask an admin with access "
+                    + "to all employees.");
+            }
+        }
+
         var now = DateTime.UtcNow;
         foreach (var p in pending)
         {

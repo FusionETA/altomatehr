@@ -11,6 +11,11 @@ public interface IPayrollRunAdjustmentRepository
     // than one row per employee.
     Task<List<PayrollRunAdjustment>> GetForRunAsync(string payrollRunId);
 
+    // Whose rows these are — ALL of them, whatever the caller's employee
+    // scope (still only within the run's company). See
+    // IPayslipRepository.GetProfileIdsForRunUnscopedAsync.
+    Task<List<string>> GetProfileIdsForRunUnscopedAsync(PayrollRun run);
+
     // Several runs' adjustments at once. The default asks run by run, which
     // keeps test doubles compiling; the real repository does one query.
     async Task<List<PayrollRunAdjustment>> GetForRunsAsync(IReadOnlyCollection<string> payrollRunIds)
