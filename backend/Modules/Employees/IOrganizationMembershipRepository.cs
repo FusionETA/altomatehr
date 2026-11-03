@@ -14,6 +14,13 @@ public interface IOrganizationMembershipRepository
     // Memberships in the CURRENT (active) org — tenant-filtered.
     Task<List<OrganizationMembership>> GetForCurrentOrgAsync();
 
+    // Memberships in a NAMED org (bypasses the tenant filter) — for the flows
+    // that run with no active org, e.g. the master-key access endpoint
+    // answering about a company the caller is not signed into.
+    // (Default keeps hand-written test doubles compiling.)
+    Task<List<OrganizationMembership>> GetForOrgAsync(string organizationId) =>
+        Task.FromResult(new List<OrganizationMembership>());
+
     // Every org's memberships, ignoring the tenant filter. Support only.
     Task<List<OrganizationMembership>> GetAcrossAllOrgsAsync();
 

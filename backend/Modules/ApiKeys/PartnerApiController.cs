@@ -42,9 +42,36 @@ public class PartnerApiController : ControllerBase
     //
     // No scope required: a caller holding the key is entitled to know what the
     // key is, and refusing would make a key impossible to diagnose.
+    //
+    // Answers a MASTER key too. It is not an auth scheme, so it arrives
+    // unauthenticated and [Authorize] used to 401 it — which left the one
+    // credential that cannot read any company unable to ask what the
+    // deployment supports, the exact diagnosability problem this endpoint
+    // exists to prevent. A master caller is told the FEATURES and nothing
+    // about any company, because it belongs to none.
+    [AllowAnonymous]
     [HttpGet("whoami")]
     public async Task<IActionResult> WhoAmI()
     {
+        if (await CallerAsync() is { IsMaster: true })
+        {
+            return Ok(new
+            {
+                kind = "master",
+                organizationId = (string?)null,
+                apiKeyId = (string?)null,
+                tokenName = (string?)null,
+                role = (string?)null,
+                scopes = Array.Empty<string>(),
+                features = ApiFeatures.All,
+            });
+        }
+
+        // [AllowAnonymous] above turns off the gate for everyone, so the
+        // company-key and signed-in-human paths re-assert it here.
+        if (User.Identity?.IsAuthenticated != true)
+            return Unauthorized(new { message = "Invalid or revoked API key." });
+
         var scopes = User.FindAll(ApiKeyAuthenticationDefaults.ScopeClaim)
             .Select(c => c.Value)
             .OrderBy(s => s, StringComparer.Ordinal)
@@ -53,6 +80,10 @@ public class PartnerApiController : ControllerBase
 
         return Ok(new
         {
+            // "key" for a wp_live_ company key, "user" for a signed-in human,
+            // "master" above — so a caller never has to infer it from which
+            // fields came back null.
+            kind = apiKeyId is null ? "user" : "key",
             organizationId = User.FindFirst("org")?.Value,
             // Present for a wp_live_ key, absent for a signed-in human — which
             // is itself the answer to "what kind of caller am I".
@@ -188,6 +219,64 @@ public class PartnerApiController : ControllerBase
         return Ok(new { organizations = await _identity.AdminOrganizationsAsync(caller, dto.UserId, dto.Email) });
     }
 
+    // POST /auth/access — what ONE person may reach in ONE company.
+    //
+    // The gap this closes: a companion app holds the company's wp_live_ key,
+    // which sees the WHOLE company. Nothing in that key says the signed-in
+    // admin's Manage access is limited to some employees, so the companion
+    // would show them everyone's pay. It asks here instead, and filters.
+    //
+    // MASTER KEY ONLY. A company key may already read its own company; being
+    // able to ask what another PERSON may reach would make it a directory of
+    // who is restricted, which is not what the company granted it.
+    //
+    // Read live, never cached: an Owner who narrows an admin at 10:00 expects
+    // the companion to honour it at 10:01. Call it at sign-in, on refresh, and
+    // again immediately before posting a payroll run.
+    [AllowAnonymous]
+    [EnableRateLimiting("partner-access")]
+    [HttpPost("auth/access")]
+    public async Task<IActionResult> Access(LookupAccessDto dto)
+    {
+        var caller = await CallerAsync();
+        if (caller is null)
+            return Unauthorized(new { message = "Invalid or revoked API key." });
+
+        if (!caller.IsMaster)
+            return StatusCode(StatusCodes.Status403Forbidden,
+                new { message = "This endpoint needs the platform master key." });
+
+        // Checked here rather than with [Required], so an unauthenticated
+        // caller gets "invalid key" and not a description of the body.
+        if (string.IsNullOrWhiteSpace(dto.UserId) || string.IsNullOrWhiteSpace(dto.OrganizationId))
+            return BadRequest(new { message = "Send a userId and an organizationId." });
+
+        var access = await _identity.AccessAsync(caller, dto.UserId.Trim(), dto.OrganizationId.Trim());
+
+        // One answer for an unknown user, someone who is not an admin here,
+        // and a deactivated company — the same reason /auth/verify gives one.
+        if (access is null)
+            return NotFound(new { message = "No such user, or no access to that organization." });
+
+        var body = new Dictionary<string, object?>
+        {
+            ["userId"] = access.UserId,
+            ["organizationId"] = access.OrganizationId,
+            ["role"] = access.Role,
+            ["allEmployees"] = access.AllEmployees,
+            ["canRunPayroll"] = access.CanRunPayroll,
+            ["canChangeSettings"] = access.CanChangeSettings,
+            ["modules"] = access.Modules,
+        };
+
+        // OMITTED rather than null when there is no restriction, the same way
+        // /pending omits a section it cannot answer: "everyone" and "these
+        // people" are different answers, and an empty list would be a third.
+        if (access.Employees is not null) body["employees"] = access.Employees;
+
+        return Ok(body);
+    }
+
     // A master key from the header, or the org of a wp_live_ key the normal
     // scheme resolved. A signed-in human's session is not an integration
     // credential, so it counts as neither.
@@ -214,6 +303,16 @@ public class VerifyCredentialsDto
 
     [System.ComponentModel.DataAnnotations.Required]
     public string? Password { get; set; }
+}
+
+public class LookupAccessDto
+{
+    // Both required, but checked in the action rather than here: model
+    // validation runs BEFORE the key check, so [Required] would describe the
+    // body to a caller holding no credential at all.
+    public string? UserId { get; set; }
+
+    public string? OrganizationId { get; set; }
 }
 
 public class LookupOrganizationsDto

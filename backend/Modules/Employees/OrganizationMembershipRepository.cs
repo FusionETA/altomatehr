@@ -28,6 +28,10 @@ public class OrganizationMembershipRepository : IOrganizationMembershipRepositor
     public Task<List<OrganizationMembership>> GetForCurrentOrgAsync() =>
         _db.OrganizationMemberships.ToListAsync();
 
+    public Task<List<OrganizationMembership>> GetForOrgAsync(string organizationId) =>
+        _db.OrganizationMemberships.IgnoreQueryFilters()
+            .Where(m => m.OrganizationId == organizationId).ToListAsync();
+
     public Task<OrganizationMembership?> GetForUserInCurrentOrgAsync(string userId) =>
         _db.OrganizationMemberships.FirstOrDefaultAsync(m => m.UserId == userId);
 

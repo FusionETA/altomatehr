@@ -19,6 +19,25 @@ public sealed record AdminAccess(
 {
     public static readonly AdminAccess Full = new(false, null, true, null);
 
+    // An Admin's limits, read off their membership's raw columns. One place,
+    // because two callers resolve them: the current request
+    // (ModuleAccessService) and the master-key access endpoint, which answers
+    // for a company nobody is signed into.
+    public static AdminAccess ForAdmin(string? modules, bool canChangeSettings, string? policyScope) =>
+        new(Restricted: true,
+            Grant: modules is null ? null : WithPolicies(OrgModules.ParseGrant(modules)),
+            CanChangeSettings: canChangeSettings,
+            PolicyScope: policyScope is null ? null : OrgModules.Split(policyScope));
+
+    // Policies isn't granted per admin (OrgModules.GrantableModules): every
+    // admin has it, and AdminAccess limits what they may do in it.
+    private static IReadOnlyDictionary<string, ModuleLevel> WithPolicies(
+        IReadOnlyDictionary<string, ModuleLevel> grant) =>
+        new Dictionary<string, ModuleLevel>(grant, StringComparer.OrdinalIgnoreCase)
+        {
+            [OrgModules.Policies] = ModuleLevel.Manage,
+        };
+
     // Grant null = every module the plan allows, at Manage.
     public ModuleLevel LevelFor(string module) =>
         Grant is null ? ModuleLevel.Manage : Grant.GetValueOrDefault(module, ModuleLevel.None);

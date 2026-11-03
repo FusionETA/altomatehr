@@ -19,6 +19,11 @@ public class EmployeePolicyRepository : IEmployeePolicyRepository
             .OrderByDescending(p => p.IsDefault).ThenBy(p => p.Name)
             .ToListAsync();
 
+    public Task<List<EmployeePolicy>> GetForOrgAsync(string organizationId) =>
+        _db.EmployeePolicies.IgnoreQueryFilters()
+            .Where(p => p.OrganizationId == organizationId)
+            .OrderBy(p => p.Name).ToListAsync();
+
     public Task<List<EmployeePolicy>> GetAllAsync() =>
         _db.EmployeePolicies.OrderBy(p => p.Name).ToListAsync();
 

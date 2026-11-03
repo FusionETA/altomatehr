@@ -13,6 +13,11 @@ public interface IEmployeeProfileRepository
     // whole roster at once rather than one lookup per head.
     Task<List<EmployeeProfile>> GetAllForCurrentOrgAsync();
 
+    // Every profile in a NAMED org, ignoring the tenant filter — for the flows
+    // that run with no active org (the master-key access endpoint).
+    Task<List<EmployeeProfile>> GetAllForOrgAsync(string organizationId) =>
+        Task.FromResult(new List<EmployeeProfile>());
+
     // Profiles whose leave date has already passed but which are still
     // active. Used by the daily archive sweep, which runs with no request
     // context — so this deliberately IGNORES the tenant filter and covers
