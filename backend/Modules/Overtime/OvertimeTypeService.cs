@@ -1,4 +1,3 @@
-using AltomateHR.Api.Modules.Organizations;
 using AltomateHR.Api.Modules.Overtime.Dtos;
 using AltomateHR.Api.Modules.Overtime.Entities;
 using AltomateHR.Api.Modules.Policies;
@@ -19,7 +18,6 @@ public class OvertimeTypeService : IOvertimeTypeService
     private readonly IOvertimeTypeRepository _types;
     private readonly IPolicyOvertimeRateRepository _policyRates;
     private readonly IPolicyService _policies;
-    private readonly IModuleAccessService? _access;
     private readonly Payroll.IPayrollDraftStaleness? _drafts;
 
     // Loaded once per request: a payroll run prices every employee off them.
@@ -30,14 +28,12 @@ public class OvertimeTypeService : IOvertimeTypeService
         IOvertimeTypeRepository types,
         IPolicyOvertimeRateRepository policyRates,
         IPolicyService policies,
-        IModuleAccessService? access = null,
         Payroll.IPayrollDraftStaleness? drafts = null)
     {
         _drafts = drafts;
         _types = types;
         _policyRates = policyRates;
         _policies = policies;
-        _access = access;
     }
 
     public async Task<IReadOnlyList<OvertimeTypeDto>> GetAllAsync(bool includeArchived = false) =>
@@ -45,7 +41,6 @@ public class OvertimeTypeService : IOvertimeTypeService
 
     public async Task<OvertimeTypeSaveResult> CreateAsync(SaveOvertimeTypeDto dto)
     {
-        if (await RefuseUnlessOwnerAsync() is { } refused) return refused;
         var types = await TypesAsync();
         var name = dto.Name.Trim();
         if (NameTaken(types, name, exceptId: null) is { } clash) return clash;
@@ -67,7 +62,6 @@ public class OvertimeTypeService : IOvertimeTypeService
 
     public async Task<OvertimeTypeSaveResult> UpdateAsync(string id, SaveOvertimeTypeDto dto)
     {
-        if (await RefuseUnlessOwnerAsync() is { } refused) return refused;
         var types = await TypesAsync();
         var type = types.FirstOrDefault(t => t.Id == id);
         if (type is null) return new OvertimeTypeSaveResult(false, null, "No such overtime type.", NotFound: true);
@@ -88,7 +82,6 @@ public class OvertimeTypeService : IOvertimeTypeService
 
     public async Task<OvertimeTypeSaveResult> ArchiveAsync(string id)
     {
-        if (await RefuseUnlessOwnerAsync() is { } refused) return refused;
         var type = (await TypesAsync()).FirstOrDefault(t => t.Id == id);
         if (type is null) return new OvertimeTypeSaveResult(false, null, "No such overtime type.", NotFound: true);
         if (type.Kind != OvertimeTypeKind.CUSTOM)
@@ -183,13 +176,6 @@ public class OvertimeTypeService : IOvertimeTypeService
     private static OvertimeTypeSaveResult? NameTaken(IEnumerable<OvertimeType> types, string name, string? exceptId) =>
         types.Any(t => !t.IsArchived && t.Id != exceptId && string.Equals(t.Name.Trim(), name, StringComparison.OrdinalIgnoreCase))
             ? new OvertimeTypeSaveResult(false, null, $"There's already an overtime type called \"{name}\".")
-            : null;
-
-    // Company-wide, like creating a policy: the owner's call.
-    private async Task<OvertimeTypeSaveResult?> RefuseUnlessOwnerAsync() =>
-        _access is not null && await _access.GetAccessAsync() is { ManagesAllPolicies: false }
-            ? new OvertimeTypeSaveResult(false, null,
-                "Only the organization's owner can change the company's overtime types.", Forbidden: true)
             : null;
 
     private static OvertimeTypeDto ToDto(OvertimeType t) => new()

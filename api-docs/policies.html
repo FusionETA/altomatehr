@@ -480,10 +480,9 @@
         </table>
       </div>
       <div class="callout">
-        <strong>Owner-only writes don't apply to keys.</strong> For a signed-in person only the
-        organization's owner may add, edit or archive an overtime type, and an admin gets
-        <code>403</code>. A key with <code>policies:write</code> may call all of them, as with the
-        policy endpoints above.
+        <strong>Who may write.</strong> Any Admin or Owner, and any key with
+        <code>policies:write</code>, may add, edit or archive an overtime type. There is no
+        owner-only check on these endpoints, unlike creating, archiving or restoring a policy.
       </div>
       <p>
         <strong>Module gate</strong> for all four: the <code>policies</code> module on the plan,
@@ -560,7 +559,6 @@
           <li><code>400</code> <code>{ "errors": { … } }</code> a field failed validation: <code>name</code> missing or over 60 chars, <code>multiplier</code> outside 0 to 99.99.</li>
           <li><code>400</code> <code>{ "message": "There's already an overtime type called \"Night shift\"." }</code>. Note this shape: <code>message</code>, not <code>error</code>.</li>
           <li><code>403</code> the key lacks the scope, or the plan lacks the module.</li>
-          <li><code>403</code> <code>{ "error": { "status": 403, "message": "Only the organization's owner can change the company's overtime types." } }</code> a signed-in admin called this. Never returned to a key.</li>
         </ul>
       </section>
 
@@ -588,7 +586,6 @@
           <li><code>400</code> <code>{ "message": "There's already an overtime type called \"Night shift\"." }</code> another non-archived type has that name.</li>
           <li><code>404</code> no overtime type with that id in this company (empty body).</li>
           <li><code>403</code> the key lacks the scope, or the plan lacks the module.</li>
-          <li><code>403</code> <code>{ "error": { "status": 403, "message": "Only the organization's owner can change the company's overtime types." } }</code> a signed-in admin called this. Never returned to a key.</li>
         </ul>
       </section>
 
@@ -611,7 +608,6 @@
           <li><code>400</code> <code>{ "message": "\"Normal day\" is built in: approved overtime lands in it by the calendar, so it can't be removed." }</code> the id is one of the built-in three.</li>
           <li><code>404</code> no overtime type with that id in this company (empty body).</li>
           <li><code>403</code> the key lacks the scope, or the plan lacks the module.</li>
-          <li><code>403</code> <code>{ "error": { "status": 403, "message": "Only the organization's owner can change the company's overtime types." } }</code> a signed-in admin called this. Never returned to a key.</li>
         </ul>
       </section>
     </section>

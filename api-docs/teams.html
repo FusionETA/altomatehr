@@ -101,6 +101,12 @@
           roster, but they are left out of every chain and every candidate list.</li>
         <li><strong>Empty layers are skipped.</strong> If nobody is eligible at a layer, the
           chain moves on to the next one.</li>
+        <li><strong>Scope-limited admins.</strong> A signed-in admin limited to some policies may
+          create teams, but another write (update, delete, add or remove a member, set or clear an
+          approver list) is refused with <code>400</code> <code>{ "message": "…" }</code> when the
+          team, or the person being added or removed, includes anyone outside the policies that
+          admin covers. Other admins and the owner always count as outside. An API key is never
+          limited, so a key never gets this <code>400</code>.</li>
       </ul>
 
       <h3>The team object</h3>
@@ -251,6 +257,7 @@
         <ul>
           <li><code>400</code> <code>{ "errors": … }</code> — a field is missing or out of range.</li>
           <li><code>400</code> <code>{ "message": "This project already has a team named \"…\"." }</code></li>
+          <li><code>400</code> <code>{ "message": "…" }</code> — the team includes someone outside a signed-in admin's policy scope (see <a href="#teams-overview">How teams work</a>). Never returned to a key.</li>
           <li><code>404</code> — no team with that id in this company.</li>
         </ul>
       </section>
@@ -272,7 +279,10 @@
 <pre><code>curl -X DELETE https://&lt;api-host&gt;/teams/team_123 \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
         <h3>Errors</h3>
-        <p><code>404</code> — no team with that id in this company.</p>
+        <ul>
+          <li><code>400</code> <code>{ "message": "…" }</code> — the team holds someone outside a signed-in admin's policy scope (see <a href="#teams-overview">How teams work</a>). Never returned to a key.</li>
+          <li><code>404</code> — no team with that id in this company.</li>
+        </ul>
       </section>
     </section>
 
@@ -320,6 +330,7 @@
           <li><code>400</code> <code>{ "message": "That layer doesn't exist on this team." }</code> — <code>layer</code> is at or above the team's <code>layerCount</code>.</li>
           <li><code>400</code> <code>{ "message": "That employee doesn't exist in this organization." }</code></li>
           <li><code>400</code> <code>{ "message": "… is an Employee, so they cannot be placed above the bottom layer …" }</code></li>
+          <li><code>400</code> <code>{ "message": "…" }</code> — the team or the person being added includes someone outside a signed-in admin's policy scope (see <a href="#teams-overview">How teams work</a>). Never returned to a key.</li>
           <li><code>404</code> — no team with that id.</li>
         </ul>
       </section>
@@ -347,7 +358,10 @@
 <pre><code>curl -X DELETE https://&lt;api-host&gt;/teams/team_123/members/emp_456 \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
         <h3>Errors</h3>
-        <p><code>404</code> — no team with that id.</p>
+        <ul>
+          <li><code>400</code> <code>{ "message": "…" }</code> — the team or the person being removed includes someone outside a signed-in admin's policy scope (see <a href="#teams-overview">How teams work</a>). Never returned to a key.</li>
+          <li><code>404</code> — no team with that id.</li>
+        </ul>
       </section>
     </section>
 
@@ -492,6 +506,7 @@
         <ul>
           <li><code>400</code> <code>{ "message": "That layer isn't above this employee's own layer." }</code> — also returned when the layer is at or above the team's <code>layerCount</code>.</li>
           <li><code>400</code> <code>{ "message": "Every approver must be a member of this team at that exact layer." }</code></li>
+          <li><code>400</code> <code>{ "message": "…" }</code> — the team includes someone outside a signed-in admin's policy scope (see <a href="#teams-overview">How teams work</a>). Never returned to a key.</li>
           <li><code>404</code> — no such team, or the employee isn't a member of it. A <code>{layer}</code> that isn't an integer also gives <code>404</code>.</li>
         </ul>
       </section>
@@ -515,7 +530,10 @@
 <pre><code>curl -X DELETE https://&lt;api-host&gt;/teams/team_123/members/emp_123/approvers/1 \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
         <h3>Errors</h3>
-        <p><code>404</code> — no such team, or the employee isn't a member of it.</p>
+        <ul>
+          <li><code>400</code> <code>{ "message": "…" }</code> — the team includes someone outside a signed-in admin's policy scope (see <a href="#teams-overview">How teams work</a>). Never returned to a key.</li>
+          <li><code>404</code> — no such team, or the employee isn't a member of it.</li>
+        </ul>
       </section>
     </section>
 

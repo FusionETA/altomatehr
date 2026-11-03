@@ -7,7 +7,7 @@ public interface ITeamService
     Task<IEnumerable<TeamDto>> GetAllAsync();
     Task<TeamSaveResult> CreateAsync(CreateTeamDto dto);
     Task<TeamSaveResult> UpdateAsync(string id, SaveTeamDto dto);
-    Task<bool> DeleteAsync(string id);
+    Task<TeamSaveResult> DeleteAsync(string id);
     Task<TeamSaveResult> AddOrUpdateMemberAsync(string teamId, SaveMembershipDto dto);
     Task<TeamSaveResult> RemoveMemberAsync(string teamId, string employeeId);
 

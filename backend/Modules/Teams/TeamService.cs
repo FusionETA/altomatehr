@@ -19,6 +19,7 @@ public class TeamService : ITeamService
     private readonly IApprovalChainService _chain;
     private readonly ITeamApprovalOverrideRepository _overrides;
     private readonly IAuditService _audit;
+    private readonly IEmployeeScope? _scope;
 
     public TeamService(
         ITeamRepository teams,
@@ -26,7 +27,8 @@ public class TeamService : ITeamService
         ISupervisionService supervision,
         IApprovalChainService chain,
         ITeamApprovalOverrideRepository overrides,
-        IAuditService audit)
+        IAuditService audit,
+        IEmployeeScope? scope = null)
     {
         _teams = teams;
         _memberships = memberships;
@@ -34,6 +36,7 @@ public class TeamService : ITeamService
         _chain = chain;
         _overrides = overrides;
         _audit = audit;
+        _scope = scope;
     }
 
     public async Task<IEnumerable<ApprovalStepDto>> GetApprovalChainAsync(
@@ -94,6 +97,7 @@ public class TeamService : ITeamService
     {
         var team = await _teams.GetByIdAsync(id);
         if (team is null) return new TeamSaveResult(false, null, null);
+        if (await OutsideScopeAsync(id) is { } refused) return new TeamSaveResult(false, null, refused);
 
         var name = dto.Name.Trim();
         var clash = await _teams.GetByProjectAndNameAsync(team.ProjectId, name);
@@ -132,10 +136,11 @@ public class TeamService : ITeamService
         return new TeamSaveResult(true, await BuildAsync(team), null);
     }
 
-    public async Task<bool> DeleteAsync(string id)
+    public async Task<TeamSaveResult> DeleteAsync(string id)
     {
         var team = await _teams.GetByIdAsync(id);
-        if (team is null) return false;
+        if (team is null) return new TeamSaveResult(false, null, null);
+        if (await OutsideScopeAsync(id) is { } refused) return new TeamSaveResult(false, null, refused);
 
         await _memberships.DeleteByTeamAsync(id);   // clear the roster first
         await _overrides.DeleteByTeamAsync(id);
@@ -150,7 +155,7 @@ public class TeamService : ITeamService
             TargetId: team.Id,
             Metadata: new { team.Name, team.ProjectId, team.LayerCount }));
 
-        return true;
+        return new TeamSaveResult(true, null, null);
     }
 
     public async Task<TeamSaveResult> AddOrUpdateMemberAsync(string teamId, SaveMembershipDto dto)
@@ -165,6 +170,8 @@ public class TeamService : ITeamService
         var known = await _supervision.GetEmailsAsync([dto.EmployeeId]);
         if (!known.ContainsKey(dto.EmployeeId))
             return new TeamSaveResult(false, null, "That employee doesn't exist in this organization.");
+        if (await OutsideScopeAsync(teamId, dto.EmployeeId) is { } refused)
+            return new TeamSaveResult(false, null, refused);
 
         // An upper layer IS an approver position: ApprovalChainService routes
         // every request from below straight to whoever stands here. But the
@@ -238,6 +245,8 @@ public class TeamService : ITeamService
     {
         var team = await _teams.GetByIdAsync(teamId);
         if (team is null) return new TeamSaveResult(false, null, null);
+        if (await OutsideScopeAsync(teamId, employeeId) is { } refused)
+            return new TeamSaveResult(false, null, refused);
 
         var membership = await _memberships.GetByTeamAndEmployeeAsync(teamId, employeeId);
         if (membership is not null)
@@ -419,6 +428,7 @@ public class TeamService : ITeamService
 
         var membership = await _memberships.GetByTeamAndEmployeeAsync(teamId, employeeId);
         if (membership is null) return new ApproverOverrideResult(false, null, null);
+        if (await OutsideScopeAsync(teamId) is { } refused) return new ApproverOverrideResult(false, null, refused);
 
         if (layer <= membership.Layer || layer >= team.LayerCount)
             return new ApproverOverrideResult(false, null, "That layer isn't above this employee's own layer.");
@@ -452,9 +462,34 @@ public class TeamService : ITeamService
 
         var membership = await _memberships.GetByTeamAndEmployeeAsync(teamId, employeeId);
         if (membership is null) return new ApproverOverrideResult(false, null, null);
+        if (await OutsideScopeAsync(teamId) is { } refused) return new ApproverOverrideResult(false, null, refused);
 
         await _overrides.DeleteAsync(teamId, employeeId, layer);
         return new ApproverOverrideResult(true, await GetApproverOptionsAsync(teamId, employeeId), null);
+    }
+
+    // A policy-limited admin may build and run teams for their own people, but
+    // not re-route approvals for anyone outside their policies. So a change is
+    // refused when the team (or the person being added or removed) holds
+    // someone they can't see. That includes other admins and the owner: they
+    // never approve from a team, but their own leave and claims still go up its
+    // chain, and the clean-up after an edit can't reach requests this admin
+    // can't see. The admin themselves is always in scope. A new team is empty,
+    // so creating one is never refused.
+    private async Task<string?> OutsideScopeAsync(string teamId, string? employeeId = null)
+    {
+        if (_scope is not { IsLimited: true }) return null;
+
+        var ids = (await _memberships.GetByTeamAsync(teamId)).Select(m => m.EmployeeId).ToList();
+        if (employeeId is not null) ids.Add(employeeId);
+
+        var outside = ids.Distinct().Where(id => !_scope.Contains(id)).ToList();
+        if (outside.Count == 0) return null;
+
+        if (employeeId is not null && outside.Contains(employeeId))
+            return "That employee isn't on the policies your admin access covers. Ask an admin with access to all employees.";
+        return $"This team has {outside.Count} {(outside.Count == 1 ? "person" : "people")} outside the policies your "
+               + "admin access covers, so changing it would re-route their approvals. Ask an admin with access to all employees.";
     }
 
     private static string LabelFor(IReadOnlyList<string> labels, int layer) =>

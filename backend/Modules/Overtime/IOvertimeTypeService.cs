@@ -28,7 +28,7 @@ public interface IOvertimeTypeService
 }
 
 public record OvertimeTypeSaveResult(
-    bool Ok, OvertimeTypeDto? Type, string? Error, bool NotFound = false, bool Forbidden = false);
+    bool Ok, OvertimeTypeDto? Type, string? Error, bool NotFound = false);
 
 public record OvertimeRates(
     decimal Normal, decimal Rest, decimal PublicHoliday, IReadOnlyDictionary<string, CustomOvertimeRate> Custom);

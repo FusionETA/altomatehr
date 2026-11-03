@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 0293ef8
+// whats-new-covered-up-to: a9d9068
 
 // A line is for everyone, or — wrapped in admins(…) — for admins and owners
 // only. Employees and supervisors never see an admins line, so it doesn't
@@ -28,6 +28,21 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-11-03",
+    new: [
+      admins("If you're limited to some policies, you can now create teams in System Settings → Teams, and change any team whose staff are all on your policies."),
+      admins("On an employee's Statutory tab, you can now pick \"Not covered by SOCSO\". Nothing is deducted, the same as leaving it blank, and no SOCSO number is needed."),
+    ],
+    improved: [
+      admins("Any admin can now add, rename, re-rate or remove overtime types, not just the owner."),
+      admins("If you're limited to some policies, you can't change a team with someone outside them, such as another admin or the owner. The message says how many."),
+    ],
+    fixed: [
+      "Some people no longer see \"The server hit an unexpected error\" on sign-in or across the app. An unrecognised SOCSO setting was causing it.",
+      admins("If you're limited to some policies, Transfer and Duplicate now show on employees in your policies, and work for them. The buttons never showed for you before."),
+    ],
+  },
   {
     date: "2026-11-02",
     new: [
