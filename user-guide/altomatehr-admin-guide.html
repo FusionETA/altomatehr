@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 28f436f
+  user-guide-covered-up-to: a9d9068
 -->
 <html lang="en">
 <head>
@@ -563,7 +563,8 @@
           <li><strong>Add your own</strong> (for example <em>Night shift</em>) — type the name and the rate in the last
             row, then press <span class="btn-name">Add</span>. Your employees can pick it when they submit overtime.</li>
           <li><strong>Remove one of your own</strong> with the bin button. Hours already approved for it are still paid.</li>
-          <li>Only the owner can change this card. An admin sees it greyed out with a note saying so.</li>
+          <li>Any admin can change this card, not just the owner, including an admin limited to some policies.
+            The types are company-wide, so a change applies to every policy that uses the company's rate.</li>
         </ul></li>
       <li><h4>Policies</h4>
         <p>Reusable rules you assign to people instead of setting each one individually: which modules they
@@ -606,7 +607,9 @@
               <li><strong>Employees</strong> — <em>All employees</em>, or <em>Only employees on these policies</em>
                 with the policies ticked. Everyone else is hidden from that admin in employees, payroll, claims, leave
                 and attendance. Payroll covers the whole company, so an admin limited to some employees can view
-                payroll runs (and only their people's payslips) but can't run payroll or download company-wide files.</li>
+                payroll runs (and only their people's payslips) but can't run payroll or download company-wide files.
+                They can still create teams and change any team made up only of their own people; see
+                <a href="#structure">Company Structure &amp; approvals</a>.</li>
               <li><strong>Settings</strong> — <em>Can change company settings</em>. Turn it off to let someone work
                 (run payroll, approve, edit employees) without changing how the company is set up. It covers
                 Organization, Work Schedule, Payroll settings, company and statutory details, portal logins and the Xero
@@ -993,7 +996,9 @@
             transfer, and it runs by itself that day.</li>
           <li>Personal details, job title and staff number always go across. Tick <strong>Include payroll settings</strong>
             to also copy salary, allowances, bank and statutory setup, plus this year's earnings so far, so PCB at the new
-            company carries on instead of starting over. Teams, shift, leave balances, claims and documents don't go.</li>
+            company carries on instead of starting over. Teams, shift, leave balances, claims and documents don't go.
+            An admin limited to some policies can transfer only people within their own policies, and sees only the
+            target company's policies they cover.</li>
           <li>Add a note if you like, then press <span class="btn-name">Transfer now</span> or
             <span class="btn-name">Schedule transfer</span>.</li>
         </ol>
@@ -1146,6 +1151,12 @@
         layer.</p></li>
     </ol>
     <p>You can also place someone from their own record — <strong>Company</strong> tab → <em>Add a project</em>.</p>
+    <div class="note"><span class="nt">Admins limited to some policies</span>
+      <p>An admin who only covers some policies can still create teams, and edit, delete or fill a team — as long as
+        everyone on it is on their policies. If a team includes anyone outside them, including another admin or the
+        owner, they can't change it, because that could re-route that person's approvals. The app tells them so and
+        suggests asking an admin with access to all employees.</p>
+    </div>
     <div class="note"><span class="nt">Admins aren't approvers</span>
       <p>Owners and admins are never put in an approval chain. If a request has no one who can approve it, the
         admin portal flags it as “Nobody can approve” so you can fix the team.</p>
