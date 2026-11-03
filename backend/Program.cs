@@ -169,6 +169,7 @@ builder.Services.AddAuthorization(options =>
         policy.Requirements.Add(new SuperadminRequirement()));
 });
 builder.Services.AddSingleton<ISuperadminRegistry, SuperadminRegistry>();
+builder.Services.AddSingleton<IAiActorRegistry, AiActorRegistry>();
 builder.Services.AddSingleton<IAuthorizationHandler, SuperadminAuthorizationHandler>();
 
 // Rate limiting protects auth endpoints from brute-force guessing.

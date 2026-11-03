@@ -16,9 +16,13 @@ namespace AltomateHR.Api.Modules.Provisioning;
 // whole point — silently minting an admin as a side effect of an SSO redirect
 // is trust nobody asked for, whereas this is an integration stating plainly
 // what it wants.
+//
+// API keys only: [RequireScope] waves people through by design, and a signed-in
+// employee must never be able to make themselves (or anyone) an admin here.
 [ApiController]
 [Route("admin")]
 [Authorize]
+[KeyOnly]
 public class OrgAdminsController : ControllerBase
 {
     private readonly IOrgAdminService _admins;
@@ -58,7 +62,7 @@ public class OrgAdminsController : ControllerBase
     public async Task<IActionResult> ListAdmins([FromQuery] string? role, [FromQuery] int? limit)
     {
         var rows = (await _admins.ListAsync(ParseRoles(role), limit))
-            .Select(r => new { userId = r.UserId, email = r.Email, name = r.Name, role = r.Role })
+            .Select(r => new { userId = r.UserId, email = r.Email, name = r.Name, role = r.Role, isAi = r.IsAi })
             .ToList();
 
         return Ok(new { data = rows, total = rows.Count });

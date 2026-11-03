@@ -606,6 +606,13 @@
         decides which company they act on, so a caller can only ever make an administrator of
         the company it already integrates with.
       </p>
+      <div class="callout warn">
+        <strong>API keys only.</strong> Both endpoints refuse a signed-in person's session,
+        whatever their role: it gets <code>403</code>
+        <code>{ "error": { "status": 403, "message": "This endpoint is for API keys only." } }</code>.
+        Only a company key (or a partner token) can call them. This is so that an
+        employee's session can never make anyone an administrator.
+      </div>
       <p>
         Roles here are <code>"Owner"</code> and <code>"Admin"</code>. An Owner is a company's
         top administrator; everyone else with admin access is an Admin.
@@ -651,7 +658,7 @@
         <h3>Errors</h3>
         <ul>
           <li><code>400</code> <code>{ "errors": { … } }</code> — <code>email</code> missing or not an email address, or <code>name</code> too long.</li>
-          <li><code>403</code> — the key lacks <code>organizations:write</code>.</li>
+          <li><code>403</code> <code>{ "error": { "status": 403, "message": … } }</code> — the key lacks <code>organizations:write</code>, or the caller is a signed-in person rather than an API key ("This endpoint is for API keys only.").</li>
         </ul>
         <h3>Things that bite</h3>
         <ul>
@@ -681,14 +688,14 @@
           <span class="path">/admin/users</span>
           <span class="tag scope">organizations:read</span>
         </div>
-        <p>Who administers the company: its Owners and Admins.</p>
+        <p>Who administers the company: its Owners and Admins, plus the AltomateHR AI when the deployment has one configured (see below).</p>
         <h3>Query</h3>
         <div class="table-wrap">
           <table>
             <thead><tr><th>Param</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
               <tr><td><code>role</code></td><td>string</td><td>Comma-separated roles to keep, matched case-insensitively, e.g. <code>OWNER,ADMIN</code>. Omit for both. Anything other than Owner or Admin matches nobody, because only administrative seats are ever listed.</td></tr>
-              <tr><td><code>limit</code></td><td>integer</td><td>Return at most this many rows. Ignored when missing or not above 0.</td></tr>
+              <tr><td><code>limit</code></td><td>integer</td><td>Return at most this many rows. Ignored when missing or not above 0. A read with a <code>limit</code> lists real administrators only; the AltomateHR AI row is left out.</td></tr>
             </tbody>
           </table>
         </div>
@@ -697,19 +704,35 @@
           <table>
             <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
-              <tr><td><code>data</code></td><td>array</td><td>Each row is <code>{ userId, email, name, role }</code>, sorted by email. <code>role</code> is <code>"Owner"</code> or <code>"Admin"</code>.</td></tr>
+              <tr><td><code>data</code></td><td>array</td><td>Each row is <code>{ userId, email, name, role, isAi }</code>. Real administrators come first, sorted by email. <code>role</code> is <code>"Owner"</code> or <code>"Admin"</code>. <code>isAi</code> is <code>true</code> only on the AltomateHR AI row, <code>false</code> on every real administrator.</td></tr>
               <tr><td><code>total</code></td><td>integer</td><td>The number of rows in <code>data</code>. After <code>limit</code> or <code>role</code> narrow the list, this is the narrowed count, not the company's full count.</td></tr>
             </tbody>
           </table>
         </div>
 <pre><code>{
   "data": [
-    { "userId": "user_123", "email": "jane@example.com", "name": "Jane Example", "role": "Owner" }
+    { "userId": "user_123", "email": "jane@example.com", "name": "Jane Example", "role": "Owner", "isAi": false },
+    { "userId": "ai:ai@example.com", "email": "ai@example.com", "name": "AltomateHR AI", "role": "Admin", "isAi": true }
   ],
-  "total": 1
+  "total": 2
 }</code></pre>
         <h3>Errors</h3>
-        <ul><li><code>403</code> — the key lacks <code>organizations:read</code>.</li></ul>
+        <ul><li><code>403</code> <code>{ "error": { "status": 403, "message": … } }</code> — the key lacks <code>organizations:read</code>, or the caller is a signed-in person rather than an API key ("This endpoint is for API keys only.").</li></ul>
+        <h3>Things that bite</h3>
+        <ul>
+          <li><strong>The AltomateHR AI row is not an account.</strong> When AltomateHR has
+            configured one or more AI acting-admin emails on the server, an unlimited read
+            also lists each as an <code>"Admin"</code> named <code>"AltomateHR AI"</code>,
+            with <code>userId</code> <code>"ai:&lt;email&gt;"</code> and
+            <code>isAi: true</code>, after the real administrators. It has no sign-in, no SSO
+            link and takes no seat, so don't offer it to <a href="#sso-ticket">POST /sso/ticket</a>,
+            store it as an owner or use it as an approver. Skip rows with
+            <code>isAi: true</code> when you need a real person.</li>
+          <li><strong>It is omitted from a <code>limit</code> read</strong>, and when
+            <code>role</code> excludes <code>Admin</code>. If a real member already holds
+            that email, only the real row is listed.</li>
+          <li><strong><code>total</code> counts the AI row</strong> when it is listed.</li>
+        </ul>
 <pre><code>curl "https://&lt;api-host&gt;/admin/users?role=OWNER,ADMIN&amp;limit=10" \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
       </section>
