@@ -1,4 +1,5 @@
 import type { EmployeeProfile } from "../api";
+import { isSocsoCovered } from "../lib/statutory";
 
 // What "ready" means for one employee, section by section.
 //
@@ -81,7 +82,7 @@ const RULES: Record<SectionId, Rule[]> = {
     { label: "EPF number", applies: (p) => p.contributeToEpf, filled: (p) => present(p.epfNumber) },
     {
       label: "SOCSO number",
-      applies: (p) => present(p.socsoScheme),
+      applies: (p) => isSocsoCovered(p.socsoScheme),
       filled: (p) => present(p.socsoNumber),
     },
   ],

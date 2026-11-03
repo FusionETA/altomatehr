@@ -23,7 +23,7 @@ public static class PerkesoCalculator
     {
         public required decimal Wage { get; init; }
 
-        // Null means the employee is outside SOCSO scope entirely.
+        // Null or NOT_COVERED means the employee is outside SOCSO scope entirely.
         public required SocsoScheme? Scheme { get; init; }
 
         // SKBBK only exists from Jun 2026 and is gazetted in phases, so the
@@ -43,7 +43,8 @@ public static class PerkesoCalculator
 
     public static SocsoResult CalculateSocso(SocsoInput input)
     {
-        if (input.Scheme is null) return new SocsoResult(0m, 0m, 0m);
+        // Before the age flip: a 60+ NOT_COVERED employee must stay uncharged.
+        if (!input.Scheme.IsCovered()) return new SocsoResult(0m, 0m, 0m);
 
         // Mandatory age flip: at 60 the employee moves to Category 2 whatever the
         // profile says, because Invalidity cover ends at retirement age. Mirrors
@@ -52,7 +53,7 @@ public static class PerkesoCalculator
         // and PERKESO refunds it at year end anyway.
         var effectiveScheme = input.AgeAtPeriodEnd >= 60
             ? SocsoScheme.EMPLOYMENT_INJURY_ONLY
-            : input.Scheme.Value;
+            : input.Scheme!.Value;
 
         var category2 = effectiveScheme == SocsoScheme.EMPLOYMENT_INJURY_ONLY;
         var (employer, employee) = StatutoryTables.LookupSocso(input.Wage, category2);

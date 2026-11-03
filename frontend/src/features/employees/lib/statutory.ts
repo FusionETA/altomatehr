@@ -61,6 +61,15 @@ export function isMalaysianNationality(nationality: string | null | undefined): 
  * post-2025 PERKESO expansion, so the 55-59 ambiguity doesn't apply —
  * unambiguous Scheme 1 right through to age 60.
  */
+/**
+ * True only for a scheme PERKESO actually bills. Null and NOT_COVERED both mean
+ * outside SOCSO: no contribution and no SOCSO number needed. Mirrors the
+ * backend's `SocsoSchemeExtensions.IsCovered()`.
+ */
+export function isSocsoCovered(scheme: SocsoScheme | null | undefined): boolean {
+  return scheme === "EMPLOYMENT_INJURY_INVALIDITY" || scheme === "EMPLOYMENT_INJURY_ONLY";
+}
+
 export function recommendSocsoScheme(input: {
   dateOfBirth: string | null | undefined;
   isMalaysianCitizen: boolean | null;

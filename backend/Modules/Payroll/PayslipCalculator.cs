@@ -996,7 +996,7 @@ public static class PayslipCalculator
         if (input.ContributeToEpf && string.IsNullOrWhiteSpace(input.EpfNumber))
             warnings.Add(Warnings.MissingEpfNumber);
 
-        if (input.SocsoScheme is not null && string.IsNullOrWhiteSpace(input.SocsoNumber))
+        if (input.SocsoScheme.IsCovered() && string.IsNullOrWhiteSpace(input.SocsoNumber))
             warnings.Add(Warnings.MissingSocsoNumber);
 
         return warnings;

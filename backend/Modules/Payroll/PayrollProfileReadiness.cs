@@ -75,7 +75,7 @@ public static class PayrollProfileReadiness
     private static bool IsStatutoryComplete(EmployeeProfile p)
     {
         if (p.ContributeToEpf && string.IsNullOrWhiteSpace(p.EpfNumber)) return false;
-        if (p.SocsoScheme is not null && string.IsNullOrWhiteSpace(p.SocsoNumber)) return false;
+        if (p.SocsoScheme.IsCovered() && string.IsNullOrWhiteSpace(p.SocsoNumber)) return false;
         return true;
     }
 }
