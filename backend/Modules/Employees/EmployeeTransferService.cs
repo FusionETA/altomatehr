@@ -19,6 +19,10 @@ namespace AltomateHR.Api.Modules.Employees;
 // granted at the target). The source side is the active org; the target must
 // be one of the admin's own memberships, which the options call lists.
 //
+// A policy-limited admin can move people too, inside their limits on both
+// sides: only staff in their scope at the source, and only onto policies their
+// scope covers at the target (the target's policy list is cut down to those).
+//
 // Round trip (A → B → A): the person already has a membership + archived
 // profile at A, and those are REUSED rather than duplicated — same staff
 // number, same history.
@@ -37,6 +41,7 @@ public class EmployeeTransferService : IEmployeeTransferService
     private readonly ICurrentUser _currentUser;
     private readonly IEmploymentHistory _history;
     private readonly IPayrollDraftStaleness? _drafts;
+    private readonly IEmployeeScope _scope;
 
     public EmployeeTransferService(
         IEmployeeTransferRepository transfers,
@@ -49,8 +54,10 @@ public class EmployeeTransferService : IEmployeeTransferService
         IAuditService audit,
         ICurrentUser currentUser,
         IEmploymentHistory history,
-        IPayrollDraftStaleness? drafts = null)
+        IPayrollDraftStaleness? drafts = null,
+        IEmployeeScope? scope = null)
     {
+        _scope = scope ?? new EmployeeScope();
         _transfers = transfers;
         _memberships = memberships;
         _profiles = profiles;
@@ -66,6 +73,7 @@ public class EmployeeTransferService : IEmployeeTransferService
 
     public async Task<EmployeeTransferOptionsDto?> GetOptionsAsync(string userId)
     {
+        if (!_scope.Contains(userId)) return null;
         if (await _memberships.GetForUserInCurrentOrgAsync(userId) is null) return null;
 
         var targets = await ListTargetsAsync();
@@ -96,6 +104,9 @@ public class EmployeeTransferService : IEmployeeTransferService
         if (string.IsNullOrEmpty(sourceOrgId) || string.IsNullOrEmpty(_currentUser.UserId))
             return Fail("Session expired. Please sign in again.");
 
+        // Memberships aren't scope-filtered, so a policy-limited admin's scope
+        // is checked here: someone outside it is "not found", as everywhere else.
+        if (!_scope.Contains(userId)) return new TransferResult(false, null, null);   // 404
         var membership = await _memberships.GetForUserInCurrentOrgAsync(userId);
         if (membership is null) return new TransferResult(false, null, null);   // 404
 
@@ -127,7 +138,7 @@ public class EmployeeTransferService : IEmployeeTransferService
             return Fail("You don't administer that company, or it has no policy set up yet.");
 
         if (target.Policies.All(p => p.Id != dto.TargetPolicyId))
-            return Fail("That policy doesn't belong to the target company.");
+            return Fail("That policy doesn't belong to the target company, or your admin access there doesn't cover it.");
 
         if (await ActiveAtTargetAsync(dto.TargetOrganizationId, userId))
             return Fail($"This employee is already active at {target.Name}.");
@@ -199,6 +210,7 @@ public class EmployeeTransferService : IEmployeeTransferService
         if (string.IsNullOrEmpty(sourceOrgId) || string.IsNullOrEmpty(_currentUser.UserId))
             return (false, null, "Session expired. Please sign in again.");
 
+        if (!_scope.Contains(userId)) return (false, null, null);   // 404 — outside this admin's scope
         var membership = await _memberships.GetForUserInCurrentOrgAsync(userId);
         if (membership is null) return (false, null, null);   // 404
 
@@ -216,7 +228,7 @@ public class EmployeeTransferService : IEmployeeTransferService
         if (target is null)
             return (false, null, "You don't administer that company, or it has no policy set up yet.");
         if (target.Policies.All(p => p.Id != dto.TargetPolicyId))
-            return (false, null, "That policy doesn't belong to the target company.");
+            return (false, null, "That policy doesn't belong to the target company, or your admin access there doesn't cover it.");
         if (await ActiveAtTargetAsync(target.Id, userId))
             return (false, null, $"This employee already works at {target.Name}.");
         // A queued transfer would then fail on its date ("already active there").
@@ -411,9 +423,9 @@ public class EmployeeTransferService : IEmployeeTransferService
 
         // Whoever scheduled it must still run the target: access can be taken
         // away between scheduling and the effective date.
-        if (!await AdministersTargetAsync(transfer.CreatedByUserId, targetOrgId))
+        if (!await AdministersTargetAsync(transfer.CreatedByUserId, targetOrgId, transfer.TargetPolicyId))
             throw new TransferException(
-                $"The admin who scheduled this no longer manages employees at {targetOrg.Name}. Cancel it and have someone who does schedule it again.");
+                $"The admin who scheduled this no longer manages employees on that policy at {targetOrg.Name}. Cancel it and have someone who does schedule it again.");
 
         var policy = (await _policies.GetActiveForOrgsAsync([targetOrgId]))
                      .FirstOrDefault(p => p.Id == transfer.TargetPolicyId)
@@ -743,20 +755,21 @@ public class EmployeeTransferService : IEmployeeTransferService
     }
 
     // Every other org where the signed-in admin is Admin/Owner with the
-    // Employees module, that has a live policy to place the person on.
+    // Employees module, that has a live policy they may place the person on —
+    // for a policy-limited admin, only the policies their scope there covers.
     private async Task<List<TransferTargetDto>> ListTargetsAsync()
     {
         var adminId = _currentUser.UserId;
         var currentOrg = _currentUser.OrganizationId;
         if (string.IsNullOrEmpty(adminId)) return [];
 
-        var orgIds = (await _memberships.GetByUserAsync(adminId))
+        var allowedByOrg = (await _memberships.GetByUserAsync(adminId))
             .Where(m => m.OrganizationId != currentOrg
                         && OrgRoles.IsAdministrative(m.Role)
-                        && ManagesEmployeesUnlimited(m))
-            .Select(m => m.OrganizationId)
-            .Distinct()
-            .ToList();
+                        && ManagesEmployees(m))
+            .GroupBy(m => m.OrganizationId)
+            .ToDictionary(g => g.Key, g => AllowedPolicies(g.First()));
+        var orgIds = allowedByOrg.Keys.ToList();
         if (orgIds.Count == 0) return [];
 
         var policiesByOrg = (await _policies.GetActiveForOrgsAsync(orgIds))
@@ -767,7 +780,9 @@ public class EmployeeTransferService : IEmployeeTransferService
         foreach (var orgId in orgIds)
         {
             // An org with no live policy is a dead end in the dialog — leave it out.
-            if (!policiesByOrg.TryGetValue(orgId, out var policies) || policies.Count == 0) continue;
+            if (!policiesByOrg.TryGetValue(orgId, out var policies)) continue;
+            if (allowedByOrg[orgId] is { } allowed) policies = policies.Where(p => allowed.Contains(p.Id)).ToList();
+            if (policies.Count == 0) continue;
 
             var org = await _organizations.GetByIdAsync(orgId);
             if (org is null) continue;
@@ -785,24 +800,32 @@ public class EmployeeTransferService : IEmployeeTransferService
         return targets.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
-    // Moving someone INTO a company is managing employees there with no limit:
-    // Employees at Manage, and every employee in scope (a scoped admin there
-    // could otherwise place people outside what they're allowed to see).
-    // Owners have no limits.
-    private static bool ManagesEmployeesUnlimited(OrganizationMembership m) =>
-        string.Equals(m.Role, OrgRoles.Owner, StringComparison.OrdinalIgnoreCase)
-        || (m.PolicyScope is null
-            && (m.Modules is null
-                || OrgModules.ParseGrant(m.Modules).GetValueOrDefault(OrgModules.Employees) == ModuleLevel.Manage));
+    // Moving someone INTO a company is managing employees there: Employees at
+    // Manage. Owners have no limits.
+    private static bool ManagesEmployees(OrganizationMembership m) =>
+        IsOwner(m)
+        || m.Modules is null
+        || OrgModules.ParseGrant(m.Modules).GetValueOrDefault(OrgModules.Employees) == ModuleLevel.Manage;
 
-    // Admin/Owner at the org with the Employees module — the same rule
-    // ListTargetsAsync applies to the signed-in admin.
-    private async Task<bool> AdministersTargetAsync(string userId, string orgId)
+    // The policies this admin may place people on there; null = any. A
+    // policy-limited admin can only put someone where they could still see them.
+    private static HashSet<string>? AllowedPolicies(OrganizationMembership m) =>
+        IsOwner(m) || m.PolicyScope is null
+            ? null
+            : OrgModules.Split(m.PolicyScope).ToHashSet(StringComparer.Ordinal);
+
+    private static bool IsOwner(OrganizationMembership m) =>
+        string.Equals(m.Role, OrgRoles.Owner, StringComparison.OrdinalIgnoreCase);
+
+    // Admin/Owner at the org with the Employees module, whose scope covers the
+    // policy — the same rule ListTargetsAsync applies to the signed-in admin.
+    private async Task<bool> AdministersTargetAsync(string userId, string orgId, string policyId)
     {
         var m = await _memberships.GetAsync(orgId, userId);
         return m is not null
                && OrgRoles.IsAdministrative(m.Role)
-               && ManagesEmployeesUnlimited(m);
+               && ManagesEmployees(m)
+               && (AllowedPolicies(m)?.Contains(policyId) ?? true);
     }
 
     private async Task<bool> ActiveAtTargetAsync(string targetOrgId, string userId)
