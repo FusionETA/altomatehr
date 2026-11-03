@@ -43,7 +43,7 @@ const empty: SavePolicy = {
   otEnabled: true,
   otDailyThresholdMinutes: 480,
   otMethod: "CASH",
-  // Blank: the company's rates (System Settings → Overtime types).
+  // Blank: the company's rates (System Settings → Work Schedule → Overtime types).
   otRateNormalDay: null,
   otRatePublicHoliday: null,
   otRateRestDay: null,
@@ -359,8 +359,8 @@ export function PolicyEditorModal({
                 <div className="space-y-2 pt-1">
                   <p className="text-xs text-muted-foreground">
                     OT rate multipliers (× the hourly rate), applied when overtime is paid as cash.
-                    Leave a box blank to use the company&apos;s rate (System Settings → Policies →
-                    Overtime types).
+                    Leave a box blank to use the company&apos;s rate (System Settings → Work Schedule
+                    → Overtime types).
                   </p>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Rate
