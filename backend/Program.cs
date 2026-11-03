@@ -265,11 +265,13 @@ builder.Services.AddRateLimiter(options =>
                 AutoReplenishment = true,
             }));
 
-    // POST /auth/access carries no password, so it is not the guessing oracle
-    // /auth/verify is — it only needs a bound against a runaway loop. A
+    // The companion endpoints that carry NO password — /auth/access,
+    // /auth/organizations and /whoami. None is the guessing oracle
+    // /auth/verify is, so each only needs a bound against a runaway loop. A
     // companion asks once per company at sign-in, again on refresh, and again
     // before each payroll run, all from ONE server address, so the login limit
-    // of 5 would throttle an ordinary afternoon.
+    // of 5 (shared with /auth/login and /auth/verify) throttled an ordinary
+    // afternoon.
     options.AddPolicy("partner-access", httpContext =>
         RateLimitPartition.GetFixedWindowLimiter(
             partitionKey: GetClientPartitionKey(httpContext, "partner-access"),

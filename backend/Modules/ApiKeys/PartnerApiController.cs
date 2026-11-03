@@ -49,7 +49,14 @@ public class PartnerApiController : ControllerBase
     // deployment supports, the exact diagnosability problem this endpoint
     // exists to prevent. A master caller is told the FEATURES and nothing
     // about any company, because it belongs to none.
+    //
+    // Limited, because answering a master key means looking one up before the
+    // authentication re-assertion below: without a bound, 200-vs-401 here
+    // tells a guesser whether a master token is real, at whatever rate they
+    // like. (Guessing 32 random bytes is infeasible — this is a seatbelt, and
+    // it matches the other three master-accepting endpoints.)
     [AllowAnonymous]
+    [EnableRateLimiting("partner-access")]
     [HttpGet("whoami")]
     public async Task<IActionResult> WhoAmI()
     {
@@ -204,8 +211,13 @@ public class PartnerApiController : ControllerBase
     //
     // Scoped to what the CALLER can see: an org key gets back only its own
     // company, never that person's other employers; a master key gets them all.
+    //
+    // On the partner limit, not the login one: there is no password here to
+    // guess, and this is a companion's "refresh" — one call per sign-in and
+    // per refresh from ONE server address, where 5/min (shared with
+    // /auth/login and /auth/verify) throttled an ordinary afternoon.
     [AllowAnonymous]
-    [EnableRateLimiting("auth-login")]
+    [EnableRateLimiting("partner-access")]
     [HttpPost("auth/organizations")]
     public async Task<IActionResult> Organizations(LookupOrganizationsDto dto)
     {

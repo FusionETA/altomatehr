@@ -57,8 +57,34 @@ payroll-run endpoints has changed. Company keys still see the whole company.
 ## The contract
 
 Base URL: the AltomateHR v2 API (`https://…`, same host ABPay uses today).
-All three identity endpoints take the **platform master key**
-(`Authorization: Bearer wp_master_…`), not a company key.
+**ABPay should call all three with the platform master key**
+(`Authorization: Bearer wp_master_…`).
+
+Strictly: `/auth/access` accepts the master key *only* (403 for anything else).
+`/auth/verify` and `/auth/organizations` do accept a company (`wp_live_`) key —
+that is unchanged — but they answer it about its own company only, and they
+tell it **nothing** about a person's limits (`allEmployees` and `canRunPayroll`
+come back `null`). So use the master key.
+
+**Rate limits.** `/auth/verify` is on the login limiter: **5 requests per
+minute per source IP**, shared with `/auth/login`. ABPay calls it from one
+address, so six people signing in within a minute will throttle the sixth. It
+is deliberately tight — anyone holding a key can use `/auth/verify` as a
+password oracle, which is the one thing a limit here protects against.
+`/auth/organizations`, `/auth/access` and `/whoami` carry no password and are
+on a separate **60 per minute per IP** bucket.
+
+A throttled call returns **`429`** with a *ProblemDetails* body and a
+`Retry-After` header:
+
+```json
+{ "title": "Too many requests.",
+  "detail": "Too many attempts. Please wait before trying again.", "status": 429 }
+```
+
+⚠️ Note it has **no `message` field**. ABPay branches on `message` to tell a bad
+app credential from a wrong password, so treat a `429` as its own case — retry
+after `Retry-After`, never as a sign-in failure shown to the user.
 
 ### 1. `POST /auth/verify` — sign-in (unchanged inputs, two new fields per org)
 
@@ -103,6 +129,8 @@ All three identity endpoints take the **platform master key**
 - `401 { "message": "Invalid credentials for this organization." }` for a wrong
   password, an unknown email, and someone who administers nothing — one answer,
   deliberately.
+- `429` when over 5/min from this address — see **Rate limits** above. It is
+  not a credential failure.
 
 ### 2. `POST /auth/organizations` — refresh (same two new fields)
 
@@ -111,6 +139,9 @@ All three identity endpoints take the **platform master key**
 ```
 
 `200 { "organizations": [ …same objects as above… ] }`
+
+No password, so it is on the 60/min bucket, not the login one — a refresh storm
+across several admins will not throttle.
 
 ### 3. `POST /auth/access` — **new**: what one person may reach in one company
 

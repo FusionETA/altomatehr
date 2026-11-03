@@ -136,6 +136,24 @@ public class PartnerIdentityEndpointTests
         Assert.Empty((await Json(employee)).GetProperty("organizations").EnumerateArray());
     }
 
+    // A companion refreshes from ONE server address, so /auth/organizations
+    // must not sit in the 5/min login bucket it shares with /auth/login and
+    // /auth/verify: six admins opening ABPay in a minute would throttle the
+    // sixth, and a 429's ProblemDetails body has no `message` field, so it
+    // reads to the caller as a failed sign-in rather than a rate limit.
+    [Fact]
+    public async Task Organizations_IsNotOnTheLoginRateLimit()
+    {
+        using var app = new App();
+        var master = await app.MasterKeyAsync();
+
+        for (var attempt = 1; attempt <= 8; attempt++)
+        {
+            var response = await app.PostAsync("/auth/organizations", master, new { userId = "usr-admin" });
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
+    }
+
     // ─── What else a companion reads, with an org key ───────────────────
 
     [Fact]
