@@ -1385,7 +1385,7 @@ public class AttendanceApprovalRegressionTests
         public Task<IEnumerable<TeamDto>> GetAllAsync() => Task.FromResult<IEnumerable<TeamDto>>([]);
         public Task<TeamSaveResult> CreateAsync(CreateTeamDto dto) => throw new NotSupportedException();
         public Task<TeamSaveResult> UpdateAsync(string id, SaveTeamDto dto) => throw new NotSupportedException();
-        public Task<bool> DeleteAsync(string id) => Task.FromResult(false);
+        public Task<TeamSaveResult> DeleteAsync(string id) => Task.FromResult(new TeamSaveResult(false, null, null));
         public Task<TeamSaveResult> AddOrUpdateMemberAsync(string teamId, SaveMembershipDto dto) =>
             throw new NotSupportedException();
         public Task<TeamSaveResult> RemoveMemberAsync(string teamId, string employeeId) =>

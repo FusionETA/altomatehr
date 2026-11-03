@@ -24,7 +24,8 @@ type Draft = { name: string; multiplier: string };
 // re-rated; the rest are the company's own, which an employee picks on an
 // overtime request. A policy can pay any type at its own rate.
 export function OvertimeTypesSettings() {
-  const { managesAllPolicies } = useMyAccess();
+  // Any admin with Manage on Policies, like the policies these types sit beside.
+  const canEdit = useMyAccess().canManage("policies");
   const query = useCachedQuery(OVERTIME_TYPES_PATH, getOvertimeTypes);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [adding, setAdding] = useState<Draft>({ name: "", multiplier: "" });
@@ -73,8 +74,8 @@ export function OvertimeTypesSettings() {
           automatically by the calendar. Add your own (e.g. night shift) for staff to pick when they
           request overtime. Each policy can set its own rate for any type.
         </p>
-        {!managesAllPolicies ? (
-          <p className="mt-1 text-xs text-muted-foreground">Only the owner can change these.</p>
+        {!canEdit ? (
+          <p className="mt-1 text-xs text-muted-foreground">Your access to policies is view-only.</p>
         ) : null}
       </div>
 
@@ -92,7 +93,7 @@ export function OvertimeTypesSettings() {
                 <input
                   aria-label="Name"
                   maxLength={60}
-                  disabled={!managesAllPolicies}
+                  disabled={!canEdit}
                   className={`${INPUT} min-w-0 flex-1`}
                   value={d.name}
                   onChange={(e) => setDrafts((cur) => ({ ...cur, [t.id]: { ...d, name: e.target.value } }))}
@@ -104,7 +105,7 @@ export function OvertimeTypesSettings() {
                     min="0"
                     max="99.99"
                     step="0.05"
-                    disabled={!managesAllPolicies}
+                    disabled={!canEdit}
                     className={`${INPUT} w-24`}
                     value={d.multiplier}
                     onChange={(e) =>
@@ -118,7 +119,7 @@ export function OvertimeTypesSettings() {
                     Built in
                   </span>
                 ) : null}
-                {managesAllPolicies && changed(t) ? (
+                {canEdit && changed(t) ? (
                   <button
                     type="button"
                     disabled={busy !== null || !valid(d)}
@@ -133,7 +134,7 @@ export function OvertimeTypesSettings() {
                     Save
                   </button>
                 ) : null}
-                {managesAllPolicies && !builtIn ? (
+                {canEdit && !builtIn ? (
                   <button
                     type="button"
                     aria-label={`Remove ${t.name}`}
@@ -153,7 +154,7 @@ export function OvertimeTypesSettings() {
             );
           })}
 
-          {managesAllPolicies ? (
+          {canEdit ? (
             <li className="flex flex-wrap items-center gap-2 bg-muted/30 px-4 py-3">
               <input
                 aria-label="New type name"

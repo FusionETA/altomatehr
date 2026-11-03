@@ -2038,7 +2038,7 @@ public class LeaveServiceTests
         public Task<IEnumerable<TeamDto>> GetAllAsync() => Task.FromResult<IEnumerable<TeamDto>>([]);
         public Task<TeamSaveResult> CreateAsync(CreateTeamDto dto) => throw new NotImplementedException();
         public Task<TeamSaveResult> UpdateAsync(string id, SaveTeamDto dto) => throw new NotImplementedException();
-        public Task<bool> DeleteAsync(string id) => throw new NotImplementedException();
+        public Task<TeamSaveResult> DeleteAsync(string id) => throw new NotImplementedException();
         public Task<TeamSaveResult> AddOrUpdateMemberAsync(string teamId, SaveMembershipDto dto) =>
             throw new NotImplementedException();
         public Task<TeamSaveResult> RemoveMemberAsync(string teamId, string employeeId) =>

@@ -10,8 +10,9 @@ namespace AltomateHR.Api.Modules.Teams;
 [ApiController]
 [Route("teams")]
 // Teams are the company's approval structure: an edit re-routes and heals
-// approvals for everyone on them, so writes need every employee in scope.
-[AltomateHR.Api.Modules.Organizations.RequireFullEmployeeScope]
+// approvals for everyone on them. A policy-limited admin may still create
+// teams and change ones holding only their own people — TeamService refuses
+// the rest.
 [RequireModule(OrgModules.Teams)]
 [Authorize(Roles = "Admin,Owner")]   // org structure is an admin/owner concern
 public class TeamsController : ControllerBase
@@ -63,7 +64,9 @@ public class TeamsController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id)
     {
-        if (!await _teams.DeleteAsync(id)) return NotFound();
+        var result = await _teams.DeleteAsync(id);
+        if (!result.Ok && result.Error is null) return NotFound();
+        if (!result.Ok) return BadRequest(new { message = result.Error });
         await HealStrandedApprovalsAsync();
         return NoContent();
     }

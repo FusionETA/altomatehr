@@ -8,7 +8,7 @@ namespace AltomateHR.Api.Modules.Overtime;
 
 // The company's overtime types: three built in, plus its own. Set up beside
 // policies (each policy can override a type's multiplier), so it is held to
-// the same plan and roles; changing them is the Owner's (the service decides).
+// the same plan and roles: any admin with Manage on Policies can change them.
 [ApiController]
 [Route("overtime-types")]
 [RequireModule(OrgModules.Policies)]
@@ -41,8 +41,6 @@ public class OvertimeTypesController : ControllerBase
 
     private IActionResult ToResponse(OvertimeTypeSaveResult result) =>
         result.Ok ? Ok(result.Type)
-        : result.Forbidden ? StatusCode(StatusCodes.Status403Forbidden,
-            new { error = new { status = 403, message = result.Error } })
         : result.NotFound ? NotFound()
         : BadRequest(new { message = result.Error });
 }
