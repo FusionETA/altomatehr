@@ -69,7 +69,9 @@ export function PayrollRunsList({
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const access = useMyAccess();
-  const canRun = access.allEmployees && access.canManage("payroll");
+  // An admin limited to some policies starts runs too; the picker only offers
+  // their people, so a run they make is theirs.
+  const canRun = access.canManage("payroll");
 
   // Newest month first; within a month, in the order the runs were started.
   const months = useMemo(() => {
@@ -99,6 +101,9 @@ export function PayrollRunsList({
               until you run payroll. To pay a month in separate runs (say, office staff and
               workers), start another run for it and give it a name; each person can be in only
               one run a month.
+              {!access.allEmployees
+                ? " Your access covers some policies, so runs you start include only their people."
+                : null}
             </p>
           </div>
           {canRun ? (
@@ -108,9 +113,7 @@ export function PayrollRunsList({
             </button>
           ) : (
             <p className="max-w-xs text-xs text-muted-foreground">
-              {access.allEmployees
-                ? "Your payroll access is view only."
-                : "Runs cover the whole company; your access covers some employees, so you can view runs but not start one."}
+              Your payroll access is view only.
             </p>
           )}
         </header>

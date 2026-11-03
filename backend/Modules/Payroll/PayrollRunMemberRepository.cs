@@ -15,6 +15,14 @@ public class PayrollRunMemberRepository : IPayrollRunMemberRepository
             .Where(m => m.PayrollRunId == payrollRunId)
             .ToListAsync();
 
+    // IgnoreQueryFilters drops the tenant filter too, so the company is
+    // re-applied by hand from the run itself.
+    public Task<List<string>> GetProfileIdsForRunUnscopedAsync(PayrollRun run) =>
+        _db.PayrollRunMembers.IgnoreQueryFilters()
+            .Where(m => m.OrganizationId == run.OrganizationId && m.PayrollRunId == run.Id)
+            .Select(m => m.EmployeeProfileId)
+            .ToListAsync();
+
     public async Task ReplaceForRunAsync(PayrollRun run, IEnumerable<string> employeeProfileIds)
     {
         var existing = await GetForRunAsync(run.Id);

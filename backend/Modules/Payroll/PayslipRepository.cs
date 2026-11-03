@@ -16,6 +16,14 @@ public class PayslipRepository : IPayslipRepository
             .OrderBy(p => p.SnapshotName)
             .ToListAsync();
 
+    // IgnoreQueryFilters drops the tenant filter too, so the company is
+    // re-applied by hand from the run itself.
+    public Task<List<string>> GetProfileIdsForRunUnscopedAsync(PayrollRun run) =>
+        _db.Payslips.IgnoreQueryFilters()
+            .Where(p => p.OrganizationId == run.OrganizationId && p.PayrollRunId == run.Id)
+            .Select(p => p.EmployeeProfileId)
+            .ToListAsync();
+
     public async Task<List<(Payslip Payslip, PayrollRun Run)>> GetForEmployeeAsync(
         string employeeProfileId)
     {

@@ -149,6 +149,9 @@ export type PayrollRun = {
   // Pay figures are final (an ABPay import): joiners and leavers are paid as
   // sent rather than prorated a second time.
   skipProration: boolean;
+  // For an admin limited to some policies: the run has people outside them,
+  // so they can view it but not change it. Always false for everyone else.
+  hasPeopleOutsideYourAccess: boolean;
   employeeCount: number;
   totalGross: number;
   /** Gross less deductions the company keeps — what's shown as Gross (PayrollPanda's figure). */

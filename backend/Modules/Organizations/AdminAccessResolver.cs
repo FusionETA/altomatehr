@@ -71,11 +71,12 @@ public class AdminAccessResolver : IAdminAccessResolver
             ? AdminAccess.ForAdmin(membership.Modules, membership.CanChangeSettings, membership.PolicyScope)
             : AdminAccess.Full;
 
-    // The two gates a payroll run passes (see AccessGates): the Payroll module
-    // at Manage, and every employee in scope — a run covers the whole company,
-    // so an admin limited to some policies may only look at one.
+    // The Payroll module at Manage. An admin limited to some policies runs
+    // payroll too, for their own people only: a run holding anyone else stays
+    // view-only for them (see PayrollRunInScopeAttribute), so a caller like
+    // ABPay must keep their runs to the employees this snapshot lists.
     private static bool CanRunPayroll(IReadOnlyDictionary<string, ModuleLevel> modules, AdminAccess access) =>
-        modules.GetValueOrDefault(OrgModules.Payroll) == ModuleLevel.Manage && access.HasFullEmployeeScope;
+        modules.GetValueOrDefault(OrgModules.Payroll) == ModuleLevel.Manage;
 
     private async Task<IReadOnlyCollection<string>?> CeilingAsync(string organizationId)
     {

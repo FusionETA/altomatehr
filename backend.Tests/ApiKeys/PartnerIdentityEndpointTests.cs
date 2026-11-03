@@ -477,8 +477,8 @@ public class PartnerIdentityEndpointTests
 
         Assert.Equal("Admin", org.GetProperty("role").GetString());
         Assert.False(org.GetProperty("allEmployees").GetBoolean());
-        // A run covers the whole company, so a limited admin can only look.
-        Assert.False(org.GetProperty("canRunPayroll").GetBoolean());
+        // They run payroll for their own people; the caller keeps the run to them.
+        Assert.True(org.GetProperty("canRunPayroll").GetBoolean());
     }
 
     // An admin without the Payroll module can't post a run either, however
