@@ -2,6 +2,8 @@ using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Audit;
 using AltomateHR.Api.Modules.Audit.Dtos;
 using AltomateHR.Api.Modules.Employees;
+using AltomateHR.Api.Modules.Projects;
+using AltomateHR.Api.Modules.Projects.Entities;
 using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Modules.Teams.Dtos;
 using AltomateHR.Api.Modules.Teams.Entities;
@@ -30,7 +32,7 @@ public class LimitedAdminTeamTests
 
         var service = new TeamService(
             new StubTeams(deleted), new StubMemberships(rows), new StubSupervision(),
-            new StubChain(), new StubOverrides(), new StubAudit(), scope);
+            new StubChain(), new StubOverrides(), new StubAudit(), scope, new StubProjects());
         return (service, rows, deleted);
     }
 
@@ -47,6 +49,22 @@ public class LimitedAdminTeamTests
         });
 
         Assert.True(result.Ok, result.Error);
+    }
+
+    // The lookup is tenant-filtered, so another company's project reads as
+    // missing too — a team can't be hung on it.
+    [Fact]
+    public async Task ATeamNeedsAProjectInThisCompany()
+    {
+        var (service, _, _) = Make(limited: false);
+
+        var result = await service.CreateAsync(new CreateTeamDto
+        {
+            ProjectId = "proj-elsewhere", Name = "FD", LayerCount = 1, LayerLabels = ["Staff"],
+        });
+
+        Assert.False(result.Ok);
+        Assert.Equal("That project doesn't exist in this organization.", result.Error);
     }
 
     [Fact]
@@ -127,6 +145,21 @@ public class LimitedAdminTeamTests
         public Task<Team> AddAsync(Team team) => Task.FromResult(team);
         public Task UpdateAsync(Team team) => Task.CompletedTask;
         public Task DeleteAsync(string id) { deleted.Add(id); return Task.CompletedTask; }
+    }
+
+    private sealed class StubProjects : IProjectRepository
+    {
+        public Task<Project?> GetByIdAsync(string id) =>
+            Task.FromResult(id == "proj-1" ? new Project { Id = id, Name = "BI" } : null);
+        public Task<List<Project>> GetAllAsync() => throw new NotSupportedException();
+        public Task<Project> AddAsync(Project project) => throw new NotSupportedException();
+        public Task UpdateAsync(Project project) => throw new NotSupportedException();
+        public Task<List<ProjectGeofencePoint>> GetGeofencePointsAsync(string projectId) => throw new NotSupportedException();
+        public Task<List<ProjectAllowedIp>> GetAllowedIpsAsync(string projectId) => throw new NotSupportedException();
+        public Task ReplaceGeofencePointsAsync(string projectId, IReadOnlyList<ProjectGeofencePoint> points) => throw new NotSupportedException();
+        public Task ReplaceAllowedIpsAsync(string projectId, IReadOnlyList<ProjectAllowedIp> entries) => throw new NotSupportedException();
+        public Task<Dictionary<string, int>> GetGeofencePointCountsAsync() => throw new NotSupportedException();
+        public Task<Dictionary<string, int>> GetAllowedIpCountsAsync() => throw new NotSupportedException();
     }
 
     private sealed class StubMemberships(List<TeamMembership> rows) : ITeamMembershipRepository

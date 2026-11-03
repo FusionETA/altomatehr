@@ -185,7 +185,7 @@
           <table>
             <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
             <tbody>
-              <tr><td><code>projectId</code></td><td>string</td><td>yes</td><td>Max 40 characters. Not checked against the company's projects, so make sure it's a real project id from <a href="projects.html">Projects</a>.</td></tr>
+              <tr><td><code>projectId</code></td><td>string</td><td>yes</td><td>Max 40 characters. Must be a project in your company (see <a href="projects.html">Projects</a>); another company's project id is refused the same way as one that doesn't exist. Archived projects are still accepted.</td></tr>
               <tr><td><code>name</code></td><td>string</td><td>yes</td><td>Max 120 characters. Surrounding spaces are trimmed. Must be unique within the project.</td></tr>
               <tr><td><code>layerCount</code></td><td>integer</td><td>no</td><td>1–6. Defaults to <code>1</code>.</td></tr>
               <tr><td><code>layerLabels</code></td><td>string[]</td><td>no</td><td>Layer names, bottom first. Defaults to none. Not checked against <code>layerCount</code>.</td></tr>
@@ -208,6 +208,7 @@
         <h3>Errors</h3>
         <ul>
           <li><code>400</code> <code>{ "errors": … }</code> — a field is missing or out of range.</li>
+          <li><code>400</code> <code>{ "message": "That project doesn't exist in this organization." }</code> — <code>projectId</code> isn't a project in your company.</li>
           <li><code>400</code> <code>{ "message": "This project already has a team named \"…\"." }</code></li>
         </ul>
       </section>

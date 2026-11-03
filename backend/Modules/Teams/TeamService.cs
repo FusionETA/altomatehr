@@ -2,6 +2,7 @@ using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Employees;
 using System.Text.Json;
 using AltomateHR.Api.Modules.Auth;
+using AltomateHR.Api.Modules.Projects;
 using AltomateHR.Api.Modules.Teams.Dtos;
 using AltomateHR.Api.Modules.Teams.Entities;
 
@@ -20,6 +21,7 @@ public class TeamService : ITeamService
     private readonly ITeamApprovalOverrideRepository _overrides;
     private readonly IAuditService _audit;
     private readonly IEmployeeScope? _scope;
+    private readonly IProjectRepository? _projects;
 
     public TeamService(
         ITeamRepository teams,
@@ -28,7 +30,8 @@ public class TeamService : ITeamService
         IApprovalChainService chain,
         ITeamApprovalOverrideRepository overrides,
         IAuditService audit,
-        IEmployeeScope? scope = null)
+        IEmployeeScope? scope = null,
+        IProjectRepository? projects = null)
     {
         _teams = teams;
         _memberships = memberships;
@@ -37,6 +40,7 @@ public class TeamService : ITeamService
         _overrides = overrides;
         _audit = audit;
         _scope = scope;
+        _projects = projects;
     }
 
     public async Task<IEnumerable<ApprovalStepDto>> GetApprovalChainAsync(
@@ -66,6 +70,11 @@ public class TeamService : ITeamService
 
     public async Task<TeamSaveResult> CreateAsync(CreateTeamDto dto)
     {
+        // The lookup is tenant-filtered, so another company's project id is
+        // "doesn't exist" here too.
+        if (_projects is not null && await _projects.GetByIdAsync(dto.ProjectId) is null)
+            return new TeamSaveResult(false, null, "That project doesn't exist in this organization.");
+
         var name = dto.Name.Trim();
         if (await _teams.GetByProjectAndNameAsync(dto.ProjectId, name) is not null)
             return new TeamSaveResult(false, null, $"This project already has a team named \"{name}\".");
