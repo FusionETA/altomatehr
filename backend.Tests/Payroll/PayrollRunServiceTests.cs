@@ -3088,6 +3088,37 @@ public class PayrollRunServiceTests : IDisposable
         Assert.Empty(await _db.PayrollRuns.ToListAsync());
     }
 
+    // A run with no roster is everyone: re-running it pulls in whoever is
+    // payable, so payslips that happen to be all theirs don't make it theirs.
+    [Fact]
+    public async Task ALimitedAdmin_OnlyViewsARunWithNoRoster_EvenIfItsPayslipsAreTheirs()
+    {
+        var mine = AddEmployee("usr-1", "Aisyah");   // not payroll-ready, so no roster is saved
+        var run = await CreateRunAsync();
+        Assert.Equal(1, (await _service.GenerateAsync(run.Id)).Result!.PayslipCount);
+        LimitTo(mine);
+
+        Assert.Contains("covers the whole company", await _service.OutsideScopeAsync(run.Id));
+    }
+
+    // Deleting a run takes its attached claims too; a scoped delete would
+    // strand one it can't see, so a claim for someone else makes it not theirs.
+    [Fact]
+    public async Task ALimitedAdmin_OnlyViewsARunWithSomeoneElsesClaimOnIt()
+    {
+        var (mine, other) = TwoPolicyCompany();
+        var run = await _service.CreateAsync(new() { PeriodYear = 2026, PeriodMonth = 1, ExcludedEmployeeProfileIds = [other.Id] });
+        _db.PayrollRunClaims.Add(new PayrollRunClaim
+        {
+            OrganizationId = "org-1", PayrollRunId = run.Run!.Id, ClaimId = "clm-1",
+            EmployeeProfileId = other.Id, Label = "Parking", Amount = 20m,
+        });
+        await _db.SaveChangesAsync();
+        LimitTo(mine);
+
+        Assert.Contains("1 person outside the policies", await _service.OutsideScopeAsync(run.Run.Id));
+    }
+
     // January is all theirs, but February holds Bala too and was computed off
     // January's year-to-date — reverting January would reopen it.
     [Fact]

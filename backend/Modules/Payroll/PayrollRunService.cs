@@ -959,17 +959,26 @@ public class PayrollRunService : IPayrollRunService
 
     // A policy-limited admin may run payroll for their own people: a run is
     // theirs to change or file only when everyone on it is on their policies.
+    // Everyone means its roster, payslips, attached claims and adjustments —
+    // deleting a run takes all of them, and a scoped delete would strand the
+    // rows it can't see. A run with no roster is the whole company, payslips
+    // or not: re-running it pulls in everyone payable.
     private async Task<string?> OutsideScopeOfAsync(PayrollRun run)
     {
         if (_scope is not { IsLimited: true }) return null;
 
-        var people = await PeopleOfAsync(run);
-        if (people is null)
+        var roster = await _runMembers.GetProfileIdsForRunUnscopedAsync(run);
+        if (roster.Count == 0)
         {
             return $"{RunLabel(run)} covers the whole company, and your admin access covers only some "
                    + "policies. Ask an admin with access to all employees.";
         }
 
+        var people = roster
+            .Concat(await _payslips.GetProfileIdsForRunUnscopedAsync(run))
+            .Concat(await _runClaims.GetProfileIdsForRunUnscopedAsync(run))
+            .Concat(await _adjustments.GetProfileIdsForRunUnscopedAsync(run))
+            .ToHashSet(StringComparer.Ordinal);
         var outside = people.Count(p => !_scope.Contains(p));
         return outside == 0
             ? null
