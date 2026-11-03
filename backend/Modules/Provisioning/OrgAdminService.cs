@@ -100,24 +100,26 @@ public class OrgAdminService : IOrgAdminService
             .Where(m => roles.Count == 0 || roles.Contains(m.Role))
             .Where(m => users.ContainsKey(m.UserId))
             .Select(m => new OrgAdminRow(m.UserId, users[m.UserId].Email, users[m.UserId].Name, m.Role))
+            .OrderBy(r => r.Email, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        // The AltomateHR AI, as an Admin of every company — so the MCP server
-        // accepts it as the acting admin. Never a real seat (see
-        // IAiActorRegistry); skipped if a real member already has the email.
+        // A limited read ("?limit=1") asks for a real admin to name — an
+        // approver, an owner to store — so the AI is left out of it.
+        if (limit is > 0) return [.. rows.Take(limit.Value)];
+
+        // The AltomateHR AI, as an Admin of every company and after the real
+        // ones — so the MCP server accepts it as the acting admin. Never a real
+        // seat (see IAiActorRegistry), flagged IsAi; skipped if a real member
+        // already has the email.
         if (_aiActors is not null && (roles.Count == 0 || roles.Contains(OrgRoles.Admin)))
         {
             rows.AddRange(_aiActors.Emails
                 .Where(email => rows.All(r => !string.Equals(r.Email, email, StringComparison.OrdinalIgnoreCase)))
-                .Select(email => new OrgAdminRow($"ai:{email}", email, Auth.AiActorRegistry.DisplayName, OrgRoles.Admin)));
+                .Select(email => new OrgAdminRow(
+                    $"ai:{email}", email, Auth.AiActorRegistry.DisplayName, OrgRoles.Admin, IsAi: true)));
         }
 
-        return
-        [
-            .. rows
-                .OrderBy(r => r.Email, StringComparer.OrdinalIgnoreCase)
-                .Take(limit is > 0 ? limit.Value : int.MaxValue),
-        ];
+        return rows;
     }
 
     // Anyone administering the company already — Owner or Admin. The org key

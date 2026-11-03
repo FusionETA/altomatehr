@@ -16,4 +16,5 @@ public interface IOrgAdminService
 // given one in a company that had nobody administering it, Admin otherwise.
 public sealed record GrantAdminResult(string Email, bool Created, bool Linked, string Role);
 
-public sealed record OrgAdminRow(string UserId, string Email, string? Name, string Role);
+// IsAi: the AltomateHR AI (AI_ACTOR_EMAILS) — no account, can't sign in.
+public sealed record OrgAdminRow(string UserId, string Email, string? Name, string Role, bool IsAi = false);

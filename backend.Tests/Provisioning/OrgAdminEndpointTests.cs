@@ -100,7 +100,42 @@ public class OrgAdminEndpointTests
         // The AltomateHR AI (AI_ACTOR_EMAILS) is listed as an Admin of every
         // company, so the MCP server accepts it as the acting admin.
         Assert.Equal(
-            [("ai@altomate.test", "Admin"), ("first@example.com", "Owner"), ("second@example.com", "Admin")], rows);
+            [("first@example.com", "Owner"), ("second@example.com", "Admin"), ("ai@altomate.test", "Admin")], rows);
+        Assert.True(body.GetProperty("data")[2].GetProperty("isAi").GetBoolean());
+    }
+
+    // "?limit=1" asks for a real admin to name (an approver, an owner to
+    // store), so the AI never takes the slot — even in a company with none.
+    [Fact]
+    public async Task ALimitedRead_NeverNamesTheAi()
+    {
+        using var app = new App();
+        var key = await app.ProvisionAsync("Limit Sdn Bhd");
+
+        var empty = await app.GetAsync(key, "/admin/users?role=OWNER,ADMIN&limit=1");
+        await app.GrantAsync(key, "zoe@example.com");
+        var one = await app.GetAsync(key, "/admin/users?role=OWNER,ADMIN&limit=1");
+
+        Assert.Equal(0, empty.GetProperty("total").GetInt32());
+        Assert.Equal("zoe@example.com", Assert.Single(one.GetProperty("data").EnumerateArray()).GetProperty("email").GetString());
+    }
+
+    // Integration endpoints only: a person's session — even an employee's —
+    // must never make anyone an admin here, themselves included.
+    [Fact]
+    public async Task ASignedInPerson_CantUseTheseEndpoints()
+    {
+        using var app = new App();
+        var login = await app.Client.PostAsJsonAsync("/auth/login", new { email = "employee@altomate.com", password = "password123" });
+        var token = (await Json(login)).GetProperty("token").GetString();
+
+        var grant = new HttpRequestMessage(HttpMethod.Post, "/admin/admins") { Content = JsonContent.Create(new { email = "employee@altomate.com" }) };
+        grant.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var list = new HttpRequestMessage(HttpMethod.Get, "/admin/users");
+        list.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await app.Client.SendAsync(grant)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await app.Client.SendAsync(list)).StatusCode);
     }
 
     // It's never an Owner, and it's no seat: it holds no membership anywhere.
@@ -161,6 +196,13 @@ public class OrgAdminEndpointTests
             return await Json(await Client.SendAsync(request));
         }
 
+        public async Task<JsonElement> GetAsync(string key, string path)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, path);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+            return await Json(await Client.SendAsync(request));
+        }
+
         public async Task AddMemberAsync(string orgName, string userId, string role)
         {
             using var scope = Services.CreateScope();
@@ -184,6 +226,8 @@ public class OrgAdminEndpointTests
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Development");
+            // Read as the app starts (JWT validation), so set early too.
+            builder.UseSetting("Jwt:Key", "test-jwt-key-that-is-long-enough-for-hmac-sha256-signing");
             builder.ConfigureAppConfiguration((_, config) =>
             {
                 config.AddInMemoryCollection(new Dictionary<string, string?>
