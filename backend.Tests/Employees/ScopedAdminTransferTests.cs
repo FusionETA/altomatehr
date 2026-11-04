@@ -1,5 +1,6 @@
 using AltomateHR.Api.Common;
 using AltomateHR.Api.Data;
+using AltomateHR.Api.Modules.Attendance;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Employees.Dtos;
@@ -123,5 +124,44 @@ public class ScopedAdminTransferTests : IDisposable
         var placed = await _db.OrganizationMemberships.IgnoreQueryFilters()
             .SingleAsync(m => m.OrganizationId == "org-b" && m.UserId == Staff);
         Assert.Equal("b-in", placed.PolicyId);
+    }
+
+    // The nickname is how staff are often found ("BOY HENDRIK"); it used to be
+    // dropped on the target membership, so they vanished from search there.
+    [Fact]
+    public async Task A_transfer_carries_the_nickname()
+    {
+        var staff = await _db.OrganizationMemberships.SingleAsync(m => m.OrganizationId == "org-a" && m.UserId == Staff);
+        staff.Nickname = "(AL1338) BOY";
+        await _db.SaveChangesAsync();
+
+        var result = await Service().CreateAsync(Staff, new CreateEmployeeTransferDto
+        {
+            TargetOrganizationId = "org-b",
+            TargetPolicyId = "b-in",
+            EffectiveDate = AttendanceTime.StartOfLocalDay(DateTime.UtcNow),
+        });
+
+        Assert.True(result.Ok, result.Error);
+        Assert.True(result.ExecutedImmediately);
+        var placed = await _db.OrganizationMemberships.IgnoreQueryFilters()
+            .SingleAsync(m => m.OrganizationId == "org-b" && m.UserId == Staff);
+        Assert.Equal("(AL1338) BOY", placed.Nickname);
+    }
+
+    [Fact]
+    public async Task Adding_to_another_company_carries_the_nickname()
+    {
+        var staff = await _db.OrganizationMemberships.SingleAsync(m => m.OrganizationId == "org-a" && m.UserId == Staff);
+        staff.Nickname = "Mat";
+        await _db.SaveChangesAsync();
+
+        var (ok, _, error) = await Service().DuplicateAsync(Staff,
+            new DuplicateEmployeeDto { TargetOrganizationId = "org-b", TargetPolicyId = "b-in", JoinDate = DateTime.UtcNow.Date });
+
+        Assert.True(ok, error);
+        var placed = await _db.OrganizationMemberships.IgnoreQueryFilters()
+            .SingleAsync(m => m.OrganizationId == "org-b" && m.UserId == Staff);
+        Assert.Equal("Mat", placed.Nickname);
     }
 }

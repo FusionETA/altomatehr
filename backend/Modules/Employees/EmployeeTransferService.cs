@@ -255,6 +255,8 @@ public class EmployeeTransferService : IEmployeeTransferService
             newMemberships.Add(targetMembership);
         }
         targetMembership.JobTitle = membership.JobTitle;
+        // Staff are often searched by nickname; a blank source keeps any old one.
+        targetMembership.Nickname = membership.Nickname ?? targetMembership.Nickname;
         targetMembership.PolicyId = dto.TargetPolicyId;
         targetMembership.ShiftId = null;
         targetMembership.JoinDate = joinDate;
@@ -502,6 +504,8 @@ public class EmployeeTransferService : IEmployeeTransferService
             newMemberships.Add(targetMembership);
         }
         targetMembership.JobTitle = sourceMembership.JobTitle;
+        // Staff are often searched by nickname; a blank source keeps any old one.
+        targetMembership.Nickname = sourceMembership.Nickname ?? targetMembership.Nickname;
         targetMembership.PolicyId = policy.Id;
         targetMembership.ShiftId = null;
         targetMembership.JoinDate = effective;
