@@ -174,8 +174,24 @@ function OvertimeTable({ rows }: { rows: PayslipOvertimeRow[] }) {
       <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
         Overtime
       </p>
-      <div className="mt-2 overflow-x-auto rounded-[18px] border border-border/60">
-        <table className="w-full text-sm tabular-nums">
+      {/* A phone gets one stacked row per multiplier — label and amount, with
+          "hours × rate" under the label — like every other row here; the
+          four-column table needs more width than a phone has. */}
+      <dl className="mt-2 divide-y divide-border/50 rounded-[18px] border border-border/60 sm:hidden">
+        {rows.map((row) => (
+          <div key={row.multiplier} className="flex items-baseline justify-between gap-4 px-4 py-2.5 text-sm">
+            <dt className="min-w-0">
+              <span className="text-muted-foreground">{row.label}</span>
+              <span className="block text-xs tabular-nums text-muted-foreground">
+                {row.hours.toFixed(2)} hrs × {row.rate.toFixed(4)}
+              </span>
+            </dt>
+            <dd className="shrink-0 whitespace-nowrap font-semibold tabular-nums text-foreground">{rmWithUnit(row.amount)}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="mt-2 hidden rounded-[18px] border border-border/60 sm:block">
+        <table className="w-full whitespace-nowrap text-sm tabular-nums">
           <thead>
             <tr className="border-b border-border/50 text-xs text-muted-foreground">
               <th className="px-4 py-2 text-left font-medium">Type</th>
@@ -234,7 +250,7 @@ function Row({
     <div className="flex items-baseline justify-between gap-4 px-4 py-2.5 text-sm">
       <dt className={strong ? "font-bold text-foreground" : "text-muted-foreground"}>{label}</dt>
       <dd
-        className={`tabular-nums ${
+        className={`shrink-0 whitespace-nowrap tabular-nums ${
           strong ? "font-black text-foreground" : "font-semibold text-foreground"
         }`}
       >
