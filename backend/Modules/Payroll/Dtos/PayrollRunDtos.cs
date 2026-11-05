@@ -213,6 +213,38 @@ public class PayslipDto
     public List<string> StatutoryWarnings { get; set; } = [];
 
     public List<PayslipLineItemDto> LineItems { get; set; } = [];
+
+    // What the payslip LISTS (PayslipDisplayLines — the PDF prints the same).
+    // The Overtime table: one row per multiplier; empty when there is nothing
+    // to break down (no overtime, or a payslip from before the rates were kept).
+    public List<PayslipOvertimeRowDto> OvertimeRows { get; set; } = [];
+
+    // The named lines under Earnings (after basic pay and overtime) and under
+    // Deductions (after the statutory ones), each by its display name. Null
+    // when they don't add up to the total — an imported payslip — so the
+    // client shows the plain totals instead.
+    public List<PayslipDisplayLineDto>? EarningLines { get; set; }
+    public List<PayslipDisplayLineDto>? DeductionLines { get; set; }
+
+    // On the payslip but not in pay: benefits in kind and TP1 reliefs.
+    public List<PayslipDisplayLineDto> NotInPayLines { get; set; } = [];
+}
+
+public class PayslipOvertimeRowDto
+{
+    public string Label { get; set; } = string.Empty;   // "1.5 TIMES"
+    public decimal Multiplier { get; set; }
+    // Pay for one hour at this multiplier, to 4 places.
+    public decimal Rate { get; set; }
+    public decimal Hours { get; set; }
+    public decimal Amount { get; set; }
+}
+
+public class PayslipDisplayLineDto
+{
+    public string Label { get; set; } = string.Empty;
+    // Negative for a line that comes off gross (unpaid leave, an advance).
+    public decimal Amount { get; set; }
 }
 
 public class PayslipLineItemDto

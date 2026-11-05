@@ -229,6 +229,11 @@ public static class PayslipCalculator
         public required decimal OtRestHours { get; init; }
         public required decimal OtPublicHours { get; init; }
         public IReadOnlyList<PayslipOvertimeLine> OtCustom { get; init; } = [];
+        // What the overtime was priced at — for the payslip's Overtime table.
+        public decimal OtHourlyRate { get; init; }
+        public decimal OtRateNormal { get; init; }
+        public decimal OtRateRest { get; init; }
+        public decimal OtRatePublicHoliday { get; init; }
         public required decimal OtPay { get; init; }
         public required decimal TotalAllowances { get; init; }
         public required decimal TotalReimbursements { get; init; }
@@ -579,6 +584,10 @@ public static class PayslipCalculator
             OtRestHours = input.OtRestHours,
             OtPublicHours = input.OtPublicHours,
             OtCustom = otCustom,
+            OtHourlyRate = hourlyRate,
+            OtRateNormal = input.OtRateNormal,
+            OtRateRest = input.OtRateRest,
+            OtRatePublicHoliday = input.OtRatePublicHoliday,
             OtPay = otPay,
             TotalAllowances = buckets.Allowances,
             TotalReimbursements = totalReimbursements,

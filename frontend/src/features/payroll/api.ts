@@ -280,6 +280,28 @@ export type Payslip = {
   // readiness guard reads the same facts before a submission is accepted.
   statutoryWarnings: string[];
   lineItems: PayslipLineItem[];
+  // What the payslip LISTS — the PDF prints the same. One overtime row per
+  // multiplier; empty when there is nothing to break down.
+  overtimeRows: PayslipOvertimeRow[];
+  // The named lines under Earnings / Deductions. Null when they don't add up
+  // to the total (an imported payslip): show the totals instead.
+  earningLines: PayslipDisplayLine[] | null;
+  deductionLines: PayslipDisplayLine[] | null;
+  // On the payslip but not in pay: benefits in kind and TP1 reliefs.
+  notInPayLines: PayslipDisplayLine[];
+};
+
+export type PayslipOvertimeRow = {
+  label: string; // "1.5 TIMES"
+  multiplier: number;
+  rate: number; // pay for one hour at this multiplier
+  hours: number;
+  amount: number;
+};
+
+export type PayslipDisplayLine = {
+  label: string;
+  amount: number; // negative when it comes off gross
 };
 
 export type PayrollRunDetail = {

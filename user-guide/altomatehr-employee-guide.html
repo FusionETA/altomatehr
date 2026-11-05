@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 35e5978
+  user-guide-covered-up-to: 6c7e1df
 -->
 <html lang="en">
 <head>
@@ -898,7 +898,15 @@
       <li><strong>Year tabs</strong> — if you have payslips in more than one year, a row of year tabs (newest first)
         sits above the list. Tap a year to see that year's payslips. With payslips in only one year there are no tabs.</li>
       <li><span class="btn-name">View breakdown</span> — earnings, deductions and every line item. Your earnings are
-        shown in full; anything your company keeps from your pay, such as a loan repayment, is listed under Deductions.</li>
+        shown in full, with allowances listed by name and one <strong>Overtime</strong> total. If you worked overtime, an
+        <strong>Overtime</strong> section below it has one row for each multiplier (for example <em>1.5 TIMES</em> and
+        <em>2.0 TIMES</em>). On a phone each row shows the hours and the rate for one hour under the multiplier
+        (for example <em>54.50 hrs × 39.6635</em>), with the amount on the right. On a wider screen it's a table with
+        <strong>Rate</strong> (pay for one hour at that multiplier), <strong>Hrs</strong> and <strong>Amount</strong> columns.
+        Anything your company keeps from your pay is listed under Deductions by name, such as Loan Repayment, Zakat or CP38.
+        Benefits in kind and tax reliefs that aren't paid to you in cash sit under <strong>Not paid in cash</strong>.
+        Payslips made before this change show only the overtime total until payroll is re-run.</li>
+      <li>The <span class="btn-name">PDF</span> shows the Overtime table with Rate, Hrs and Amount columns and named deductions.</li>
       <li>If your company pays your income tax (PCB) for you, the breakdown shows it in its own group,
         <strong>Paid by your employer</strong>, and it isn't taken off your net pay. Because tax your company pays counts as
         your income, your first payslip of the next year adds a line such as
@@ -922,7 +930,12 @@
     <figure class="shot" data-place="Payslips">
       <div class="shot-grid" data-orient="phone">
         <div class="shot-item">
-          <img src="shots/employee/payslip-breakdown.png" alt="A payslip&#x27;s breakdown: net pay, earnings and deductions" loading="lazy">
+          <img src="shots/employee/payslip-breakdown.png" alt="A payslip&#x27;s breakdown: net pay, earnings by name and the Overtime section with a row for each multiplier" loading="lazy">
+          <p class="shot-cap">Earnings and Overtime</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/employee/payslip-breakdown-deductions.png" alt="The same breakdown scrolled to Overtime and Deductions, listed by name: EPF, SOCSO, EIS, PCB, Loan Repayment, a one-off deduction and Zakat" loading="lazy">
+          <p class="shot-cap">Deductions listed by name</p>
         </div>
       </div>
       <p class="shot-cap shot-cap-main">A payslip</p>
