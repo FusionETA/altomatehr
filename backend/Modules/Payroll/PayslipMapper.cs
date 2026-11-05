@@ -90,5 +90,27 @@ public static class PayslipMapper
             SubjectToEis = li.SubjectToEis,
             SubjectToPcb = li.SubjectToPcb,
         }).ToList(),
+
+        OvertimeRows = PayslipDisplayLines.Overtime(p).Select(r => new PayslipOvertimeRowDto
+        {
+            Label = r.Label,
+            Multiplier = r.Multiplier,
+            Rate = Math.Round(r.Rate, 4, MidpointRounding.AwayFromZero),
+            Hours = r.Hours,
+            Amount = r.Amount,
+        }).ToList(),
+        EarningLines = DisplayLines(
+            PayslipDisplayLines.Earnings(lineItems), l => PayslipDisplayLines.EarningsReconcile(p, l)),
+        DeductionLines = DisplayLines(
+            PayslipDisplayLines.Deductions(lineItems), l => PayslipDisplayLines.DeductionsReconcile(p, l)),
+        NotInPayLines = PayslipDisplayLines.NotInPay(lineItems)
+            .Select(l => new PayslipDisplayLineDto { Label = l.Label, Amount = l.Amount })
+            .ToList(),
     };
+
+    private static List<PayslipDisplayLineDto>? DisplayLines(
+        List<PayslipDisplayLines.Line> lines, Func<List<PayslipDisplayLines.Line>, bool> reconciles) =>
+        reconciles(lines)
+            ? lines.Select(l => new PayslipDisplayLineDto { Label = l.Label, Amount = l.Amount }).ToList()
+            : null;
 }

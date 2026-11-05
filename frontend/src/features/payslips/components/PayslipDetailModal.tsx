@@ -4,6 +4,7 @@ import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { useBodyScrollLock } from "@/shared/lib/use-body-scroll-lock";
 import { SkeletonPanel } from "@/shared/components/Skeleton";
 import { rmWithUnit } from "@/features/payroll/lib/payroll-format";
+import type { PayslipOvertimeRow } from "@/features/payroll/api";
 import { getMyPayslip, type PayslipSummary } from "../api";
 
 // The full breakdown behind one payslip.
@@ -71,14 +72,31 @@ export function PayslipDetailModal({
                 <Row label="Prorated pay" value={payslip.proratedPay} />
               ) : null}
               {payslip.otPay > 0 ? <Row label="Overtime" value={payslip.otPay} /> : null}
-              {payslip.totalAllowances > 0 ? (
-                <Row label="Allowances" value={payslip.totalAllowances} />
-              ) : null}
-              {payslip.totalReimbursements > 0 ? (
-                <Row label="Reimbursements" value={payslip.totalReimbursements} />
-              ) : null}
+              {/* Each allowance / claim by its own name; the plain totals only
+                  when the lines don't add up (an imported payslip). */}
+              {payslip.earningLines ? (
+                payslip.earningLines.map((line, i) => (
+                  <Row
+                    key={`${line.label}-${i}`}
+                    label={line.label}
+                    value={Math.abs(line.amount)}
+                    negative={line.amount < 0}
+                  />
+                ))
+              ) : (
+                <>
+                  {payslip.totalAllowances > 0 ? (
+                    <Row label="Allowances" value={payslip.totalAllowances} />
+                  ) : null}
+                  {payslip.totalReimbursements > 0 ? (
+                    <Row label="Reimbursements" value={payslip.totalReimbursements} />
+                  ) : null}
+                </>
+              )}
               <Row label="Gross pay" value={payslip.grossPay} strong />
             </Group>
+
+            {payslip.overtimeRows.length > 0 ? <OvertimeTable rows={payslip.overtimeRows} /> : null}
 
             <Group title="Deductions">
               <Row label="EPF" value={payslip.epfEmployee} />
@@ -93,11 +111,21 @@ export function PayslipDetailModal({
                 label="PCB (tax)"
                 value={payslip.pcb - payslip.pcbBorneByEmployer + payslip.voluntaryPcb}
               />
-              {payslip.cp38 > 0 ? <Row label="CP38" value={payslip.cp38} /> : null}
-              {payslip.zakat > 0 ? <Row label="Zakat" value={payslip.zakat} /> : null}
-              {payslip.totalDeductions > 0 ? (
-                <Row label="Other deductions" value={payslip.totalDeductions} />
-              ) : null}
+              {/* Loan repayment, zakat, CP38, one-offs — each by the name it
+                  was given. */}
+              {payslip.deductionLines ? (
+                payslip.deductionLines.map((line, i) => (
+                  <Row key={`${line.label}-${i}`} label={line.label} value={line.amount} />
+                ))
+              ) : (
+                <>
+                  {payslip.cp38 > 0 ? <Row label="CP38" value={payslip.cp38} /> : null}
+                  {payslip.zakat > 0 ? <Row label="Zakat" value={payslip.zakat} /> : null}
+                  {payslip.totalDeductions > 0 ? (
+                    <Row label="Other deductions" value={payslip.totalDeductions} />
+                  ) : null}
+                </>
+              )}
             </Group>
 
             {payslip.pcbBorneByEmployer > 0 ? (
@@ -106,9 +134,19 @@ export function PayslipDetailModal({
               </Group>
             ) : null}
 
-            {/* The named lines behind those totals — "Allowances RM 500" is not
-                an answer to "what was the RM 500 for". */}
-            {payslip.lineItems.length > 0 ? (
+            {/* Earnings and deductions above are already listed by name, so
+                only what isn't in pay is left to show. */}
+            {payslip.earningLines && payslip.deductionLines ? (
+              payslip.notInPayLines.length > 0 ? (
+                <Group title="Not paid in cash">
+                  {payslip.notInPayLines.map((line, i) => (
+                    <Row key={`${line.label}-${i}`} label={line.label} value={line.amount} />
+                  ))}
+                </Group>
+              ) : null
+            ) : /* The named lines behind those totals — "Allowances RM 500" is
+                   not an answer to "what was the RM 500 for". */
+            payslip.lineItems.length > 0 ? (
               <Group title="Line items">
                 {payslip.lineItems.map((line) => (
                   <Row
@@ -125,6 +163,46 @@ export function PayslipDetailModal({
       </section>
     </div>,
     document.body,
+  );
+}
+
+// What the one "Overtime" figure in Earnings is made of: one row per
+// multiplier, with the pay for an hour at it.
+function OvertimeTable({ rows }: { rows: PayslipOvertimeRow[] }) {
+  return (
+    <section className="mt-5">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        Overtime
+      </p>
+      <div className="mt-2 overflow-x-auto rounded-[18px] border border-border/60">
+        <table className="w-full text-sm tabular-nums">
+          <thead>
+            <tr className="border-b border-border/50 text-xs text-muted-foreground">
+              <th className="px-4 py-2 text-left font-medium">Type</th>
+              <th className="px-4 py-2 text-right font-medium">Rate</th>
+              <th className="px-4 py-2 text-right font-medium">Hrs</th>
+              <th className="px-4 py-2 text-right font-medium">Amount</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border/50">
+            {rows.map((row) => (
+              <tr key={row.multiplier}>
+                <td className="px-4 py-2.5 text-muted-foreground">{row.label}</td>
+                <td className="px-4 py-2.5 text-right font-semibold text-foreground">
+                  {row.rate.toFixed(4)}
+                </td>
+                <td className="px-4 py-2.5 text-right font-semibold text-foreground">
+                  {row.hours.toFixed(2)}
+                </td>
+                <td className="px-4 py-2.5 text-right font-semibold text-foreground">
+                  {rmWithUnit(row.amount)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 

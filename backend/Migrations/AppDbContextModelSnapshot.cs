@@ -3259,6 +3259,10 @@ namespace AltomateHR.Api.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
+                    b.Property<decimal?>("OtHourlyRate")
+                        .HasPrecision(14, 6)
+                        .HasColumnType("decimal(14,6)");
+
                     b.Property<decimal>("OtNormalHours")
                         .HasPrecision(8, 2)
                         .HasColumnType("decimal(8,2)");
@@ -3270,6 +3274,18 @@ namespace AltomateHR.Api.Migrations
                     b.Property<decimal>("OtPublicHours")
                         .HasPrecision(8, 2)
                         .HasColumnType("decimal(8,2)");
+
+                    b.Property<decimal?>("OtRateNormal")
+                        .HasPrecision(4, 2)
+                        .HasColumnType("decimal(4,2)");
+
+                    b.Property<decimal?>("OtRatePublicHoliday")
+                        .HasPrecision(4, 2)
+                        .HasColumnType("decimal(4,2)");
+
+                    b.Property<decimal?>("OtRateRest")
+                        .HasPrecision(4, 2)
+                        .HasColumnType("decimal(4,2)");
 
                     b.Property<decimal>("OtRestHours")
                         .HasPrecision(8, 2)

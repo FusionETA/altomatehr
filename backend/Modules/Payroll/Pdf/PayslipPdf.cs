@@ -155,7 +155,15 @@ public static class PayslipPdf
                     if (p.PcbBorneByEmployer == 0m || employeePcb != 0m)
                         PayrollPdfShared.AmountRow(deductions, "PCB / MTD", employeePcb);
 
-                    if (p.Cp38 > 0m)
+                    // One row per deduction, by the name it was given — a
+                    // loan repayment, zakat, CP38, a one-off — rather than a
+                    // lump called "Other deductions". Only when the rows add
+                    // up to what was deducted; otherwise (an imported payslip
+                    // with no line items) the old summary rows.
+                    var deductionLines = PayslipDisplayLines.Deductions(model.LineItems);
+                    var itemised = PayslipDisplayLines.DeductionsReconcile(p, deductionLines);
+
+                    if (!itemised && p.Cp38 > 0m)
                         PayrollPdfShared.AmountRow(deductions, "CP38 arrears", p.Cp38);
 
                     PayrollPdfShared.AmountRow(deductions, "Employee SOCSO", p.SocsoEmployee);
@@ -165,17 +173,32 @@ public static class PayslipPdf
                         PayrollPdfShared.AmountRow(
                             deductions, "SKBBK (LINDUNG 24 Jam)", p.SkbbkEmployee);
 
-                    if (p.Zakat > 0m) PayrollPdfShared.AmountRow(deductions, "Zakat", p.Zakat);
+                    if (itemised)
+                    {
+                        foreach (var line in deductionLines)
+                            PayrollPdfShared.AmountRow(deductions, line.Label, line.Amount);
+                    }
+                    else
+                    {
+                        if (p.Zakat > 0m) PayrollPdfShared.AmountRow(deductions, "Zakat", p.Zakat);
 
-                    // Zakat, CP38 and Additional PCB are inside TotalDeductions
-                    // and already shown above, so the catch-all nets them off
-                    // rather than counting them twice.
-                    var other = p.TotalDeductions - p.Zakat - p.Cp38 - p.VoluntaryPcb;
-                    if (other > 0m) PayrollPdfShared.AmountRow(deductions, "Other deductions", other);
+                        // Zakat, CP38 and Additional PCB are inside TotalDeductions
+                        // and already shown above, so the catch-all nets them off
+                        // rather than counting them twice.
+                        var other = p.TotalDeductions - p.Zakat - p.Cp38 - p.VoluntaryPcb;
+                        if (other > 0m) PayrollPdfShared.AmountRow(deductions, "Other deductions", other);
+                    }
 
                     PayrollPdfShared.TotalRow(deductions, "Total deductions", TotalDeductions(p));
                 });
             });
+
+            // ---- Overtime ----
+            // What the one "Overtime" figure in Earnings is made of. Absent on
+            // a payslip from before the rates were kept.
+            var overtime = PayslipDisplayLines.Overtime(p);
+            if (overtime.Count > 0)
+                col.Item().PaddingTop(12).Element(c => OvertimeTable(c, overtime));
 
             // ---- Net pay ----
             col.Item().PaddingTop(12).Background(PayrollPdfShared.PanelBg)
@@ -314,51 +337,62 @@ public static class PayslipPdf
             .Text(PayrollPdfShared.Rm(employee + employer)).FontSize(8.5f).SemiBold();
     }
 
-    // The cash lines making up the Earnings column: reimbursements and
-    // allowances as positives, gross-reducing deductions (unpaid leave, an
-    // advance) as negatives. Benefits in kind are excluded — they never enter
-    // gross and have their own section lower down.
-    // Public so the rule can be asserted directly, the way TotalDeductions is
-    // — a PDF's bytes are a poor place to test what it decided to print.
-    public static List<(string Label, decimal Amount)> BuildEarningLines(PayslipPdfModel model)
-    {
-        var lines = new List<(string Label, decimal Amount)>();
+    // The cash lines making up the Earnings column — see
+    // PayslipDisplayLines.Earnings, which the employee's on-screen payslip
+    // shares. Public so the rule can be asserted directly, the way
+    // TotalDeductions is — a PDF's bytes are a poor place to test what it
+    // decided to print.
+    public static List<(string Label, decimal Amount)> BuildEarningLines(PayslipPdfModel model) =>
+        PayslipDisplayLines.Earnings(model.LineItems).Select(l => (l.Label, l.Amount)).ToList();
 
-        foreach (var li in model.LineItems)
-        {
-            var meta = li.Category is null
-                ? null
-                : PayrollAdjustmentCategories.All.GetValueOrDefault(li.Category);
-
-            switch (li.Kind)
-            {
-                case PayslipLineKind.REIMBURSEMENT:
-                    lines.Add((li.Label, li.Amount));
-                    break;
-
-                case PayslipLineKind.ALLOWANCE when meta?.NonCash != true:
-                    lines.Add((li.Label, li.Amount));
-                    break;
-
-                case PayslipLineKind.DEDUCTION when meta?.ReducesGross == true:
-                    lines.Add((li.Label, -li.Amount));
-                    break;
-            }
-        }
-
-        return lines;
-    }
-
-    // Itemise only when the rows account for gross exactly. GrossPay is the
-    // calculator's own figure, not a re-sum of these rows, so a payslip whose
-    // line items are incomplete would otherwise print a column that visibly
-    // fails to add up to the total printed beneath it.
+    // Itemise only when the rows account for gross exactly.
     public static bool EarningsReconcile(
-        Entities.Payslip p, List<(string Label, decimal Amount)> lines)
+        Entities.Payslip p, List<(string Label, decimal Amount)> lines) =>
+        PayslipDisplayLines.EarningsReconcile(
+            p, lines.Select(l => new PayslipDisplayLines.Line(l.Label, l.Amount)));
+
+    // The Overtime table: multiplier, rate per hour, hours, amount — the
+    // breakdown of the one "Overtime" figure in Earnings.
+    private static void OvertimeTable(
+        IContainer container, IReadOnlyList<PayslipDisplayLines.OvertimeRow> rows)
     {
-        var displayed = p.ProratedPay + p.OtPay + lines.Sum(l => l.Amount);
-        return Math.Abs(displayed - p.GrossPay) < 0.005m;
+        container.Column(section =>
+        {
+            PayrollPdfShared.SectionLabel(section, "Overtime");
+            section.Item().Table(table =>
+            {
+                table.ColumnsDefinition(c =>
+                {
+                    c.RelativeColumn();
+                    c.ConstantColumn(80);
+                    c.ConstantColumn(80);
+                    c.ConstantColumn(80);
+                });
+
+                table.Header(h =>
+                {
+                    HeaderCell(h, "");
+                    HeaderCell(h, "Rate", right: true);
+                    HeaderCell(h, "Hrs", right: true);
+                    HeaderCell(h, "Amount", right: true);
+                });
+
+                foreach (var row in rows)
+                {
+                    table.Cell().PaddingVertical(1.5f).Text(row.Label).FontSize(8.5f);
+                    table.Cell().PaddingVertical(1.5f).AlignRight()
+                        .Text(row.Rate.ToString("N4", PdfCulture)).FontSize(8.5f);
+                    table.Cell().PaddingVertical(1.5f).AlignRight()
+                        .Text(row.Hours.ToString("N2", PdfCulture)).FontSize(8.5f);
+                    table.Cell().PaddingVertical(1.5f).AlignRight()
+                        .Text(PayrollPdfShared.Rm(row.Amount)).FontSize(8.5f);
+                }
+            });
+        });
     }
+
+    private static readonly System.Globalization.CultureInfo PdfCulture =
+        System.Globalization.CultureInfo.InvariantCulture;
 }
 
 // Everything one payslip needs, assembled by the service so the renderer

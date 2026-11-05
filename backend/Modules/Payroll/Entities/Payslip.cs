@@ -112,6 +112,16 @@ public class Payslip : ITenantScoped
     // OtPay. Empty array, never null.
     public string OtCustomJson { get; set; } = "[]";
 
+    // What the overtime above was priced at, snapshotted for the payslip's
+    // Overtime table (PayslipOvertimeBreakdown): the hourly rate the
+    // multipliers applied to — unrounded, as the calculation used it — and
+    // the three built-in multipliers. Null on payslips generated before these
+    // were kept (and on imported ones); those show overtime as one total.
+    [Precision(14, 6)] public decimal? OtHourlyRate { get; set; }
+    [Precision(4, 2)] public decimal? OtRateNormal { get; set; }
+    [Precision(4, 2)] public decimal? OtRateRest { get; set; }
+    [Precision(4, 2)] public decimal? OtRatePublicHoliday { get; set; }
+
     [Precision(12, 2)] public decimal OtPay { get; set; }
 
     [Precision(12, 2)] public decimal TotalAllowances { get; set; }

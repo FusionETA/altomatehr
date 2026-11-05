@@ -1910,6 +1910,12 @@ public class PayrollRunService : IPayrollRunService
             OtRestHours = r.OtRestHours,
             OtPublicHours = r.OtPublicHours,
             OtCustomJson = PayrollRunAdjustments.Serialize(r.OtCustom),
+            // Rounded to the column's 6 places: plenty for a rate shown to 4,
+            // and the money is already in OtPay.
+            OtHourlyRate = Math.Round(r.OtHourlyRate, 6, MidpointRounding.AwayFromZero),
+            OtRateNormal = r.OtRateNormal,
+            OtRateRest = r.OtRateRest,
+            OtRatePublicHoliday = r.OtRatePublicHoliday,
             OtPay = r.OtPay,
             TotalAllowances = r.TotalAllowances,
             TotalReimbursements = r.TotalReimbursements,
