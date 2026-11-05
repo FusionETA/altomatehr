@@ -1172,7 +1172,13 @@ const evan = {
   },
   "payslip-breakdown": async (page) => {
     await go(page, "payslips");
+    // Newest payslip first: open its breakdown and scroll to the Overtime table.
+    await clickText(page, "View breakdown");
+    await settle(page, 1500);
+    await scrollTo(page, "Overtime", 300, true).catch(() => {});
     await shoot(page, "employee", "payslip-breakdown");
+    await scrollTo(page, "Deductions", 40, true).catch(() => {});
+    await shoot(page, "employee", "payslip-breakdown-deductions");
   },
   "leave-request-cancel": async (page) => {
     await go(page, "leave/leave-mine");

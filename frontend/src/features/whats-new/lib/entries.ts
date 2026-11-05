@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 35e5978
+// whats-new-covered-up-to: 6c7e1df
 
 // A line is for everyone, or — wrapped in admins(…) — for admins and owners
 // only. Employees and supervisors never see an admins line, so it doesn't
@@ -28,6 +28,21 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-11-05",
+    new: [
+      "Payslips from payroll runs and re-runs now have an Overtime table, with the hours and pay for each rate. Older payslips keep one Overtime line.",
+    ],
+    improved: [
+      "Payslips list each allowance, claim and deduction by its own name, such as Loan repayment, Zakat or CP38, instead of one \"Other deductions\" total.",
+      "In the employee portal, benefits in kind and TP1 reliefs are now listed under Not paid in cash on the payslip.",
+    ],
+    fixed: [
+      "On payslip PDFs from imported months, Total deductions now includes zakat and CP38, so the figures add up to net pay.",
+      "Zakat you paid yourself (claimed on TP1) no longer shows as a deduction from your pay on payslips. In the employee portal it's listed under Not paid in cash instead. Net pay is unchanged.",
+      admins("When you transfer an employee or add them to another company, their nickname now comes with them, so they can still be found by it."),
+    ],
+  },
   {
     date: "2026-11-03",
     new: [
