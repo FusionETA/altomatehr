@@ -101,8 +101,12 @@ public static class PayslipMapper
         }).ToList(),
         EarningLines = DisplayLines(
             PayslipDisplayLines.Earnings(lineItems), l => PayslipDisplayLines.EarningsReconcile(p, l)),
+        // Plus an imported payslip's zakat / CP38, which no line item stands for.
         DeductionLines = DisplayLines(
-            PayslipDisplayLines.Deductions(lineItems), l => PayslipDisplayLines.DeductionsReconcile(p, l)),
+            PayslipDisplayLines.Deductions(lineItems), l => PayslipDisplayLines.DeductionsReconcile(p, l))
+            ?.Concat(PayslipDisplayLines.OutsideTotalDeductions(p, lineItems)
+                .Select(l => new PayslipDisplayLineDto { Label = l.Label, Amount = l.Amount }))
+            .ToList(),
         NotInPayLines = PayslipDisplayLines.NotInPay(lineItems)
             .Select(l => new PayslipDisplayLineDto { Label = l.Label, Amount = l.Amount })
             .ToList(),

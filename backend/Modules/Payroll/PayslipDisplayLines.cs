@@ -98,6 +98,30 @@ public static class PayslipDisplayLines
     public static bool DeductionsReconcile(Payslip p, IEnumerable<Line> lines) =>
         Math.Abs(lines.Sum(l => l.Amount) - (p.TotalDeductions - p.VoluntaryPcb)) < 0.005m;
 
+    // Zakat and CP38 taken from pay that no line item stands for — and so
+    // OUTSIDE TotalDeductions. Only an imported payslip has these:
+    // YtdImportService keeps the import's zakat and CP38 columns in
+    // Payslip.Zakat / Cp38 alone, and its net subtracts them separately. A
+    // computed payslip always has the deduct_zakat / deduct_cp38 line behind
+    // the figure (inside TotalDeductions), so this is empty for it.
+    //
+    // Keyed on "no line of that kind at all" rather than a difference, so
+    // per-line rounding can never conjure a one-sen Zakat row.
+    public static List<Line> OutsideTotalDeductions(Payslip p, IEnumerable<PayslipLineItem> lineItems)
+    {
+        var deductionMeta = lineItems
+            .Where(li => li.Kind == PayslipLineKind.DEDUCTION)
+            .Select(li => PayrollAdjustmentCategories.Find(li.Category))
+            .ToList();
+
+        var lines = new List<Line>();
+        if (p.Cp38 > 0m && !deductionMeta.Any(m => m is { AddsToCp38Field: true }))
+            lines.Add(new Line("CP38 arrears", p.Cp38));
+        if (p.Zakat > 0m && !deductionMeta.Any(m => m is { OffsetsPcb: true }))
+            lines.Add(new Line("Zakat", p.Zakat));
+        return lines;
+    }
+
     // The lines that are on the payslip but not in pay: benefits in kind
     // (taxed, never paid in cash) and cash-neutral deductions (TP1 reliefs,
     // zakat paid outside payroll — they lower PCB, take nothing from pay).

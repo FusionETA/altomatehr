@@ -121,11 +121,56 @@ public class PayslipDisplayLinesTests
     }
 
     [Fact]
-    public void Deductions_AnImportedPayslipWithNoLines_FallsBackToTheTotal()
+    public void Deductions_TotalsWithNoLinesBehindThem_FallBackToTheTotal()
     {
         var p = new Payslip { TotalDeductions = 250m };
 
         Assert.False(PayslipDisplayLines.DeductionsReconcile(p, PayslipDisplayLines.Deductions([])));
+    }
+
+    // Shaped as YtdImportService writes it: one line per category column,
+    // TotalDeductions = those lines, and the import's zakat and CP38 columns in
+    // Payslip.Zakat / Cp38 ALONE — no line item, outside TotalDeductions.
+    [Fact]
+    public void AnImportedPayslip_StillShowsItsZakatAndCp38()
+    {
+        var lineItems = new[] { Line(PayslipLineKind.DEDUCTION, "Loan repayment", 300m, C.DeductLoanRepayment) };
+        var p = new Payslip { TotalDeductions = 300m, Cp38 = 200m, Zakat = 80m };
+
+        var lines = PayslipDisplayLines.Deductions(lineItems);
+        var outside = PayslipDisplayLines.OutsideTotalDeductions(p, lineItems);
+
+        Assert.True(PayslipDisplayLines.DeductionsReconcile(p, lines));
+        Assert.Equal(
+            ["Loan repayment", "CP38 arrears", "Zakat"],
+            lines.Concat(outside).Select(l => l.Label));
+        // Everything the import's net took off besides statutory and PCB.
+        Assert.Equal(580m, lines.Concat(outside).Sum(l => l.Amount));
+    }
+
+    [Fact]
+    public void AnImportedPayslip_WithOnlyZakatAndCp38_StillShowsThem()
+    {
+        var p = new Payslip { TotalDeductions = 0m, Cp38 = 200m, Zakat = 80m };
+
+        Assert.Equal(
+            ["CP38 arrears", "Zakat"],
+            PayslipDisplayLines.OutsideTotalDeductions(p, []).Select(l => l.Label));
+    }
+
+    // A computed payslip's zakat and CP38 are line items inside
+    // TotalDeductions — listing them again would count them twice.
+    [Fact]
+    public void AComputedPayslip_HasNothingOutsideTheTotal()
+    {
+        var lineItems = new[]
+        {
+            Line(PayslipLineKind.DEDUCTION, "Zakat (MAIWP)", 50m, C.DeductZakat),
+            Line(PayslipLineKind.DEDUCTION, "CP38 Arrears (LHDN Order)", 120m, C.DeductCp38),
+        };
+        var p = new Payslip { TotalDeductions = 170m, Zakat = 50m, Cp38 = 120m };
+
+        Assert.Empty(PayslipDisplayLines.OutsideTotalDeductions(p, lineItems));
     }
 
     [Fact]

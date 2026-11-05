@@ -158,10 +158,14 @@ public static class PayslipPdf
                     // One row per deduction, by the name it was given — a
                     // loan repayment, zakat, CP38, a one-off — rather than a
                     // lump called "Other deductions". Only when the rows add
-                    // up to what was deducted; otherwise (an imported payslip
-                    // with no line items) the old summary rows.
+                    // up to what was deducted; otherwise the old summary rows.
+                    // An imported payslip's zakat and CP38 have no line item
+                    // and sit outside TotalDeductions, so they are rows of
+                    // their own — and added to the total, or its columns
+                    // wouldn't reach net pay.
                     var deductionLines = PayslipDisplayLines.Deductions(model.LineItems);
                     var itemised = PayslipDisplayLines.DeductionsReconcile(p, deductionLines);
+                    var outsideTotal = PayslipDisplayLines.OutsideTotalDeductions(p, model.LineItems);
 
                     if (!itemised && p.Cp38 > 0m)
                         PayrollPdfShared.AmountRow(deductions, "CP38 arrears", p.Cp38);
@@ -175,7 +179,7 @@ public static class PayslipPdf
 
                     if (itemised)
                     {
-                        foreach (var line in deductionLines)
+                        foreach (var line in deductionLines.Concat(outsideTotal))
                             PayrollPdfShared.AmountRow(deductions, line.Label, line.Amount);
                     }
                     else
@@ -189,7 +193,8 @@ public static class PayslipPdf
                         if (other > 0m) PayrollPdfShared.AmountRow(deductions, "Other deductions", other);
                     }
 
-                    PayrollPdfShared.TotalRow(deductions, "Total deductions", TotalDeductions(p));
+                    PayrollPdfShared.TotalRow(deductions, "Total deductions",
+                        TotalDeductions(p) + outsideTotal.Sum(l => l.Amount));
                 });
             });
 
