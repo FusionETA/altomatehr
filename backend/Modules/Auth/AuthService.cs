@@ -64,19 +64,47 @@ public class AuthService : IAuthService
 
     public async Task<User?> VerifyPasswordAsync(string email, string password, string? clientIp = null)
     {
-        // Locked out: refused before the password is looked at, right or not —
-        // otherwise the lock would still answer "that one was right". The
-        // attempt counts as wrong from here until the password proves right.
         var now = DateTime.UtcNow;
-        var attempt = _guard?.Begin(email, clientIp, now);
-        if (attempt?.Block is { } block) throw new LoginBlockedException(block, now);
 
+        // Whose account first: the lock is on the account the email matched,
+        // so no other spelling the database treats as the same email (case,
+        // accents, invisible characters) gets a fresh count.
         var user = await _userRepo.GetByEmailAsync(email);
 
+        // Locked out: refused before the password is looked at, right or not —
+        // otherwise the lock would still answer "that one was right".
+        LoginAttempt? attempt = null;
+        if (_guard is not null)
+        {
+            attempt = _guard.Begin(
+                user is null ? LoginGuard.EmailKey(email) : LoginGuard.UserKey(user.Id), email, clientIp, now);
+            if (attempt.Block is { } block) throw new LoginBlockedException(block, now);
+        }
+
+        try
+        {
+            return await CheckPasswordAsync(user, email, password, clientIp, attempt);
+        }
+        finally
+        {
+            // Something threw before the password was judged: let the attempt
+            // go rather than leave it counted. A no-op once Fail or Succeed ran.
+            if (attempt is not null) _guard!.Abandon(attempt);
+        }
+    }
+
+    private async Task<User?> CheckPasswordAsync(
+        User? user, string email, string password, string? clientIp, LoginAttempt? attempt)
+    {
         // Verify against the stored hash — BCrypt (native) OR legacy scrypt (migrated
         // from the monolith). Exception-safe: a bad hash fails the login, never 500s.
         if (user is null || !PasswordHasher.Verify(password, user.PasswordHash))
         {
+            // Counted first, before anything below can throw. Counted for
+            // unknown emails too, so a lock says nothing about which addresses
+            // exist.
+            var outcome = attempt is null ? LoginFailureOutcome.Nothing : _guard!.Fail(attempt, DateTime.UtcNow);
+
             // Recorded against the org this account actually belongs to, since
             // there is no session yet to infer one from. An unknown email has no
             // org at all and is dropped — logging it would let anyone write rows
@@ -99,19 +127,13 @@ public class AuthService : IAuthService
                     ActorName: user.Email));
             }
 
-            // Counted for unknown emails too, so a lock says nothing about
-            // which addresses exist. The team's alert chat hears of each lock
-            // and block — not of every typo.
-            if (_guard is not null && attempt is not null)
+            // The team's alert chat hears of each lock and block — not of every typo.
+            if (_teamChat is not null)
             {
-                var outcome = _guard.Fail(attempt, DateTime.UtcNow);
-                if (_teamChat is not null)
-                {
-                    if (outcome.AccountLockedFor is { } locked)
-                        await _teamChat.AccountLockedAsync(email.Trim(), user?.Id, owner?.OrganizationId, locked, clientIp);
-                    if (outcome.IpBlockedFor is { } blocked && clientIp is not null)
-                        await _teamChat.IpBlockedAsync(clientIp, blocked, outcome.IpBlockedAgainToday, outcome.EmailsTriedFromIp);
-                }
+                if (outcome.AccountLockedFor is { } locked)
+                    await _teamChat.AccountLockedAsync(email.Trim(), user?.Id, owner?.OrganizationId, locked, clientIp);
+                if (outcome.IpBlockedFor is { } blocked && clientIp is not null)
+                    await _teamChat.IpBlockedAsync(clientIp, blocked, outcome.IpBlockedAgainToday, outcome.EmailsTriedFromIp);
             }
 
             return null;
@@ -404,7 +426,7 @@ public class AuthService : IAuthService
         user.PasswordHash = BC.HashPassword(newPassword);
         await _userRepo.UpdateAsync(user);
         // A new password ends any lock the old one's guessing caused.
-        _guard?.ClearAccount(user.Email);
+        _guard?.ClearAccount(LoginGuard.UserKey(user.Id));
 
         record.ConsumedAt = DateTime.UtcNow;
         await _otpRepo.UpdateAsync(record);

@@ -73,8 +73,10 @@ public class PartnerIdentityService : IPartnerIdentityService
     }
 
     // Whose wrong passwords these are, for the IP rule (LoginGuard):
-    //   • a master key (ABPay) passing the person's IP: that IP — a guesser
-    //     at ABPay's login is blocked as one at AltomateHR's would be;
+    //   • a master key (ABPay) passing the person's IP: that IP, kept apart
+    //     from AltomateHR's own sign-ins ("via-companion:") — the companion
+    //     only reports it, so a guesser who forges it can block nobody's
+    //     sign-in at AltomateHR itself, only their own tries at the companion;
     //   • a master key passing none (a companion not yet sending it): no IP
     //     rule, or every one of its users would share one block;
     //   • a company API key: its own bucket — anyone holding a key who sprays
@@ -83,7 +85,9 @@ public class PartnerIdentityService : IPartnerIdentityService
     {
         if (!caller.IsMaster) return $"apikey:{caller.OrganizationId}";
         var ip = clientIp?.Trim();
-        return !string.IsNullOrEmpty(ip) && System.Net.IPAddress.TryParse(ip, out _) ? ip : null;
+        return !string.IsNullOrEmpty(ip) && System.Net.IPAddress.TryParse(ip, out _)
+            ? $"via-companion:{Auth.LoginGuard.IpKey(ip)}"
+            : null;
     }
 
     public async Task<IReadOnlyList<PartnerOrganization>> AdminOrganizationsAsync(
