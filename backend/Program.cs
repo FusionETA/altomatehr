@@ -191,12 +191,16 @@ builder.Services.AddRateLimiter(options =>
             .ExecuteAsync(context.HttpContext);
     };
 
+    // A flood guard, not the brute-force defence: LoginGuard locks an account
+    // after 5 wrong passwords and blocks an IP after 10. This counts every
+    // attempt, right or wrong, per real client IP — an outlet's staff signing
+    // in on one wifi at 9am share it, so it is set well above a busy minute.
     options.AddPolicy("auth-login", httpContext =>
         RateLimitPartition.GetFixedWindowLimiter(
             partitionKey: GetClientPartitionKey(httpContext, "auth-login"),
             factory: _ => new FixedWindowRateLimiterOptions
             {
-                PermitLimit = 5,
+                PermitLimit = 20,
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
                 AutoReplenishment = true,
@@ -519,7 +523,7 @@ builder.Services.AddScoped<AltomateHR.Api.Modules.Organizations.IOrganizationSta
     AltomateHR.Api.Modules.Organizations.OrganizationStatus>();
 
 // Team chat: three Bitrix group chats — Action (what customers did), Alert
-// (sign-ins and things to look at) and Daily (the 08:00 summary). Quiet unless
+// (sign-ins and things to look at) and Daily (the 18:00 summary). Quiet unless
 // Bitrix:WebhookUrl (a secret) and a chat id are set; see TeamChatOptions.
 builder.Services.Configure<AltomateHR.Api.Modules.TeamChat.TeamChatOptions>(
     builder.Configuration.GetSection(AltomateHR.Api.Modules.TeamChat.TeamChatOptions.SectionName));
@@ -532,8 +536,8 @@ builder.Services.AddScoped<AltomateHR.Api.Modules.TeamChat.ITeamChatAlerts,
 builder.Services.AddHttpClient<AltomateHR.Api.Modules.TeamChat.IBitrixClient,
     AltomateHR.Api.Modules.TeamChat.BitrixClient>().RemoveAllLoggers();
 builder.Services.AddHostedService<AltomateHR.Api.Modules.TeamChat.Cron.TeamChatSenderBackgroundService>();
-builder.Services.AddSingleton<AltomateHR.Api.Modules.TeamChat.ISignInFailureTracker,
-    AltomateHR.Api.Modules.TeamChat.SignInFailureTracker>();
+// Account lockout and IP blocking on sign-in (in memory, one server).
+builder.Services.AddSingleton<AltomateHR.Api.Modules.Auth.ILoginGuard, AltomateHR.Api.Modules.Auth.LoginGuard>();
 builder.Services.AddScoped<AltomateHR.Api.Modules.TeamChat.ITeamChatActivityRepository,
     AltomateHR.Api.Modules.TeamChat.TeamChatActivityRepository>();
 builder.Services.AddScoped<AltomateHR.Api.Modules.TeamChat.ITeamChatDailySummaryService,
@@ -732,10 +736,13 @@ using (var scope = app.Services.CreateScope())
 
 app.Run();
 
+// Per real client, through nginx — not the connection, which is nginx itself
+// for everyone (that made each limit one bucket for the whole app).
 static string GetClientPartitionKey(HttpContext context, string policyName)
 {
-    var ip = context.Connection.RemoteIpAddress?.ToString();
-    return $"{policyName}:{ip ?? "unknown"}";
+    // An IPv6 client by its /64, as LoginGuard counts it — one client holds it whole.
+    var ip = AltomateHR.Api.Common.ClientIp.Of(context);
+    return $"{policyName}:{(ip is null ? "unknown" : AltomateHR.Api.Modules.Auth.LoginGuard.IpKey(ip))}";
 }
 
 public partial class Program { }

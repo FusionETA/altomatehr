@@ -77,16 +77,19 @@ public class TeamChatActivityTests
             new AttendanceRecord { OrganizationId = "org-a", EmployeeId = "u1", Date = Day, TimeIn = From.AddHours(1) },
             new AttendanceRecord { OrganizationId = "org-a", EmployeeId = "u2", Date = Day, TimeIn = From.AddHours(1) },
             new AttendanceRecord { OrganizationId = "org-a", EmployeeId = "u3", Date = Day },
-            new AttendanceRecord { OrganizationId = "org-a", EmployeeId = "u1", Date = Day.AddDays(-1), TimeIn = From.AddHours(-20) });
+            new AttendanceRecord { OrganizationId = "org-a", EmployeeId = "u1", Date = Day.AddDays(-1), TimeIn = From.AddHours(-20) },
+            // Clocked in during the window but filed on the next day's date
+            // (an evening shift) still counts — it's by the clock-in time.
+            new AttendanceRecord { OrganizationId = "org-a", EmployeeId = "u4", Date = Day.AddDays(1), TimeIn = To.AddMinutes(-30) });
         await db.SaveChangesAsync();
 
-        var rows = await new TeamChatActivityRepository(db).GetAsync(From, To, Day);
+        var rows = await new TeamChatActivityRepository(db).GetAsync(From, To);
 
         Assert.Equal(["Alpha", "Beta"], rows.Select(r => r.Company));
         var alpha = rows[0];
         Assert.Equal((3, 2), (alpha.SignIns, alpha.PeopleSignedIn));
         Assert.Equal((1, 1, 2), (alpha.LeaveApplied, alpha.LeaveApproved, alpha.LeaveWaiting));
-        Assert.Equal(2, alpha.PeopleClockedIn);
+        Assert.Equal(3, alpha.PeopleClockedIn);
         Assert.Equal(0, alpha.RunsApproved);
 
         var beta = rows[1];
@@ -96,13 +99,32 @@ public class TeamChatActivityTests
     }
 
     // As AuthService writes it: no session yet, so no actor — the user is the target.
+    // Deployed on a day the old 08:00 schedule already posted: its claim was
+    // made before this window ended, so the 18:00 summary still goes out.
+    [Fact]
+    public async Task AnEightAmClaim_DoesNotStopThatDaysSixPmSummary()
+    {
+        await using var db = Db();
+        var day = new DateOnly(2026, 11, 12);
+        db.TeamChatDailyPosts.Add(new AltomateHR.Api.Modules.TeamChat.Entities.TeamChatDailyPost
+        {
+            Day = day, PostedAt = new DateTime(2026, 11, 12, 0, 5, 0, DateTimeKind.Utc),   // 08:05 MYT
+        });
+        await db.SaveChangesAsync();
+        var repo = new TeamChatActivityRepository(db);
+        var windowEnd = new DateTime(2026, 11, 12, 10, 0, 0, DateTimeKind.Utc);
+
+        Assert.True(await repo.TryClaimDayAsync(day, windowEnd, windowEnd.AddMinutes(5)));
+        Assert.False(await repo.TryClaimDayAsync(day, windowEnd, windowEnd.AddMinutes(30)));
+    }
+
     private static AuditLog Login(string org, string user, DateTime at) => new()
     {
         OrganizationId = org, ActorUserId = null, TargetType = "User", TargetId = user,
         Action = AuditActions.AuthLogin, CreatedAt = at,
     };
 
-    // The summary is claimed per day, so a restart in the 08:00 hour (or a
+    // The summary is claimed per day, so a restart in the 18:00 hour (or a
     // second server) doesn't post it again.
     [Fact]
     public async Task TheSummary_IsPostedOncePerDay()
@@ -119,9 +141,11 @@ public class TeamChatActivityTests
             }),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<TeamChatDailySummaryService>.Instance);
 
-        Assert.Equal(1, await service.PostAsync(new DateOnly(2026, 11, 12)));
-        Assert.Equal(0, await service.PostAsync(new DateOnly(2026, 11, 12)));
-        Assert.Equal(1, await service.PostAsync(new DateOnly(2026, 11, 13)));
+        // 18:05 MYT on 12 and 13 Nov.
+        var sixPm12 = new DateTime(2026, 11, 12, 10, 5, 0, DateTimeKind.Utc);
+        Assert.Equal(1, await service.PostAsync(new DateOnly(2026, 11, 12), sixPm12));
+        Assert.Equal(0, await service.PostAsync(new DateOnly(2026, 11, 12), sixPm12.AddMinutes(20)));
+        Assert.Equal(1, await service.PostAsync(new DateOnly(2026, 11, 13), sixPm12.AddDays(1)));
 
         Assert.Equal(2, queue.Reader.Count);
         Assert.True(queue.Reader.TryRead(out var first));

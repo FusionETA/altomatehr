@@ -12,7 +12,7 @@ public enum TeamChatChannel
     // failing, payroll runs deleted or reverted.
     Alert,
 
-    // The 08:00 summary of yesterday, company by company.
+    // The 18:00 summary of the past 24 hours, company by company.
     Daily,
 }
 

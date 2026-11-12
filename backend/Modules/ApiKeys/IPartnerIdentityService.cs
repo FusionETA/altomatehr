@@ -17,7 +17,8 @@ public interface IPartnerIdentityService
 
     // Null → wrong password, unknown email, or not an admin of what the
     // caller may ask about (one answer, so nobody learns which emails exist).
-    Task<PartnerIdentity?> VerifyAsync(PartnerCaller caller, string email, string password);
+    // clientIp: the person's IP as the companion saw it (master key only).
+    Task<PartnerIdentity?> VerifyAsync(PartnerCaller caller, string email, string password, string? clientIp = null);
 
     // The companies a person administers, by user id or email. Empty when
     // they administer none the caller may ask about.

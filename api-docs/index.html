@@ -25,7 +25,7 @@
   Bookmark: the pages that exist are correct as of this commit on main. The
   next update re-checks every controller/DTO changed after it — from any
   branch — then moves it forward.
-  api-docs-covered-up-to: fdcc89a
+  api-docs-covered-up-to: 48b13c8
 -->
 <div class="layout">
   <nav class="sidebar" aria-label="Documentation">
@@ -42,6 +42,7 @@
       <li><a href="index.html#errors">Errors</a></li>
       <li><a href="index.html#conventions">Conventions</a></li>
       <li><a href="index.html#whoami">Check a key</a></li>
+      <li><a href="index.html#verify">Verify a password</a></li>
     </ul>
 
     <h4>Endpoints</h4>
@@ -214,7 +215,9 @@
       <li><strong>Rate limits</strong>: none on the data endpoints today. <a href="#whoami"><code>GET /whoami</code></a>
         is capped at 60 requests a minute per address and answers <code>429</code> above it, with a
         <code>Retry-After</code> header and a problem-details body that has no <code>message</code>
-        field. Keep calls sequential for writes to the same payroll run.</li>
+        field. <a href="#verify"><code>POST /auth/verify</code></a> is capped at 20 requests a minute
+        per address, and also answers <code>429</code> when an account is locked or an IP is
+        blocked for repeated wrong passwords. Keep calls sequential for writes to the same payroll run.</li>
     </ul>
     </section>
 
@@ -264,6 +267,84 @@
         it — the endpoints it is for are not part of the company API.
       </p>
       <p><code>429</code> when called more than 60 times a minute from one address.</p>
+    </section>
+    </section>
+
+    <section class="section" id="verify">
+      <h2>Verify a person's password</h2>
+    <section class="endpoint">
+      <div class="endpoint-head">
+        <span class="method post">POST</span>
+        <span class="path">/auth/verify</span>
+        <span class="tag">No scope needed</span>
+      </div>
+      <p>
+        Checks an email and password so your app can sign a person in before it starts its own
+        session. Only the password is checked: no AltomateHR session, refresh token or login
+        entry is created. Admins and owners only.
+      </p>
+      <p>
+        Send a company key (<code>wp_live_</code>), which answers only for that company, or the
+        platform master key (<code>wp_master_</code>) held by first-party companion apps, which
+        answers across the companies the person administers.
+      </p>
+      <h3>Request body</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>email</code></td><td>string</td><td>yes</td><td>The person's email.</td></tr>
+            <tr><td><code>password</code></td><td>string</td><td>yes</td><td>The person's password.</td></tr>
+            <tr><td><code>clientIp</code></td><td>string</td><td>no</td><td>The person's own IP address as your app saw it (max 64 characters, IPv4 or IPv6). Used only when you call with the master key; a company key ignores it. A value that isn't an IP address is ignored.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>Response <code>200</code></h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>id</code></td><td>string</td><td>The person's user id.</td></tr>
+            <tr><td><code>name</code></td><td>string</td><td>Their name.</td></tr>
+            <tr><td><code>email</code></td><td>string</td><td>Their email.</td></tr>
+            <tr><td><code>role</code></td><td>string</td><td>Their role in the primary company.</td></tr>
+            <tr><td><code>organizationId</code>, <code>organizationName</code></td><td>string</td><td>The primary company.</td></tr>
+            <tr><td><code>organizations</code></td><td>object[]</td><td>The companies they administer that you may ask about: <code>id</code>, <code>organizationId</code>, <code>name</code>, <code>role</code>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>Errors</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
+          <tbody>
+            <tr><td><code>400</code></td><td>A field is missing or too long</td><td><code>{ "errors": { … } }</code></td></tr>
+            <tr><td><code>401</code></td><td>Unknown or revoked key</td><td><code>{ "message": "Invalid or revoked API key." }</code></td></tr>
+            <tr><td><code>401</code></td><td>Wrong password, unknown email, not an admin, or an admin of a company you may not ask about. One answer for all four, on purpose.</td><td><code>{ "message": "Invalid credentials for this organization." }</code></td></tr>
+            <tr><td><code>429</code></td><td>The account is locked or the IP is blocked (see below)</td><td><code>{ "message": "…" }</code> and a <code>Retry-After</code> header in seconds</td></tr>
+            <tr><td><code>429</code></td><td>More than 20 requests a minute from one address</td><td>problem-details body with no <code>message</code> field, and a <code>Retry-After</code> header</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout warn">
+        <strong>Lockouts.</strong> After 5 wrong passwords in a row for one email within 15
+        minutes, that account is locked for 15 minutes. While it is locked every attempt gets
+        <code>429</code>, even with the right password. A password reset ends the lock. After
+        10 wrong passwords within 15 minutes from one IP, that IP is blocked for 15 minutes, or
+        for 1 hour if it was already blocked earlier the same day. Unknown emails are counted
+        too, so a <code>429</code> never tells you whether an email exists.
+        Which IP is counted depends on the key: with the master key, the <code>clientIp</code>
+        you send, counted apart from sign-ins at AltomateHR itself (send none and no IP rule
+        applies); while several attempts for one account are still being checked, a further one
+        gets <code>429</code> with a "try again in a moment" message. With a company key, one shared bucket for
+        that key, so one person guessing passwords through your app can lock your key's
+        verifications for 15 minutes. Pass the person's real IP with a master key where you can,
+        and stop retrying on <code>429</code>: wait for <code>Retry-After</code>.
+      </div>
+<pre><code>curl -X POST https://&lt;api-host&gt;/auth/verify \
+  -H "Authorization: Bearer wp_master_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{ "email": "jane@example.com", "password": "...", "clientIp": "203.0.113.7" }'</code></pre>
     </section>
     </section>
 

@@ -36,9 +36,12 @@ public interface ITeamChatAlerts
     // via: how they signed in, e.g. "password" or "Altomate SSO".
     Task SignedInAsync(string userId, string role, string organizationId, string via);
 
-    // Said once, when an account reaches SignInFailureTracker.Threshold
-    // failures inside its window — not on every wrong password.
-    Task SignInFailedAsync(string userId, string email, string organizationId);
+    // LoginGuard locked an account (email as typed; user and company when it
+    // is a real account) or blocked an IP — said once per lock or block.
+    Task AccountLockedAsync(string email, string? userId, string? organizationId, TimeSpan duration, string? ip);
+
+    // againToday: its second (or later) block today, so the longer one.
+    Task IpBlockedAsync(string ip, TimeSpan duration, bool againToday, IReadOnlyList<string> emailsTried);
 
     // portal: "KWSP", "PERKESO", "LHDN" and so on.
     Task PortalPasswordViewedAsync(string organizationId, string portal);

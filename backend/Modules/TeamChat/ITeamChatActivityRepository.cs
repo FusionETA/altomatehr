@@ -1,6 +1,6 @@
 namespace AltomateHR.Api.Modules.TeamChat;
 
-// One company's day, for the 08:00 summary in the daily chat. The "Waiting"
+// One company's day, for the 18:00 summary in the daily chat. The "Waiting"
 // counts are as of now, not of the day.
 public sealed record CompanyActivity(
     string OrganizationId,
@@ -26,12 +26,13 @@ public sealed record CompanyActivity(
 // signed-in user, so no tenant filter applies.
 public interface ITeamChatActivityRepository
 {
-    // Active (not deactivated) companies only, whether or not anything happened.
-    // fromUtc/toUtc bound the day; localDay is its date as attendance stores it
-    // (UTC midnight of the Malaysian date).
-    Task<IReadOnlyList<CompanyActivity>> GetAsync(DateTime fromUtc, DateTime toUtc, DateTime localDay);
+    // Active (not deactivated) companies only, whether or not anything happened,
+    // for what happened in [fromUtc, toUtc).
+    Task<IReadOnlyList<CompanyActivity>> GetAsync(DateTime fromUtc, DateTime toUtc);
 
-    // Marks `day` as posted. False when it already was (by this server before
-    // a restart, or by another one).
-    Task<bool> TryClaimDayAsync(DateOnly day, DateTime utcNow);
+    // Marks the summary of the window ending `windowEndUtc` (on Malaysian date
+    // `day`) as posted. False when it already was — by this server before a
+    // restart, or by another one. A claim made before the window ended (the
+    // old 08:00 schedule's, on the day of a deploy) doesn't count.
+    Task<bool> TryClaimDayAsync(DateOnly day, DateTime windowEndUtc, DateTime utcNow);
 }

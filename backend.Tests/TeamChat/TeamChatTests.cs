@@ -120,37 +120,26 @@ public class TeamChatTests
         Assert.StartsWith("🏢 New company: (URL=https://evil.test)Click(/URL) Co\n", text);
     }
 
-    // ---- Repeated wrong passwords ----
+    // ---- Locks and blocks ----
 
     [Fact]
-    public void WrongPasswords_AreSaidOnceAtTheFifth_AndAgainOnlyAfterTheWindow()
+    public void ALock_SaysWhoAndWhere_AndWhenTheEmailIsNobodys()
     {
-        var tracker = new SignInFailureTracker();
-        var t = new DateTime(2026, 11, 12, 1, 0, 0, DateTimeKind.Utc);
-
-        var said = Enumerable.Range(0, 7)
-            .Select(i => tracker.RecordAndShouldAlert("usr-1", t.AddMinutes(i)))
-            .ToList();
-        Assert.Equal([false, false, false, false, true, false, false], said);
-
-        // Another account counts on its own.
-        Assert.False(tracker.RecordAndShouldAlert("usr-2", t.AddMinutes(6)));
-
-        // A fresh run of five once the window has passed is said again.
-        var later = t.AddMinutes(40);
-        var again = Enumerable.Range(0, 5).Select(i => tracker.RecordAndShouldAlert("usr-1", later.AddMinutes(i))).ToList();
-        Assert.Equal([false, false, false, false, true], again);
+        Assert.Equal(
+            "🔒 Account locked for 15 minutes: Siti (siti@x.test)\n5 wrong passwords in a row · IP 1.2.3.4\nCompany: Demo Co",
+            TeamChatAlerts.AccountLockedText("Siti", "siti@x.test", true, "Demo Co", TimeSpan.FromMinutes(15), "1.2.3.4"));
+        Assert.EndsWith(
+            "No AltomateHR account has this email — someone is guessing addresses.",
+            TeamChatAlerts.AccountLockedText(null, "nobody@x.test", false, null, TimeSpan.FromMinutes(15), null));
     }
 
     [Fact]
-    public void FailuresSpreadOut_AreNeverSaid()
+    public void ABlock_SaysHowLong_AndWhichEmailsWereTried()
     {
-        var tracker = new SignInFailureTracker();
-        var t = new DateTime(2026, 11, 12, 1, 0, 0, DateTimeKind.Utc);
-
-        Assert.All(
-            Enumerable.Range(0, 10).Select(i => tracker.RecordAndShouldAlert("usr-1", t.AddMinutes(i * 16))),
-            Assert.False);
+        Assert.Equal(
+            "⛔ IP 203.0.113.7 blocked from signing in for 1 hour (blocked again today)\n10 wrong passwords in 15 minutes\nTried: a@x.test, b@x.test, c@x.test, d@x.test, e@x.test and 2 more",
+            TeamChatAlerts.IpBlockedText("203.0.113.7", TimeSpan.FromHours(1), true,
+                ["a@x.test", "b@x.test", "c@x.test", "d@x.test", "e@x.test", "f@x.test", "g@x.test"]));
     }
 
     // ---- The new messages ----
@@ -228,7 +217,7 @@ public class TeamChatTests
             new DateOnly(2026, 11, 11), [busy, Quiet("Idle Co"), Quiet("Sleepy Co") with { LeaveWaiting = 4 }]);
 
         var text = Assert.Single(messages);
-        Assert.StartsWith("☀️ Daily summary · Wed 11 Nov 2026\n1 company active · 2 quiet", text);
+        Assert.StartsWith("📊 Daily summary · Wed 11 Nov 2026 (6pm Tue – 6pm Wed)\n1 company active · 2 quiet", text);
         Assert.Contains(
             "🏢 Ayu Borneo\n• Sign-ins: 34 (21 people)\n• Payroll: 1 run approved\n• Leave: 5 applied · 4 approved · 3 waiting"
             + "\n• Claims: 6 submitted · 9 waiting\n• Attendance: 112 people clocked in · 2 waiting approval",
@@ -237,11 +226,41 @@ public class TeamChatTests
         Assert.DoesNotContain("Sleepy Co", text);
     }
 
+    // Posted at 6pm, covering 6pm the day before to 6pm today (Malaysian
+    // time), so nothing done in the evening is missed.
+    [Fact]
+    public async Task TheSummary_Covers6pmYesterdayTo6pmToday()
+    {
+        var repo = new WindowRecorder();
+        var service = new TeamChatDailySummaryService(
+            repo, new TeamChatQueue(),
+            Options.Create(new TeamChatOptions { WebhookUrl = "https://x.bitrix24.com/rest/1/abc/", DailyDialogId = "chat3" }),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<TeamChatDailySummaryService>.Instance);
+
+        await service.PostAsync(new DateOnly(2026, 11, 12), new DateTime(2026, 11, 12, 10, 5, 0, DateTimeKind.Utc));
+
+        Assert.Equal(new DateTime(2026, 11, 11, 10, 0, 0, DateTimeKind.Utc), repo.From);   // 6pm Wed MYT
+        Assert.Equal(new DateTime(2026, 11, 12, 10, 0, 0, DateTimeKind.Utc), repo.To);     // 6pm Thu MYT
+    }
+
+    private sealed class WindowRecorder : ITeamChatActivityRepository
+    {
+        public DateTime From, To;
+
+        public Task<IReadOnlyList<CompanyActivity>> GetAsync(DateTime fromUtc, DateTime toUtc)
+        {
+            (From, To) = (fromUtc, toUtc);
+            return Task.FromResult<IReadOnlyList<CompanyActivity>>([]);
+        }
+
+        public Task<bool> TryClaimDayAsync(DateOnly day, DateTime windowEndUtc, DateTime utcNow) => Task.FromResult(true);
+    }
+
     [Fact]
     public void AQuietDay_IsOneLine()
     {
         var text = Assert.Single(TeamChatDailySummaryService.SummaryMessages(new DateOnly(2026, 11, 11), [Quiet("A")]));
-        Assert.Equal("☀️ Daily summary · Wed 11 Nov 2026\n0 companies active · 1 quiet", text);
+        Assert.Equal("📊 Daily summary · Wed 11 Nov 2026 (6pm Tue – 6pm Wed)\n0 companies active · 1 quiet", text);
     }
 
     [Fact]

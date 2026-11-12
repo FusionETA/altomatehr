@@ -29,6 +29,78 @@ public class AuthServiceTests
         Assert.Null(result);
     }
 
+    // ─── Lockout (LoginGuard) ───────────────────────────────────────────
+
+    [Fact]
+    public async Task FiveWrongPasswords_LockTheAccount_EvenAgainstTheRightOne_AndTheTeamHears()
+    {
+        var chat = new AltomateHR.Api.Tests.TeamChat.RecordingTeamChat();
+        var service = CreateService(
+            users: [CreateUser(password: "correct-password")], refreshTokens: out _,
+            guard: new LoginGuard(), teamChat: chat);
+
+        for (var i = 0; i < 5; i++)
+            Assert.Null(await service.LoginAsync("admin@altomate.com", "wrong", $"10.0.0.{i}"));
+
+        var locked = await Assert.ThrowsAsync<LoginBlockedException>(
+            () => service.LoginAsync("admin@altomate.com", "correct-password", "10.0.0.9"));
+        Assert.True(locked.Block.ForAccount);
+        Assert.Contains("reset your password", locked.Message);
+        Assert.Equal(["account-locked admin@altomate.com"], chat.Said);
+    }
+
+    // Twenty wrong passwords fired at once: at most five reach BCrypt.
+    [Fact]
+    public async Task AParallelBurst_GetsNoMoreThanFiveGuesses()
+    {
+        var service = CreateService(
+            users: [CreateUser(password: "correct-password")], refreshTokens: out _, guard: new LoginGuard());
+
+        var results = await Task.WhenAll(Enumerable.Range(0, 20).Select(i => Task.Run(async () =>
+        {
+            try { return await service.VerifyPasswordAsync("admin@altomate.com", $"guess-{i}", $"10.0.{i}.1") is null ? "checked" : "in"; }
+            catch (LoginBlockedException) { return "blocked"; }
+        })));
+
+        Assert.True(results.Count(r => r == "checked") <= 5, string.Join(",", results));
+        Assert.DoesNotContain("in", results);
+    }
+
+    [Fact]
+    public async Task TheRightPassword_StartsTheCountAgain()
+    {
+        var service = CreateService(
+            users: [CreateUser(password: "correct-password")], refreshTokens: out _, guard: new LoginGuard());
+
+        for (var i = 0; i < 4; i++) await service.LoginAsync("admin@altomate.com", "wrong", "10.0.0.1");
+        Assert.NotNull(await service.LoginAsync("admin@altomate.com", "correct-password", "10.0.0.1"));
+        for (var i = 0; i < 4; i++) await service.LoginAsync("admin@altomate.com", "wrong", "10.0.0.1");
+
+        Assert.NotNull(await service.LoginAsync("admin@altomate.com", "correct-password", "10.0.0.1"));
+    }
+
+    // Ten wrong from one IP, whoever for, blocks it — but not the same people elsewhere.
+    [Fact]
+    public async Task TenWrongPasswordsFromOneIp_BlockThatIp_Only()
+    {
+        var chat = new AltomateHR.Api.Tests.TeamChat.RecordingTeamChat();
+        var service = CreateService(
+            users: [CreateUser(password: "correct-password")], refreshTokens: out _,
+            guard: new LoginGuard(), teamChat: chat);
+
+        for (var i = 0; i < 10; i++)
+            await service.LoginAsync($"guess{i}@x.test", "wrong", "203.0.113.7");
+
+        var blocked = await Assert.ThrowsAsync<LoginBlockedException>(
+            () => service.LoginAsync("admin@altomate.com", "correct-password", "203.0.113.7"));
+        Assert.False(blocked.Block.ForAccount);
+        Assert.Contains("ip-blocked 203.0.113.7", chat.Said);
+
+        Assert.NotNull(await service.LoginAsync("admin@altomate.com", "correct-password", "198.51.100.1"));
+        // A companion app's server passes no IP: only the account rule applies.
+        Assert.NotNull(await service.VerifyPasswordAsync("admin@altomate.com", "correct-password"));
+    }
+
     [Fact]
     public async Task LoginAsync_WithNoMembership_ReturnsNull()
     {
@@ -239,7 +311,8 @@ public class AuthServiceTests
     private static ResetHarness CreateResetHarness(
         IEnumerable<User> users,
         IEnumerable<RefreshToken>? existingRefreshTokens = null,
-        bool emailSucceeds = true)
+        bool emailSucceeds = true,
+        ILoginGuard? guard = null)
     {
         var userRepo = new FakeUserRepository(users);
         var otps = new FakePasswordResetOtpRepository();
@@ -262,7 +335,8 @@ public class AuthServiceTests
                 })
                 .Build(),
             audit: new FakeAuditService(),
-            organizations: new FakeOrganizationRepository());
+            organizations: new FakeOrganizationRepository(),
+            guard: guard);
 
         return new ResetHarness(service, userRepo, otps, email, refreshTokens);
     }
@@ -324,6 +398,21 @@ public class AuthServiceTests
         await h.Service.ForgotPasswordAsync("admin@altomate.com");
 
         Assert.Single(h.Otps.Otps);
+    }
+
+    [Fact]
+    public async Task ResettingThePassword_UnlocksALockedAccount()
+    {
+        var guard = new LoginGuard();
+        var h = CreateResetHarness([CreateUser("old-password")], guard: guard);
+        for (var i = 0; i < 5; i++) await h.Service.VerifyPasswordAsync("admin@altomate.com", "wrong");
+        await Assert.ThrowsAsync<LoginBlockedException>(
+            () => h.Service.VerifyPasswordAsync("admin@altomate.com", "old-password"));
+
+        await h.Service.ForgotPasswordAsync("admin@altomate.com");
+        Assert.Null(await h.Service.ResetPasswordAsync("admin@altomate.com", CodeFromEmail(h.Email), "new-password"));
+
+        Assert.NotNull(await h.Service.VerifyPasswordAsync("admin@altomate.com", "new-password"));
     }
 
     [Fact]
@@ -559,7 +648,9 @@ public class AuthServiceTests
         out FakeRefreshTokenRepository refreshTokens,
         IEnumerable<RefreshToken>? existingRefreshTokens = null,
         IEnumerable<OrganizationMembership>? memberships = null,
-        string? superadminEmails = null)
+        string? superadminEmails = null,
+        ILoginGuard? guard = null,
+        AltomateHR.Api.Modules.TeamChat.ITeamChatAlerts? teamChat = null)
     {
         refreshTokens = new FakeRefreshTokenRepository(existingRefreshTokens ?? []);
 
@@ -585,7 +676,9 @@ public class AuthServiceTests
                 {
                     ["SUPERADMIN_EMAILS"] = superadminEmails ?? string.Empty,
                 })
-                .Build()));
+                .Build()),
+            teamChat: teamChat,
+            guard: guard);
     }
 
     private static User CreateUser(string password) => new()

@@ -5,12 +5,15 @@ namespace AltomateHR.Api.Modules.TeamChat;
 
 public interface ITeamChatDailySummaryService
 {
-    // Posts yesterday-of-`today` (Malaysian dates) to the daily chat. Returns
-    // how many messages were queued: 0 when no daily chat is set up.
-    Task<int> PostAsync(DateOnly today);
+    // Posts the 24 hours up to 18:00 on `today` (Malaysian time) to the daily
+    // chat. Returns how many messages were queued: 0 when no daily chat is set
+    // up, or `today` was already posted.
+    Task<int> PostAsync(DateOnly today, DateTime utcNow);
 }
 
-// The 08:00 message in the daily chat: what each company did the day before.
+// The 18:00 message in the daily chat: what each company did in the 24 hours
+// since 18:00 the day before — so an evening's activity lands in the next
+// summary rather than being missed. Attendance counts clock-ins in that window.
 // Companies with nothing to say are counted in one line, not listed.
 public class TeamChatDailySummaryService : ITeamChatDailySummaryService
 {
@@ -36,22 +39,22 @@ public class TeamChatDailySummaryService : ITeamChatDailySummaryService
         _logger = logger;
     }
 
-    public async Task<int> PostAsync(DateOnly today)
+    // The hour (Malaysian time) the summary is posted at and its window ends.
+    public const int CutOffHourMyt = 18;
+
+    public async Task<int> PostAsync(DateOnly today, DateTime utcNow)
     {
         if (!_options.IsConfigured(TeamChatChannel.Daily)) return 0;
 
-        var day = today.AddDays(-1);
-        var startLocal = day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
-        var fromUtc = TimeZoneInfo.ConvertTimeToUtc(startLocal, Myt);
-        var toUtc = TimeZoneInfo.ConvertTimeToUtc(startLocal.AddDays(1), Myt);
-        var localDay = DateTime.SpecifyKind(startLocal, DateTimeKind.Utc);
-
-        var companies = await _activity.GetAsync(fromUtc, toUtc, localDay);
-        var messages = SummaryMessages(day, companies);
+        var endLocal = today.ToDateTime(new TimeOnly(CutOffHourMyt, 0), DateTimeKind.Unspecified);
+        var fromUtc = TimeZoneInfo.ConvertTimeToUtc(endLocal.AddDays(-1), Myt);
+        var toUtc = TimeZoneInfo.ConvertTimeToUtc(endLocal, Myt);
+        var companies = await _activity.GetAsync(fromUtc, toUtc);
+        var messages = SummaryMessages(today, companies);
 
         // Claimed only once there's something to post, so a failed read
         // retries on the next tick rather than losing the day.
-        if (!await _activity.TryClaimDayAsync(today, DateTime.UtcNow)) return 0;
+        if (!await _activity.TryClaimDayAsync(today, toUtc, utcNow)) return 0;
         foreach (var text in messages)
         {
             if (!_queue.TryEnqueue(new TeamChatMessage(TeamChatChannel.Daily, text)))
@@ -67,7 +70,8 @@ public class TeamChatDailySummaryService : ITeamChatDailySummaryService
 
         var blocks = new List<string>
         {
-            $"☀️ Daily summary · {day.ToString("ddd d MMM yyyy", CultureInfo.InvariantCulture)}"
+            $"📊 Daily summary · {day.ToString("ddd d MMM yyyy", CultureInfo.InvariantCulture)}"
+            + $" (6pm {day.AddDays(-1).ToString("ddd", CultureInfo.InvariantCulture)} – 6pm {day.ToString("ddd", CultureInfo.InvariantCulture)})"
             + $"\n{Count(active.Count, "company", "companies")} active · {quiet} quiet",
         };
         if (active.Count > 0)

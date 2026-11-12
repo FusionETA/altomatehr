@@ -17,7 +17,7 @@ public class TeamChatActivityRepository : ITeamChatActivityRepository
 
     public TeamChatActivityRepository(AppDbContext db) => _db = db;
 
-    public async Task<IReadOnlyList<CompanyActivity>> GetAsync(DateTime fromUtc, DateTime toUtc, DateTime localDay)
+    public async Task<IReadOnlyList<CompanyActivity>> GetAsync(DateTime fromUtc, DateTime toUtc)
     {
         var companies = await _db.Organizations.AsNoTracking()
             .Where(o => o.DeactivatedAt == null)
@@ -71,8 +71,10 @@ public class TeamChatActivityRepository : ITeamChatActivityRepository
             _db.Claims.IgnoreQueryFilters().Where(c => c.Status == ClaimStatus.PENDING)
                 .Select(c => c.OrganizationId));
 
+        // By when they clocked in, not the record's date: an evening shift
+        // (after 18:00) belongs to the next summary's window.
         var clockedIn = await _db.AttendanceRecords.IgnoreQueryFilters().AsNoTracking()
-            .Where(r => r.Date == localDay && r.TimeIn != null)
+            .Where(r => r.TimeIn >= fromUtc && r.TimeIn < toUtc)
             .Select(r => new { r.OrganizationId, r.EmployeeId })
             .ToListAsync();
         var attendanceWaiting = await CountByOrgAsync(
@@ -112,9 +114,19 @@ public class TeamChatActivityRepository : ITeamChatActivityRepository
             Of(attendanceWaiting, c.Id))).ToList();
     }
 
-    public async Task<bool> TryClaimDayAsync(DateOnly day, DateTime utcNow)
+    public async Task<bool> TryClaimDayAsync(DateOnly day, DateTime windowEndUtc, DateTime utcNow)
     {
-        if (await _db.TeamChatDailyPosts.AnyAsync(p => p.Day == day)) return false;
+        var existing = await _db.TeamChatDailyPosts.FirstOrDefaultAsync(p => p.Day == day);
+        if (existing is not null)
+        {
+            if (existing.PostedAt >= windowEndUtc) return false;
+            // Claimed before this window ended: the 08:00 schedule's claim
+            // on the day this one was deployed. This window is still unposted.
+            existing.PostedAt = utcNow;
+            await _db.SaveChangesAsync();
+            return true;
+        }
+
         var row = new Entities.TeamChatDailyPost { Day = day, PostedAt = utcNow };
         _db.TeamChatDailyPosts.Add(row);
         try

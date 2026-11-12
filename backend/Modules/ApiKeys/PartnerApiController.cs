@@ -186,7 +186,19 @@ public class PartnerApiController : ControllerBase
         if (caller is null)
             return Unauthorized(new { message = "Invalid or revoked API key." });
 
-        var identity = await _identity.VerifyAsync(caller, dto.Email ?? string.Empty, dto.Password ?? string.Empty);
+        PartnerIdentity? identity;
+        try
+        {
+            identity = await _identity.VerifyAsync(
+                caller, dto.Email ?? string.Empty, dto.Password ?? string.Empty, dto.ClientIp);
+        }
+        catch (Auth.LoginBlockedException ex)
+        {
+            // The account is locked (LoginGuard). Locks are kept for unknown
+            // emails too, so saying so tells the key holder nothing new.
+            Response.Headers.RetryAfter = ((int)Math.Ceiling(Math.Max(1, ex.RetryAfter.TotalSeconds))).ToString();
+            return StatusCode(StatusCodes.Status429TooManyRequests, new { message = ex.Message });
+        }
 
         // One answer for a wrong password, an unknown email, a non-admin, and
         // someone who administers a different company. Anything finer tells a
@@ -315,6 +327,13 @@ public class VerifyCredentialsDto
 
     [System.ComponentModel.DataAnnotations.Required]
     public string? Password { get; set; }
+
+    // The person's own IP, as the companion app saw it, so a guesser behind
+    // the companion is blocked like one at the login page (LoginGuard).
+    // Honoured from a master key only; an org key's attempts are counted
+    // per key instead.
+    [System.ComponentModel.DataAnnotations.MaxLength(64)]
+    public string? ClientIp { get; set; }
 }
 
 public class LookupAccessDto

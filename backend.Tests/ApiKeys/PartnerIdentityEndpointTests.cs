@@ -79,6 +79,31 @@ public class PartnerIdentityEndpointTests
             (await Json(response)).GetProperty("message").GetString());
     }
 
+    // ABPay passes the person's own IP, so a guesser at ABPay's login is
+    // blocked like one at AltomateHR's — that IP only, not ABPay's server.
+    [Fact]
+    public async Task Verify_WithAMasterKey_BlocksTheIpTheCompanionPasses()
+    {
+        using var app = new App();
+        var master = await app.MasterKeyAsync();
+
+        for (var i = 0; i < 10; i++)
+        {
+            var wrong = await app.PostAsync("/auth/verify", master,
+                new { email = $"guess{i}@example.com", password = "nope", clientIp = "203.0.113.9" });
+            Assert.Equal(HttpStatusCode.Unauthorized, wrong.StatusCode);
+        }
+
+        var blocked = await app.PostAsync("/auth/verify", master,
+            new { email = DemoOwner, password = DemoPassword, clientIp = "203.0.113.9" });
+        Assert.Equal((HttpStatusCode)429, blocked.StatusCode);
+        Assert.Contains("from your network", (await Json(blocked)).GetProperty("message").GetString());
+
+        var elsewhere = await app.PostAsync("/auth/verify", master,
+            new { email = DemoOwner, password = DemoPassword, clientIp = "198.51.100.4" });
+        Assert.Equal(HttpStatusCode.OK, elsewhere.StatusCode);
+    }
+
     // ABPay tells "our app credential is bad" from "wrong password" by this
     // wording, so it must keep matching /invalid or revoked/.
     [Fact]

@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: fdcc89a
+  user-guide-covered-up-to: 48b13c8
 -->
 <html lang="en">
 <head>
@@ -364,6 +364,11 @@
     <ul>
       <li><strong>Forgot your password?</strong> — enter your work email, and a <strong>6-digit code</strong> is
         emailed to you. Enter it with a new password (at least 8 characters).</li>
+      <li><strong>Too many wrong passwords</strong> — after 5 wrong passwords in a row, the account is locked for
+        15 minutes and a red message under the password field says so. Resetting the password with
+        <span class="btn-name">Forgot your password?</span> unlocks it straight away. If 10 wrong passwords come from
+        the same network within 15 minutes, sign-in from that network pauses for 15 minutes (1 hour if it happens
+        again the same day); the message says how many minutes to wait.</li>
       <li><strong>Change your own password</strong> — click your name at the top right, then the ⋮ button, and choose
         <span class="btn-name">Change password</span>. Enter your current password, then a new one (at least 8
         characters) and confirm it. This signs you out of every device, including this one — sign back in with the
