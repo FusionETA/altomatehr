@@ -547,7 +547,7 @@
         <div class="callout">
           A history row is written only when the salary actually changed — not for a
           correction (<code>salaryChangeIsCorrection: true</code>) and not for a <em>first</em>
-          salary (nothing, or <code>0</code>, was set before). Sending the salary-change fields
+          salary (nothing, or <code>0</code>, was set before). The exception is a monthly <code>0</code> that already has salary history (commission-only staff): moving off it is recorded as a change. Sending the salary-change fields
           on an edit that doesn't touch salary is harmless; they're simply unused.
         </div>
         <div class="callout">

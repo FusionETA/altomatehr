@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: be53ae5
+// whats-new-covered-up-to: fdcc89a
 
 // A line is for everyone, or — wrapped in admins(…) — for admins and owners
 // only. Employees and supervisors never see an admins line, so it doesn't
@@ -28,6 +28,16 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-11-12",
+    improved: [
+      admins("The salary-change import now accepts a New Salary of 0, for staff paid only commission. Hourly rates of 0 and negative amounts are still refused."),
+    ],
+    fixed: [
+      admins("Moving an employee off a basic of RM 0 is now recorded in their salary history, as any other pay change is."),
+      admins("A run where unpaid leave is more than the basic (commission-only staff on RM 0) now posts to Xero. Before, its journal didn't balance. Posted runs are unchanged."),
+    ],
+  },
   {
     date: "2026-11-05",
     new: [
