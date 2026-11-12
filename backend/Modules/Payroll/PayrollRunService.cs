@@ -1049,11 +1049,15 @@ public class PayrollRunService : IPayrollRunService
 
         if (_teamChat is not null)
         {
-            // The company's first computed run put live — imported months
-            // were typed in from the previous system, so they don't count.
-            var firstEver = run.Source == PayrollRunSource.COMPUTED
-                && !(await _runs.GetAllAsync()).Any(r =>
-                    r.Id != run.Id && r.Status == PayrollRunStatus.SUBMITTED && r.Source == PayrollRunSource.COMPUTED);
+            // The company's first approval ever — read from the audit log
+            // (written just above), which a revert and re-approve can't undo.
+            // Imported months are never approved, so they don't count.
+            var approvals = await _audit.ListAsync(new Audit.Dtos.AuditQueryDto
+            {
+                Action = AuditActions.PayrollRunApprove,
+                Limit = 1,
+            });
+            var firstEver = run.Source == PayrollRunSource.COMPUTED && approvals.Total <= 1;
             await _teamChat.PayrollRunApprovedAsync(
                 run.OrganizationId, RunLabel(run), run.EmployeeCount, run.TotalNet, firstEver);
         }

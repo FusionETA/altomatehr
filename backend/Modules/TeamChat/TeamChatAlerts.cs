@@ -184,7 +184,7 @@ public class TeamChatAlerts : ITeamChatAlerts
         string company, string? name, string email, string leaveType, double days,
         DateTime start, DateTime end, bool approved, bool byAdmin, string? by)
     {
-        var head = byAdmin ? "🌴 Leave applied by admin" : approved ? "🌴 Leave approved" : "🚫 Leave rejected";
+        var head = !approved ? "🚫 Leave rejected" : byAdmin ? "🌴 Leave applied by admin" : "🌴 Leave approved";
         var lines = new List<string>
         {
             $"{head}: {Who(name, email)}",

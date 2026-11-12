@@ -12,6 +12,9 @@ public class TeamChatActivityRepository : ITeamChatActivityRepository
 {
     private readonly AppDbContext _db;
 
+    // How LeaveService marks a row the leave import wrote (AppendTrail).
+    private const string ImportedTrail = "\"IMPORTED\"";
+
     public TeamChatActivityRepository(AppDbContext db) => _db = db;
 
     public async Task<IReadOnlyList<CompanyActivity>> GetAsync(DateTime fromUtc, DateTime toUtc, DateTime localDay)
@@ -25,13 +28,18 @@ public class TeamChatActivityRepository : ITeamChatActivityRepository
         // The day's rows are few enough to count here, which keeps the SQL
         // plain (no COUNT(DISTINCT) inside a GROUP BY for the provider to
         // translate).
+        // Who signed in is the row's target: a sign-in has no session yet, so
+        // its actor id is empty. (SSO sign-ins aren't audited as auth.login.)
         var signIns = await _db.AuditLogs.IgnoreQueryFilters().AsNoTracking()
             .Where(a => a.Action == AuditActions.AuthLogin && a.CreatedAt >= fromUtc && a.CreatedAt < toUtc)
-            .Select(a => new { a.OrganizationId, a.ActorUserId })
+            .Select(a => new { a.OrganizationId, UserId = a.TargetId })
             .ToListAsync();
 
+        // Imported months (YTD history) are filed the moment they're imported;
+        // they're not anyone approving pay.
         var runsApproved = await _db.PayrollRuns.IgnoreQueryFilters().AsNoTracking()
-            .Where(r => r.SubmittedAt >= fromUtc && r.SubmittedAt < toUtc && r.Status == PayrollRunStatus.SUBMITTED)
+            .Where(r => r.SubmittedAt >= fromUtc && r.SubmittedAt < toUtc && r.Status == PayrollRunStatus.SUBMITTED
+                        && r.Source == PayrollRunSource.COMPUTED)
             .Select(r => r.OrganizationId)
             .ToListAsync();
         var runsSent = await _db.PayrollRuns.IgnoreQueryFilters().AsNoTracking()
@@ -39,12 +47,16 @@ public class TeamChatActivityRepository : ITeamChatActivityRepository
             .Select(r => r.OrganizationId)
             .ToListAsync();
 
+        // Imported leave history is left out: its trail says IMPORTED, and an
+        // imported decided row was decided the moment it was created.
         var leaveApplied = await _db.LeaveApplications.IgnoreQueryFilters().AsNoTracking()
-            .Where(l => l.CreatedAt >= fromUtc && l.CreatedAt < toUtc)
+            .Where(l => l.CreatedAt >= fromUtc && l.CreatedAt < toUtc
+                        && (l.Approvals == null || !l.Approvals.Contains(ImportedTrail)))
             .Select(l => l.OrganizationId)
             .ToListAsync();
         var leaveApproved = await _db.LeaveApplications.IgnoreQueryFilters().AsNoTracking()
-            .Where(l => l.Status == LeaveStatus.APPROVED && l.DecidedAt >= fromUtc && l.DecidedAt < toUtc)
+            .Where(l => l.Status == LeaveStatus.APPROVED && l.DecidedAt >= fromUtc && l.DecidedAt < toUtc
+                        && l.DecidedAt != l.CreatedAt)
             .Select(l => l.OrganizationId)
             .ToListAsync();
         var leaveWaiting = await CountByOrgAsync(
@@ -73,7 +85,7 @@ public class TeamChatActivityRepository : ITeamChatActivityRepository
 
         var signInCount = Tally(signIns.Select(s => s.OrganizationId));
         var signInPeople = signIns.GroupBy(s => s.OrganizationId)
-            .ToDictionary(g => g.Key, g => g.Select(s => s.ActorUserId).Distinct().Count());
+            .ToDictionary(g => g.Key, g => g.Select(s => s.UserId).Distinct().Count());
         var approved = Tally(runsApproved);
         var sent = Tally(runsSent);
         var applied = Tally(leaveApplied);
@@ -98,6 +110,24 @@ public class TeamChatActivityRepository : ITeamChatActivityRepository
             Of(claimsWaiting, c.Id),
             Of(people, c.Id),
             Of(attendanceWaiting, c.Id))).ToList();
+    }
+
+    public async Task<bool> TryClaimDayAsync(DateOnly day, DateTime utcNow)
+    {
+        if (await _db.TeamChatDailyPosts.AnyAsync(p => p.Day == day)) return false;
+        var row = new Entities.TeamChatDailyPost { Day = day, PostedAt = utcNow };
+        _db.TeamChatDailyPosts.Add(row);
+        try
+        {
+            await _db.SaveChangesAsync();
+            return true;
+        }
+        catch (DbUpdateException)
+        {
+            // Another server claimed it between the check and the insert.
+            _db.Entry(row).State = EntityState.Detached;
+            return false;
+        }
     }
 
     private static async Task<Dictionary<string, int>> CountByOrgAsync(IQueryable<string> orgIds) =>

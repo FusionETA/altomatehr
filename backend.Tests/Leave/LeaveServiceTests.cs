@@ -912,6 +912,24 @@ public class LeaveServiceTests
             chat.Said);
     }
 
+    // An imported request a supervisor then decides was not applied by an admin.
+    [Fact]
+    public async Task AnImportedRequest_DecidedLater_IsNotSaidAsAppliedByAdmin()
+    {
+        var chat = new AltomateHR.Api.Tests.TeamChat.RecordingTeamChat();
+        var app = MakeApp("a1", "usr-emp", "t-al", 2, LeaveStatus.PENDING);
+        app.AppliedByAdminId = "usr-admin";
+        app.Approvals = """[{"step":0,"actorId":"usr-admin","decision":"IMPORTED"}]""";
+        var service = MakeService(
+            types: [MakeType("t-al", "AL", 14)], apps: [app],
+            router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"]] }),
+            teamChat: chat);
+
+        Assert.True((await service.ApproveAsync("a1", "usr-super")).Transitioned);
+
+        Assert.Equal(["leave usr-emp approved=True byAdmin=False"], chat.Said);
+    }
+
     [Fact]
     public async Task ApproveAsync_HidesApplicationFromNonCurrentApprover()
     {

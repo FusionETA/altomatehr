@@ -2252,7 +2252,11 @@ public class LeaveService : ILeaveService
             var leaveType = (await _types.GetByIdAsync(app.LeaveTypeId))?.Name ?? "Leave";
             await _teamChat.LeaveDecidedAsync(
                 app.OrganizationId, app.EmployeeId, leaveType, app.TotalDays, app.StartDate, app.EndDate,
-                approved: action == RealtimeAction.APPROVED, byAdmin: app.AppliedByAdminId is not null);
+                approved: action == RealtimeAction.APPROVED,
+                // Applied for them by an admin (ApplyOnBehalfAsync), not an
+                // imported row a supervisor then decided.
+                byAdmin: action == RealtimeAction.APPROVED
+                         && app.Approvals?.Contains("\"ADMIN_APPLIED\"", StringComparison.Ordinal) == true);
         }
 
         // Persisted in-app notification, on top of the ephemeral SSE nudge above.

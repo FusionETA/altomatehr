@@ -30,4 +30,8 @@ public interface ITeamChatActivityRepository
     // fromUtc/toUtc bound the day; localDay is its date as attendance stores it
     // (UTC midnight of the Malaysian date).
     Task<IReadOnlyList<CompanyActivity>> GetAsync(DateTime fromUtc, DateTime toUtc, DateTime localDay);
+
+    // Marks `day` as posted. False when it already was (by this server before
+    // a restart, or by another one).
+    Task<bool> TryClaimDayAsync(DateOnly day, DateTime utcNow);
 }

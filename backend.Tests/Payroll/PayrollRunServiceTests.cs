@@ -2476,6 +2476,24 @@ public class PayrollRunServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ReApprovingAfterARevert_IsNotAnotherFirstPayroll()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        await _db.SaveChangesAsync();
+
+        var january = await FiledThroughApprovalAsync(1);
+        Assert.True((await _service.RevertToDraftAsync(january.Id)).Ok);
+        Assert.True((await _service.GenerateAsync(january.Id)).Ok);
+        (await _db.PayrollRuns.FirstAsync(r => r.Id == january.Id)).Status = PayrollRunStatus.PENDING_APPROVAL;
+        await _db.SaveChangesAsync();
+        Assert.True((await _service.ApproveAsync(january.Id)).Ok);
+
+        Assert.Equal(
+            ["payroll-approved January 2026 first=True", "payroll-approved January 2026 first=False"],
+            _teamChat.Said.Where(s => s.StartsWith("payroll-approved")));
+    }
+
+    [Fact]
     public async Task DeletingADraft_AndRevertingAnApprovedRun_AreSaid()
     {
         AddEmployee("usr-1", "Aisyah");

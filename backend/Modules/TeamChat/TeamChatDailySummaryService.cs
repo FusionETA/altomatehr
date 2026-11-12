@@ -48,6 +48,10 @@ public class TeamChatDailySummaryService : ITeamChatDailySummaryService
 
         var companies = await _activity.GetAsync(fromUtc, toUtc, localDay);
         var messages = SummaryMessages(day, companies);
+
+        // Claimed only once there's something to post, so a failed read
+        // retries on the next tick rather than losing the day.
+        if (!await _activity.TryClaimDayAsync(today, DateTime.UtcNow)) return 0;
         foreach (var text in messages)
         {
             if (!_queue.TryEnqueue(new TeamChatMessage(TeamChatChannel.Daily, text)))

@@ -38,11 +38,18 @@ public class TeamChatActivityTests
             Login("org-a", "u3", From.AddHours(-1)),
             Login("org-x", "u9", From.AddHours(2)));
 
-        db.PayrollRuns.Add(new PayrollRun
-        {
-            OrganizationId = "org-b", PeriodYear = 2026, PeriodMonth = 10,
-            Status = PayrollRunStatus.SUBMITTED, SubmittedAt = From.AddHours(3),
-        });
+        db.PayrollRuns.AddRange(
+            new PayrollRun
+            {
+                OrganizationId = "org-b", PeriodYear = 2026, PeriodMonth = 10,
+                Status = PayrollRunStatus.SUBMITTED, SubmittedAt = From.AddHours(3),
+            },
+            // YTD history imported that day isn't anyone approving pay.
+            new PayrollRun
+            {
+                OrganizationId = "org-b", PeriodYear = 2026, PeriodMonth = 9,
+                Status = PayrollRunStatus.SUBMITTED, Source = PayrollRunSource.IMPORTED, SubmittedAt = From.AddHours(3),
+            });
 
         db.LeaveApplications.AddRange(
             new LeaveApplication { OrganizationId = "org-a", Status = LeaveStatus.PENDING, CreatedAt = From.AddHours(2) },
@@ -50,6 +57,18 @@ public class TeamChatActivityTests
             {
                 OrganizationId = "org-a", Status = LeaveStatus.APPROVED,
                 CreatedAt = From.AddDays(-3), DecidedAt = From.AddHours(4),
+            },
+            // Imported leave history: left out of both counts.
+            new LeaveApplication
+            {
+                OrganizationId = "org-a", Status = LeaveStatus.APPROVED, AppliedByAdminId = "u-admin",
+                CreatedAt = From.AddHours(7), DecidedAt = From.AddHours(7),
+                Approvals = """[{"step":0,"decision":"IMPORTED"}]""",
+            },
+            new LeaveApplication
+            {
+                OrganizationId = "org-a", Status = LeaveStatus.PENDING, AppliedByAdminId = "u-admin",
+                CreatedAt = From.AddHours(7), Approvals = """[{"step":0,"decision":"IMPORTED"}]""",
             });
 
         db.Claims.Add(new Claim { OrganizationId = "org-b", Status = ClaimStatus.PENDING, SubmittedAt = From.AddHours(6) });
@@ -66,7 +85,7 @@ public class TeamChatActivityTests
         Assert.Equal(["Alpha", "Beta"], rows.Select(r => r.Company));
         var alpha = rows[0];
         Assert.Equal((3, 2), (alpha.SignIns, alpha.PeopleSignedIn));
-        Assert.Equal((1, 1, 1), (alpha.LeaveApplied, alpha.LeaveApproved, alpha.LeaveWaiting));
+        Assert.Equal((1, 1, 2), (alpha.LeaveApplied, alpha.LeaveApproved, alpha.LeaveWaiting));
         Assert.Equal(2, alpha.PeopleClockedIn);
         Assert.Equal(0, alpha.RunsApproved);
 
@@ -76,10 +95,38 @@ public class TeamChatActivityTests
         Assert.Equal(0, beta.SignIns);
     }
 
+    // As AuthService writes it: no session yet, so no actor — the user is the target.
     private static AuditLog Login(string org, string user, DateTime at) => new()
     {
-        OrganizationId = org, ActorUserId = user, Action = AuditActions.AuthLogin, CreatedAt = at,
+        OrganizationId = org, ActorUserId = null, TargetType = "User", TargetId = user,
+        Action = AuditActions.AuthLogin, CreatedAt = at,
     };
+
+    // The summary is claimed per day, so a restart in the 08:00 hour (or a
+    // second server) doesn't post it again.
+    [Fact]
+    public async Task TheSummary_IsPostedOncePerDay()
+    {
+        await using var db = Db();
+        db.Organizations.Add(new Organization { Id = "org-a", Name = "Alpha" });
+        await db.SaveChangesAsync();
+        var queue = new TeamChatQueue();
+        var service = new TeamChatDailySummaryService(
+            new TeamChatActivityRepository(db), queue,
+            Microsoft.Extensions.Options.Options.Create(new TeamChatOptions
+            {
+                WebhookUrl = "https://x.bitrix24.com/rest/1/abc/", DailyDialogId = "chat3",
+            }),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<TeamChatDailySummaryService>.Instance);
+
+        Assert.Equal(1, await service.PostAsync(new DateOnly(2026, 11, 12)));
+        Assert.Equal(0, await service.PostAsync(new DateOnly(2026, 11, 12)));
+        Assert.Equal(1, await service.PostAsync(new DateOnly(2026, 11, 13)));
+
+        Assert.Equal(2, queue.Reader.Count);
+        Assert.True(queue.Reader.TryRead(out var first));
+        Assert.Equal(TeamChatChannel.Daily, first!.Channel);
+    }
 
     // A signed-in user of another company, to show the read ignores tenancy.
     private static AppDbContext Db() =>
