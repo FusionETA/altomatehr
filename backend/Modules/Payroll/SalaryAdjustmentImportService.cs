@@ -107,8 +107,13 @@ public class SalaryAdjustmentImportService : ISalaryAdjustmentImportService
 
             var problems = new List<string>();
 
+            // A monthly basic of 0 is allowed: someone paid only commission
+            // (ABPay posts their Basic as 0). An hourly rate of 0 pays nothing.
             var newSalary = TabularCell.Money(newSalaryCell);
-            if (newSalary is null or <= 0m) problems.Add("New Salary must be an amount above 0");
+            if (newSalary is null) problems.Add("New Salary must be an amount");
+            else if (who.Profile.SalaryType == SalaryType.HOURLY && newSalary <= 0m)
+                problems.Add("New hourly rate must be above 0");
+            else if (newSalary < 0m) problems.Add("New Salary can't be below 0");
 
             var effective = today;
             var dateCell = map.Cell(row, SalaryAdjustmentImportSheet.EffectiveDateKey);

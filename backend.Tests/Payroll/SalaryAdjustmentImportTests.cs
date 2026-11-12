@@ -200,6 +200,23 @@ public class SalaryAdjustmentImportTests : IDisposable
         Assert.Equal(4000m, Monthly("usr-5"));
     }
 
+    // Someone paid only commission has a monthly basic of 0 (ABPay posts it
+    // that way). An hourly rate of 0 or a negative salary is still refused.
+    [Fact]
+    public async Task AMonthlyBasicOfZero_IsAllowed_ButNotAnHourlyRateOfZero()
+    {
+        var result = await Import("E-001,,0,2026-06-01,OTHER,Commission only");
+
+        Assert.True(result.Ok);
+        Assert.Equal(0m, Monthly("usr-1"));
+        Assert.Equal(0m, Assert.Single(await _history.GetForEmployeeAsync("emp-usr-1")).NewMonthlySalary);
+
+        var refused = await Import("E-002,,0,,,", "E-003,,-1,,,");
+        Assert.False(refused.Ok);
+        Assert.Contains(refused.Errors, e => e.Message.Contains("hourly rate must be above 0"));
+        Assert.Contains(refused.Errors, e => e.Message.Contains("can't be below 0"));
+    }
+
     // One bad row saves nothing — including the good rows — and every
     // problem is reported at once.
     [Fact]
