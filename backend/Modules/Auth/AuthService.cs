@@ -87,6 +87,11 @@ public class AuthService : IAuthService
                     OrganizationId: owner.OrganizationId,
                     ActorEmail: user.Email,
                     ActorName: user.Email));
+
+                // Said in the team's alert chat only once an account reaches
+                // several failures in a short time, not on every typo.
+                if (_teamChat is not null)
+                    await _teamChat.SignInFailedAsync(user.Id, user.Email, owner.OrganizationId);
             }
 
             return null;

@@ -4142,6 +4142,19 @@ namespace AltomateHR.Api.Migrations
                     b.ToTable("Shifts");
                 });
 
+            modelBuilder.Entity("AltomateHR.Api.Modules.TeamChat.Entities.TeamChatDailyPost", b =>
+                {
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("PostedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Day");
+
+                    b.ToTable("TeamChatDailyPosts");
+                });
+
             modelBuilder.Entity("AltomateHR.Api.Modules.Teams.Entities.Team", b =>
                 {
                     b.Property<string>("Id")

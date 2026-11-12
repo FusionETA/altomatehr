@@ -106,8 +106,11 @@ public class PayrollRunServiceTests : IDisposable
             drafts: new PayrollDraftStaleness(
                 new PayrollRunRepository(_db), _currentUser,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<PayrollDraftStaleness>.Instance),
-            overtimeTypes: _otTypes);
+            overtimeTypes: _otTypes,
+            teamChat: _teamChat);
     }
+
+    private readonly AltomateHR.Api.Tests.TeamChat.RecordingTeamChat _teamChat = new();
 
     public void Dispose() => _db.Dispose();
 
@@ -2454,6 +2457,54 @@ public class PayrollRunServiceTests : IDisposable
     {
         _leave.Parts.RemoveAll(p => p.ApplicationId == part.ApplicationId);
         _leave.Parts.Add(part);
+    }
+
+    // ─── Team chat ──────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ApprovingTheFirstRun_IsSaidAsTheCompanysFirstPayroll_AndTheNextIsNot()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        await _db.SaveChangesAsync();
+
+        await FiledThroughApprovalAsync(1);
+        await FiledThroughApprovalAsync(2);
+
+        Assert.Equal(
+            ["payroll-approved January 2026 first=True", "payroll-approved February 2026 first=False"],
+            _teamChat.Said.Where(s => s.StartsWith("payroll-approved")));
+    }
+
+    [Fact]
+    public async Task ReApprovingAfterARevert_IsNotAnotherFirstPayroll()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        await _db.SaveChangesAsync();
+
+        var january = await FiledThroughApprovalAsync(1);
+        Assert.True((await _service.RevertToDraftAsync(january.Id)).Ok);
+        Assert.True((await _service.GenerateAsync(january.Id)).Ok);
+        (await _db.PayrollRuns.FirstAsync(r => r.Id == january.Id)).Status = PayrollRunStatus.PENDING_APPROVAL;
+        await _db.SaveChangesAsync();
+        Assert.True((await _service.ApproveAsync(january.Id)).Ok);
+
+        Assert.Equal(
+            ["payroll-approved January 2026 first=True", "payroll-approved January 2026 first=False"],
+            _teamChat.Said.Where(s => s.StartsWith("payroll-approved")));
+    }
+
+    [Fact]
+    public async Task DeletingADraft_AndRevertingAnApprovedRun_AreSaid()
+    {
+        AddEmployee("usr-1", "Aisyah");
+        await _db.SaveChangesAsync();
+
+        var filed = await FiledThroughApprovalAsync(1);
+        Assert.True((await _service.RevertToDraftAsync(filed.Id)).Ok);
+        Assert.True((await _service.DeleteDraftAsync(filed.Id)).Ok);
+
+        Assert.Contains("payroll-reverted January 2026 also=0", _teamChat.Said);
+        Assert.Contains("payroll-deleted January 2026", _teamChat.Said);
     }
 
     // Generated and approved through the service, so what it settled is final.

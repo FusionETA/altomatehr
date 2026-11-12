@@ -23,6 +23,8 @@ public class XeroService : IXeroService
     private readonly XeroOptions _options;
     private readonly IXeroAppResolver _apps;
 
+    private readonly TeamChat.ITeamChatAlerts? _teamChat;
+
     public XeroService(
         ICurrentUser currentUser,
         IXeroRepository repo,
@@ -35,8 +37,10 @@ public class XeroService : IXeroService
         ILogger<XeroService>? logger = null,
         // Optional for the same reason; without one, every company is on the
         // original app from the server's settings.
-        IXeroAppResolver? apps = null)
+        IXeroAppResolver? apps = null,
+        TeamChat.ITeamChatAlerts? teamChat = null)
     {
+        _teamChat = teamChat;
         _currentUser = currentUser;
         _repo = repo;
         _client = client;
@@ -1168,6 +1172,9 @@ public class XeroService : IXeroService
             TargetId: connection.TenantId,
             Metadata: new { Reason = reason },
             OrganizationId: connection.OrganizationId));
+
+        if (_teamChat is not null)
+            await _teamChat.XeroReconnectRequiredAsync(connection.OrganizationId, connection.TenantName, reason);
     }
 
     private bool CanDecryptTokens(XeroConnection connection)

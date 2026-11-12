@@ -16,15 +16,16 @@ public class BitrixClient : IBitrixClient
         _options = options.Value;
     }
 
-    public async Task PostAsync(string message, CancellationToken cancellationToken = default)
+    public async Task PostAsync(TeamChatChannel channel, string message, CancellationToken cancellationToken = default)
     {
-        if (!_options.IsConfigured) return;
+        var dialog = _options.DialogFor(channel);
+        if (dialog is null) return;
 
         var url = _options.WebhookUrl.Trim().TrimEnd('/') + "/im.message.add.json";
         // A plain body with its length, not PostAsJsonAsync's chunked stream,
         // which not every webhook endpoint reads.
         var json = JsonSerializer.Serialize(
-            new Dictionary<string, string> { ["DIALOG_ID"] = _options.DialogId.Trim(), ["MESSAGE"] = message });
+            new Dictionary<string, string> { ["DIALOG_ID"] = dialog, ["MESSAGE"] = message });
         using var content = new StringContent(json, Encoding.UTF8, "application/json");
         using var response = await _http.PostAsync(url, content, cancellationToken);
 

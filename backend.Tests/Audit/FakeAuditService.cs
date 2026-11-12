@@ -15,8 +15,12 @@ internal sealed class FakeAuditService : IAuditService
         return Task.CompletedTask;
     }
 
+    // Only the count, by action — enough for callers asking "has this happened before".
     public Task<AuditPageDto> ListAsync(AuditQueryDto query) =>
-        Task.FromResult(new AuditPageDto());
+        Task.FromResult(new AuditPageDto
+        {
+            Total = Written.Count(e => query.Action is null || e.Action == query.Action),
+        });
 
     public Task<AuditVerificationDto> VerifyAsync() =>
         Task.FromResult(new AuditVerificationDto { Ok = true });

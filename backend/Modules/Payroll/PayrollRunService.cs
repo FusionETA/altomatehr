@@ -57,6 +57,8 @@ public class PayrollRunService : IPayrollRunService
 
     private readonly Overtime.IOvertimeTypeService? _overtimeTypes;
 
+    private readonly TeamChat.ITeamChatAlerts? _teamChat;
+
     public PayrollRunService(
         IPayrollRunRepository runs,
         IPayslipRepository payslips,
@@ -78,8 +80,10 @@ public class PayrollRunService : IPayrollRunService
         IEmployeeScope? scope = null,
         IUnpaidLeaveSettlementRepository? settlements = null,
         IPayrollDraftStaleness? drafts = null,
-        Overtime.IOvertimeTypeService? overtimeTypes = null)
+        Overtime.IOvertimeTypeService? overtimeTypes = null,
+        TeamChat.ITeamChatAlerts? teamChat = null)
     {
+        _teamChat = teamChat;
         _overtimeTypes = overtimeTypes;
         _scope = scope;
         _settlements = settlements;
@@ -1043,6 +1047,21 @@ public class PayrollRunService : IPayrollRunService
         // was unreachable. The failure lands on the run's own error column.
         await _xeroSync.SyncOnApprovalAsync(run.Id);
 
+        if (_teamChat is not null)
+        {
+            // The company's first approval ever — read from the audit log
+            // (written just above), which a revert and re-approve can't undo.
+            // Imported months are never approved, so they don't count.
+            var approvals = await _audit.ListAsync(new Audit.Dtos.AuditQueryDto
+            {
+                Action = AuditActions.PayrollRunApprove,
+                Limit = 1,
+            });
+            var firstEver = run.Source == PayrollRunSource.COMPUTED && approvals.Total <= 1;
+            await _teamChat.PayrollRunApprovedAsync(
+                run.OrganizationId, RunLabel(run), run.EmployeeCount, run.TotalNet, firstEver);
+        }
+
         return new PayrollRunSaveResult(true, ToDto(run), null);
     }
 
@@ -1210,6 +1229,9 @@ public class PayrollRunService : IPayrollRunService
         if (_transfers is not null)
             await _transfers.RecomputeCarriedYearToDateAsync(run.OrganizationId, run.PeriodYear);
 
+        if (_teamChat is not null)
+            await _teamChat.PayrollRunRevertedAsync(run.OrganizationId, RunLabel(run), alsoReverted);
+
         return new PayrollRunRevertResult(true, ToDto(run), alsoReverted, null);
     }
 
@@ -1349,6 +1371,8 @@ public class PayrollRunService : IPayrollRunService
             Metadata: new { run.PeriodYear, run.PeriodMonth }));
 
         await _runs.DeleteAsync(run);
+
+        if (_teamChat is not null) await _teamChat.PayrollRunDeletedAsync(run.OrganizationId, RunLabel(run));
 
         return new PayrollRunSaveResult(true, null, null);
     }

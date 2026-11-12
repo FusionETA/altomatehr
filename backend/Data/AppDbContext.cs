@@ -41,6 +41,7 @@ public class AppDbContext : DbContext
     }
 
     public DbSet<Organization> Organizations => Set<Organization>();
+    public DbSet<Modules.TeamChat.Entities.TeamChatDailyPost> TeamChatDailyPosts => Set<Modules.TeamChat.Entities.TeamChatDailyPost>();
     public DbSet<Claim> Claims => Set<Claim>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     // Not tenant-scoped on purpose — see SupportAuditLog.
@@ -139,6 +140,9 @@ public class AppDbContext : DbContext
         // claims pointing at one bill. Filtered to non-null by MySQL's own
         // treatment of nulls in unique indexes.
         claim.HasIndex(c => c.XeroBillId).IsUnique();
+
+        // The daily team-chat summary: one row per day posted, the day its key.
+        modelBuilder.Entity<Modules.TeamChat.Entities.TeamChatDailyPost>().HasKey(p => p.Day);
 
         modelBuilder.Entity<Organization>()
             .Property(o => o.MileageUnit)

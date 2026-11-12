@@ -11,9 +11,13 @@ public class PortalCredentialService : IPortalCredentialService
     private readonly ISecretBox _secrets;
     private readonly IAuditService _audit;
 
+    private readonly TeamChat.ITeamChatAlerts? _teamChat;
+
     public PortalCredentialService(
-        IPortalCredentialRepository credentials, ISecretBox secrets, IAuditService audit)
+        IPortalCredentialRepository credentials, ISecretBox secrets, IAuditService audit,
+        TeamChat.ITeamChatAlerts? teamChat = null)
     {
+        _teamChat = teamChat;
         _credentials = credentials;
         _secrets = secrets;
         _audit = audit;
@@ -50,6 +54,9 @@ public class PortalCredentialService : IPortalCredentialService
             TargetType: "PayrollPortalCredential",
             TargetId: credential.Id,
             Metadata: new { Portal = portal.ToString() }));
+
+        if (_teamChat is not null)
+            await _teamChat.PortalPasswordViewedAsync(credential.OrganizationId, Label(portal));
 
         return ToDto(credential, revealPassword: true);
     }

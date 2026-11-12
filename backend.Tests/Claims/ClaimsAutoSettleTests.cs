@@ -51,6 +51,25 @@ public class ClaimsAutoSettleTests
         Assert.Equal(claim.ClaimNumber, Assert.Single(xero.Created).Reference);
     }
 
+    // The team's action chat hears the final decision, not each step.
+    [Fact]
+    public async Task OnlyTheFinalClaimDecision_IsSaidInTheTeamChat()
+    {
+        var approved = NewClaim("claim-1", "usr-emp");
+        var rejected = NewClaim("claim-2", "usr-emp");
+        var chat = new AltomateHR.Api.Tests.TeamChat.RecordingTeamChat();
+        var service = CreateService(
+            [approved, rejected], router: TwoStepChain(), employees: new FakeEmployeeDirectory(Ahmad), teamChat: chat);
+
+        await service.ApproveAsync("claim-1", "usr-lead");
+        Assert.Empty(chat.Said);
+
+        await service.ApproveAsync("claim-1", "usr-manager");
+        await service.RejectAsync("claim-2", "usr-lead", "No receipt");
+
+        Assert.Equal(["claim usr-emp Lunch approved=True", "claim usr-emp Lunch approved=False"], chat.Said);
+    }
+
     [Fact]
     public async Task ApprovingAMiddleStep_BillsNothing()
     {
