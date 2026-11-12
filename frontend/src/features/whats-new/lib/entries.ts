@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: fdcc89a
+// whats-new-covered-up-to: 48b13c8
 
 // A line is for everyone, or — wrapped in admins(…) — for admins and owners
 // only. Employees and supervisors never see an admins line, so it doesn't
@@ -30,7 +30,12 @@ export type WhatsNewEntry = {
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-11-12",
+    new: [
+      "After 5 wrong passwords in a row, an account is locked for 15 minutes, even to the right password. Resetting the password unlocks it straight away.",
+      "Ten wrong passwords from one network in 15 minutes pause sign-in for everyone on it: 15 minutes, or 1 hour if it happens again that day.",
+    ],
     improved: [
+      "A busy outlet signing in together is no longer held up. Sign-in attempts are now counted per network, and up to 20 a minute are allowed.",
       admins("The salary-change import now accepts a New Salary of 0, for staff paid only commission. Hourly rates of 0 and negative amounts are still refused."),
     ],
     fixed: [
