@@ -189,7 +189,8 @@ public class PartnerApiController : ControllerBase
         PartnerIdentity? identity;
         try
         {
-            identity = await _identity.VerifyAsync(caller, dto.Email ?? string.Empty, dto.Password ?? string.Empty);
+            identity = await _identity.VerifyAsync(
+                caller, dto.Email ?? string.Empty, dto.Password ?? string.Empty, dto.ClientIp);
         }
         catch (Auth.LoginBlockedException ex)
         {
@@ -326,6 +327,13 @@ public class VerifyCredentialsDto
 
     [System.ComponentModel.DataAnnotations.Required]
     public string? Password { get; set; }
+
+    // The person's own IP, as the companion app saw it, so a guesser behind
+    // the companion is blocked like one at the login page (LoginGuard).
+    // Honoured from a master key only; an org key's attempts are counted
+    // per key instead.
+    [System.ComponentModel.DataAnnotations.MaxLength(64)]
+    public string? ClientIp { get; set; }
 }
 
 public class LookupAccessDto

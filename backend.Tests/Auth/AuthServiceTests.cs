@@ -49,6 +49,23 @@ public class AuthServiceTests
         Assert.Equal(["account-locked admin@altomate.com"], chat.Said);
     }
 
+    // Twenty wrong passwords fired at once: at most five reach BCrypt.
+    [Fact]
+    public async Task AParallelBurst_GetsNoMoreThanFiveGuesses()
+    {
+        var service = CreateService(
+            users: [CreateUser(password: "correct-password")], refreshTokens: out _, guard: new LoginGuard());
+
+        var results = await Task.WhenAll(Enumerable.Range(0, 20).Select(i => Task.Run(async () =>
+        {
+            try { return await service.VerifyPasswordAsync("admin@altomate.com", $"guess-{i}", $"10.0.{i}.1") is null ? "checked" : "in"; }
+            catch (LoginBlockedException) { return "blocked"; }
+        })));
+
+        Assert.True(results.Count(r => r == "checked") <= 5, string.Join(",", results));
+        Assert.DoesNotContain("in", results);
+    }
+
     [Fact]
     public async Task TheRightPassword_StartsTheCountAgain()
     {

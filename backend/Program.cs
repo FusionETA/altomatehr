@@ -740,8 +740,9 @@ app.Run();
 // for everyone (that made each limit one bucket for the whole app).
 static string GetClientPartitionKey(HttpContext context, string policyName)
 {
+    // An IPv6 client by its /64, as LoginGuard counts it — one client holds it whole.
     var ip = AltomateHR.Api.Common.ClientIp.Of(context);
-    return $"{policyName}:{ip ?? "unknown"}";
+    return $"{policyName}:{(ip is null ? "unknown" : AltomateHR.Api.Modules.Auth.LoginGuard.IpKey(ip))}";
 }
 
 public partial class Program { }

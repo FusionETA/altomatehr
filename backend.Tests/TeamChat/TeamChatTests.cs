@@ -227,7 +227,7 @@ public class TeamChatTests
     }
 
     // Posted at 6pm, covering 6pm the day before to 6pm today (Malaysian
-    // time), so nothing done in the evening is missed; attendance is today's.
+    // time), so nothing done in the evening is missed.
     [Fact]
     public async Task TheSummary_Covers6pmYesterdayTo6pmToday()
     {
@@ -237,24 +237,23 @@ public class TeamChatTests
             Options.Create(new TeamChatOptions { WebhookUrl = "https://x.bitrix24.com/rest/1/abc/", DailyDialogId = "chat3" }),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<TeamChatDailySummaryService>.Instance);
 
-        await service.PostAsync(new DateOnly(2026, 11, 12));
+        await service.PostAsync(new DateOnly(2026, 11, 12), new DateTime(2026, 11, 12, 10, 5, 0, DateTimeKind.Utc));
 
         Assert.Equal(new DateTime(2026, 11, 11, 10, 0, 0, DateTimeKind.Utc), repo.From);   // 6pm Wed MYT
         Assert.Equal(new DateTime(2026, 11, 12, 10, 0, 0, DateTimeKind.Utc), repo.To);     // 6pm Thu MYT
-        Assert.Equal(new DateTime(2026, 11, 12, 0, 0, 0, DateTimeKind.Utc), repo.Day);
     }
 
     private sealed class WindowRecorder : ITeamChatActivityRepository
     {
-        public DateTime From, To, Day;
+        public DateTime From, To;
 
-        public Task<IReadOnlyList<CompanyActivity>> GetAsync(DateTime fromUtc, DateTime toUtc, DateTime localDay)
+        public Task<IReadOnlyList<CompanyActivity>> GetAsync(DateTime fromUtc, DateTime toUtc)
         {
-            (From, To, Day) = (fromUtc, toUtc, localDay);
+            (From, To) = (fromUtc, toUtc);
             return Task.FromResult<IReadOnlyList<CompanyActivity>>([]);
         }
 
-        public Task<bool> TryClaimDayAsync(DateOnly day, DateTime utcNow) => Task.FromResult(true);
+        public Task<bool> TryClaimDayAsync(DateOnly day, DateTime windowEndUtc, DateTime utcNow) => Task.FromResult(true);
     }
 
     [Fact]

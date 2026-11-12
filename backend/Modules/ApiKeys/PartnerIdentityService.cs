@@ -55,11 +55,12 @@ public class PartnerIdentityService : IPartnerIdentityService
             : new PartnerCaller(IsMaster: false, keyOrganizationId);
     }
 
-    public async Task<PartnerIdentity?> VerifyAsync(PartnerCaller caller, string email, string password)
+    public async Task<PartnerIdentity?> VerifyAsync(
+        PartnerCaller caller, string email, string password, string? clientIp = null)
     {
         // The password check alone: no session, refresh token or login entry —
         // the integration mints its own session.
-        var user = await _auth.VerifyPasswordAsync(email.Trim(), password);
+        var user = await _auth.VerifyPasswordAsync(email.Trim(), password, LockoutIp(caller, clientIp));
         if (user is null) return null;
 
         var organizations = await NamedAsync(caller, await AdminMembershipsAsync(caller, user.Id));
@@ -69,6 +70,20 @@ public class PartnerIdentityService : IPartnerIdentityService
         return new PartnerIdentity(
             user.Id, user.Name, user.Email, primary.Role,
             primary.Id, primary.Name, organizations);
+    }
+
+    // Whose wrong passwords these are, for the IP rule (LoginGuard):
+    //   • a master key (ABPay) passing the person's IP: that IP — a guesser
+    //     at ABPay's login is blocked as one at AltomateHR's would be;
+    //   • a master key passing none (a companion not yet sending it): no IP
+    //     rule, or every one of its users would share one block;
+    //   • a company API key: its own bucket — anyone holding a key who sprays
+    //     passwords is stopped at 10, without blocking any real IP.
+    private static string? LockoutIp(PartnerCaller caller, string? clientIp)
+    {
+        if (!caller.IsMaster) return $"apikey:{caller.OrganizationId}";
+        var ip = clientIp?.Trim();
+        return !string.IsNullOrEmpty(ip) && System.Net.IPAddress.TryParse(ip, out _) ? ip : null;
     }
 
     public async Task<IReadOnlyList<PartnerOrganization>> AdminOrganizationsAsync(

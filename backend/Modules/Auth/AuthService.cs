@@ -65,9 +65,11 @@ public class AuthService : IAuthService
     public async Task<User?> VerifyPasswordAsync(string email, string password, string? clientIp = null)
     {
         // Locked out: refused before the password is looked at, right or not —
-        // otherwise the lock would still answer "that one was right".
+        // otherwise the lock would still answer "that one was right". The
+        // attempt counts as wrong from here until the password proves right.
         var now = DateTime.UtcNow;
-        if (_guard?.Check(email, clientIp, now) is { } block) throw new LoginBlockedException(block, now);
+        var attempt = _guard?.Begin(email, clientIp, now);
+        if (attempt?.Block is { } block) throw new LoginBlockedException(block, now);
 
         var user = await _userRepo.GetByEmailAsync(email);
 
@@ -100,9 +102,9 @@ public class AuthService : IAuthService
             // Counted for unknown emails too, so a lock says nothing about
             // which addresses exist. The team's alert chat hears of each lock
             // and block — not of every typo.
-            if (_guard is not null)
+            if (_guard is not null && attempt is not null)
             {
-                var outcome = _guard.RecordFailure(email, clientIp, now);
+                var outcome = _guard.Fail(attempt, DateTime.UtcNow);
                 if (_teamChat is not null)
                 {
                     if (outcome.AccountLockedFor is { } locked)
@@ -115,7 +117,7 @@ public class AuthService : IAuthService
             return null;
         }
 
-        _guard?.RecordSuccess(email);
+        if (attempt is not null) _guard!.Succeed(attempt);
 
         // Transparent upgrade: a legacy scrypt password that just verified is re-hashed
         // to BCrypt, so this account's NEXT login uses the native format and the old

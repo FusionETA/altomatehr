@@ -30,7 +30,8 @@ public class TeamChatDailySummaryBackgroundService : BackgroundService
         {
             try
             {
-                var nowMyt = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, Myt);
+                var nowUtc = DateTime.UtcNow;
+                var nowMyt = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, Myt);
                 if (nowMyt.Hour != FireHourMyt) continue;
 
                 var today = DateOnly.FromDateTime(nowMyt);
@@ -38,7 +39,7 @@ public class TeamChatDailySummaryBackgroundService : BackgroundService
 
                 using var scope = _scopeFactory.CreateScope();
                 var posted = await scope.ServiceProvider
-                    .GetRequiredService<ITeamChatDailySummaryService>().PostAsync(today);
+                    .GetRequiredService<ITeamChatDailySummaryService>().PostAsync(today, nowUtc);
 
                 _lastRunDate = today;
                 _logger.LogInformation("Team chat daily summary: {Count} message(s) queued.", posted);
