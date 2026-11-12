@@ -47,6 +47,8 @@ public class ClaimsService : IClaimsService
     private readonly IXeroService _xero;
     private readonly ILogger<ClaimsService> _logger;
 
+    private readonly TeamChat.ITeamChatAlerts? _teamChat;
+
     public ClaimsService(
         IClaimsRepository repo,
         IClaimReceiptStorage receiptStorage,
@@ -61,8 +63,10 @@ public class ClaimsService : IClaimsService
         IEmployeeRowResolver employees,
         IProjectService projects,
         IXeroService xero,
-        ILogger<ClaimsService>? logger = null)
+        ILogger<ClaimsService>? logger = null,
+        TeamChat.ITeamChatAlerts? teamChat = null)
     {
+        _teamChat = teamChat;
         _repo = repo;
         _receiptStorage = receiptStorage;
         _accounts = accounts;
@@ -1089,6 +1093,16 @@ public class ClaimsService : IClaimsService
             claim.OrganizationId,
             targets,
             RealtimeEventDto.For(RealtimeScope.CLAIMS, action, claim.Id));
+
+        // The team's action chat hears final decisions, not each step of a chain.
+        if (_teamChat is not null
+            && ((action == RealtimeAction.APPROVED && claim.Status == ClaimStatus.APPROVED)
+                || (action == RealtimeAction.REJECTED && claim.Status == ClaimStatus.REJECTED)))
+        {
+            await _teamChat.ClaimDecidedAsync(
+                claim.OrganizationId, claim.EmployeeId, claim.Title, claim.Currency, claim.Amount,
+                approved: action == RealtimeAction.APPROVED);
+        }
 
         // Persisted in-app notification, on top of the ephemeral SSE nudge above.
         // Only the two "needs someone's attention" moments get one — UPDATED and

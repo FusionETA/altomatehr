@@ -57,6 +57,8 @@ public class LeaveService : ILeaveService
     // restricted (LeaveEligibility treats unknown as allowed).
     private readonly Employees.IEmployeeProfileService? _profiles;
 
+    private readonly TeamChat.ITeamChatAlerts? _teamChat;
+
     public LeaveService(
         ILeaveApplicationRepository apps,
         ILeaveTypeRepository types,
@@ -76,8 +78,10 @@ public class LeaveService : ILeaveService
         IProjectService projects,
         Payroll.IPayrollDraftStaleness? drafts = null,
         Audit.IAuditService? audit = null,
-        Employees.IEmployeeProfileService? profiles = null)
+        Employees.IEmployeeProfileService? profiles = null,
+        TeamChat.ITeamChatAlerts? teamChat = null)
     {
+        _teamChat = teamChat;
         _drafts = drafts;
         _audit = audit;
         _profiles = profiles;
@@ -2239,6 +2243,17 @@ public class LeaveService : ILeaveService
             app.OrganizationId,
             targets,
             RealtimeEventDto.For(RealtimeScope.LEAVE, action, app.Id));
+
+        // The team's action chat hears final decisions, not each step of a chain.
+        if (_teamChat is not null
+            && ((action == RealtimeAction.APPROVED && app.Status == LeaveStatus.APPROVED)
+                || (action == RealtimeAction.REJECTED && app.Status == LeaveStatus.REJECTED)))
+        {
+            var leaveType = (await _types.GetByIdAsync(app.LeaveTypeId))?.Name ?? "Leave";
+            await _teamChat.LeaveDecidedAsync(
+                app.OrganizationId, app.EmployeeId, leaveType, app.TotalDays, app.StartDate, app.EndDate,
+                approved: action == RealtimeAction.APPROVED, byAdmin: app.AppliedByAdminId is not null);
+        }
 
         // Persisted in-app notification, on top of the ephemeral SSE nudge above.
         // Only the two "needs someone's attention" moments get one — UPDATED and

@@ -518,8 +518,9 @@ builder.Services.AddMemoryCache();
 builder.Services.AddScoped<AltomateHR.Api.Modules.Organizations.IOrganizationStatus,
     AltomateHR.Api.Modules.Organizations.OrganizationStatus>();
 
-// Team chat: sign-ins and new companies posted to the team's Bitrix group.
-// Quiet unless Bitrix:WebhookUrl (a secret) and Bitrix:DialogId are both set.
+// Team chat: three Bitrix group chats — Action (what customers did), Alert
+// (sign-ins and things to look at) and Daily (the 08:00 summary). Quiet unless
+// Bitrix:WebhookUrl (a secret) and a chat id are set; see TeamChatOptions.
 builder.Services.Configure<AltomateHR.Api.Modules.TeamChat.TeamChatOptions>(
     builder.Configuration.GetSection(AltomateHR.Api.Modules.TeamChat.TeamChatOptions.SectionName));
 builder.Services.AddSingleton<AltomateHR.Api.Modules.TeamChat.ITeamChatQueue,
@@ -531,6 +532,13 @@ builder.Services.AddScoped<AltomateHR.Api.Modules.TeamChat.ITeamChatAlerts,
 builder.Services.AddHttpClient<AltomateHR.Api.Modules.TeamChat.IBitrixClient,
     AltomateHR.Api.Modules.TeamChat.BitrixClient>().RemoveAllLoggers();
 builder.Services.AddHostedService<AltomateHR.Api.Modules.TeamChat.Cron.TeamChatSenderBackgroundService>();
+builder.Services.AddSingleton<AltomateHR.Api.Modules.TeamChat.ISignInFailureTracker,
+    AltomateHR.Api.Modules.TeamChat.SignInFailureTracker>();
+builder.Services.AddScoped<AltomateHR.Api.Modules.TeamChat.ITeamChatActivityRepository,
+    AltomateHR.Api.Modules.TeamChat.TeamChatActivityRepository>();
+builder.Services.AddScoped<AltomateHR.Api.Modules.TeamChat.ITeamChatDailySummaryService,
+    AltomateHR.Api.Modules.TeamChat.TeamChatDailySummaryService>();
+builder.Services.AddHostedService<AltomateHR.Api.Modules.TeamChat.Cron.TeamChatDailySummaryBackgroundService>();
 builder.Services.AddScoped<IApiClientRepository, ApiClientRepository>();
 builder.Services.AddScoped<IPartnerAuthStore, PartnerAuthStore>();
 builder.Services.AddScoped<IPartnerAuthService, PartnerAuthService>();

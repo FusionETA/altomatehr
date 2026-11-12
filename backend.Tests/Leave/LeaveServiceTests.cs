@@ -889,6 +889,29 @@ public class LeaveServiceTests
         Assert.Equal(LeaveStatus.APPROVED, result.Application!.Status);
     }
 
+    // The team's action chat hears the final decision, not each step.
+    [Fact]
+    public async Task OnlyTheFinalLeaveDecision_IsSaidInTheTeamChat()
+    {
+        var chat = new AltomateHR.Api.Tests.TeamChat.RecordingTeamChat();
+        var service = MakeService(
+            types: [MakeType("t-al", "AL", 14)],
+            apps: [MakeApp("a1", "usr-emp", "t-al", 3, LeaveStatus.PENDING),
+                   MakeApp("a2", "usr-emp", "t-al", 1, LeaveStatus.PENDING)],
+            router: new FakeApprovalRouter(new() { ["usr-emp"] = [["usr-super"], ["usr-mgr"]] }),
+            teamChat: chat);
+
+        Assert.True((await service.ApproveAsync("a1", "usr-super")).Transitioned);
+        Assert.Empty(chat.Said);
+
+        Assert.True((await service.ApproveAsync("a1", "usr-mgr")).Transitioned);
+        Assert.True((await service.RejectAsync("a2", "usr-super", "Clashes with stock take")).Transitioned);
+
+        Assert.Equal(
+            ["leave usr-emp approved=True byAdmin=False", "leave usr-emp approved=False byAdmin=False"],
+            chat.Said);
+    }
+
     [Fact]
     public async Task ApproveAsync_HidesApplicationFromNonCurrentApprover()
     {
@@ -1974,7 +1997,8 @@ public class LeaveServiceTests
         AltomateHR.Api.Modules.Audit.IAuditService? audit = null,
         IEnumerable<HolidayDto>? holidays = null,
         ILeaveApplicationRepository? appRepo = null,
-        AltomateHR.Api.Modules.Employees.IEmployeeProfileService? profiles = null) =>
+        AltomateHR.Api.Modules.Employees.IEmployeeProfileService? profiles = null,
+        AltomateHR.Api.Modules.TeamChat.ITeamChatAlerts? teamChat = null) =>
         new(
             appRepo ?? new FakeLeaveApplicationRepository(apps ?? []),
             new FakeLeaveTypeRepository(types ?? []),
@@ -1994,7 +2018,8 @@ public class LeaveServiceTests
             new FakeProjectService(),
             drafts,
             audit,
-            profiles);
+            profiles,
+            teamChat: teamChat);
 
     private static LeaveType ProRatedType(string id, double days) => new()
     {

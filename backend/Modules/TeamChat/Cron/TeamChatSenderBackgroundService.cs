@@ -35,7 +35,8 @@ public class TeamChatSenderBackgroundService : BackgroundService
                     using var scope = _scopeFactory.CreateScope();
                     using var timeout = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                     timeout.CancelAfter(TimeSpan.FromSeconds(10));
-                    await scope.ServiceProvider.GetRequiredService<IBitrixClient>().PostAsync(message, timeout.Token);
+                    await scope.ServiceProvider.GetRequiredService<IBitrixClient>()
+                        .PostAsync(message.Channel, message.Text, timeout.Token);
                 }
                 catch (Exception e) when (!stoppingToken.IsCancellationRequested)
                 {

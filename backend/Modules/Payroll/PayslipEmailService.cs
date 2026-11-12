@@ -22,6 +22,10 @@ public class PayslipEmailService : IPayslipEmailService
     private readonly IEmailSender _email;
     private readonly IAuditService _audit;
 
+    private const string NoEmailAddress = "No email address on file for this employee.";
+
+    private readonly TeamChat.ITeamChatAlerts? _teamChat;
+
     public PayslipEmailService(
         IPayslipRepository payslips,
         IPayrollRunRepository runs,
@@ -30,8 +34,10 @@ public class PayslipEmailService : IPayslipEmailService
         IOrganizationRepository organizations,
         ICurrentUser currentUser,
         IEmailSender email,
-        IAuditService audit)
+        IAuditService audit,
+        TeamChat.ITeamChatAlerts? teamChat = null)
     {
+        _teamChat = teamChat;
         _payslips = payslips;
         _runs = runs;
         _statutory = statutory;
@@ -56,6 +62,7 @@ public class PayslipEmailService : IPayslipEmailService
 
         var directory = await _employees.GetSnapshotAsync();
         var (ok, reason) = await SendOneAsync(payslip, run, directory);
+        if (!ok) await TellTeamAsync(run, 1, [reason ?? "Send failed."]);
         return new PayslipEmailResult(ok, reason);
     }
 
@@ -82,7 +89,19 @@ public class PayslipEmailService : IPayslipEmailService
             else failed.Add(new PayslipEmailFailure(name, reason ?? "Send failed."));
         }
 
+        await TellTeamAsync(run, payslips.Count, failed.Select(f => f.Reason).ToList());
         return new PayslipEmailBulkResult(sent, failed, null);
+    }
+
+    // The team's alert chat hears when sending broke — the mail provider
+    // refusing, a PDF that wouldn't render. Someone with no email address is
+    // the company's to fix and is on their screen already, so not said.
+    private async Task TellTeamAsync(PayrollRun run, int total, IReadOnlyList<string> reasons)
+    {
+        if (_teamChat is null) return;
+        var broken = reasons.Where(r => r != NoEmailAddress).ToList();
+        if (broken.Count == 0) return;
+        await _teamChat.PayslipEmailsFailedAsync(run.OrganizationId, PayrollPeriodLabel.ForRun(run), total, broken);
     }
 
     // Never throws — an email failure must not become a 500 for an action
@@ -93,7 +112,7 @@ public class PayslipEmailService : IPayslipEmailService
     {
         var toEmail = directory.EmailOf(payslip.UserId);
         if (string.IsNullOrWhiteSpace(toEmail))
-            return (false, "No email address on file for this employee.");
+            return (false, NoEmailAddress);
 
         try
         {

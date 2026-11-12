@@ -73,6 +73,8 @@ public class AttendanceService : IAttendanceService
     private readonly ILeaveService _leave;
     private readonly ILeaveTypeService _leaveTypes;
 
+    private readonly TeamChat.ITeamChatAlerts? _teamChat;
+
     public AttendanceService(
         IAttendanceRepository repo,
         IAttendanceSessionRepository sessions,
@@ -95,8 +97,10 @@ public class AttendanceService : IAttendanceService
         IHolidayService holidays,
         Xero.IXeroFileReader xero,
         ILeaveService leave,
-        ILeaveTypeService leaveTypes)
+        ILeaveTypeService leaveTypes,
+        TeamChat.ITeamChatAlerts? teamChat = null)
     {
+        _teamChat = teamChat;
         _holidays = holidays;
         _xero = xero;
         _leave = leave;
@@ -1511,6 +1515,16 @@ public class AttendanceService : IAttendanceService
                 ? $"Your {KindLabel(request.Kind)} request was approved."
                 : $"Your {KindLabel(request.Kind)} request was rejected.{(string.IsNullOrEmpty(request.ReviewNotes) ? "" : $" Reason: {request.ReviewNotes}")}",
             "/attendance");
+
+        // Approvals are every clock-in and out, so the team's action chat
+        // hears only a final refusal.
+        if (_teamChat is not null && request.ApprovalStatus == AttendanceApprovalStatus.REJECTED)
+        {
+            var what = KindLabel(request.Kind);
+            await _teamChat.AttendanceRejectedAsync(
+                request.OrganizationId, request.EmployeeId, char.ToUpperInvariant(what[0]) + what[1..],
+                request.EventAt, request.ReviewNotes);
+        }
     }
 
     private static string KindLabel(AttendanceApprovalKind kind) => kind switch

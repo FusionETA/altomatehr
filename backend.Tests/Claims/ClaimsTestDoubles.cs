@@ -33,7 +33,8 @@ internal static class ClaimsTestFactory
         IRealtimeService? realtime = null,
         IEmployeeRowResolver? employees = null,
         IProjectService? projects = null,
-        IXeroService? xero = null) =>
+        IXeroService? xero = null,
+        AltomateHR.Api.Modules.TeamChat.ITeamChatAlerts? teamChat = null) =>
         new(
             new FakeClaimsRepository(claims),
             receiptStorage ?? new FakeClaimReceiptStorage(),
@@ -47,7 +48,8 @@ internal static class ClaimsTestFactory
             new FakeNotificationService(),
             employees ?? new FakeEmployeeDirectory(),
             projects ?? new FakeProjectServiceForExport(),
-            xero ?? new FakeXeroBillService());
+            xero ?? new FakeXeroBillService(),
+            teamChat: teamChat);
 
     public static Claim NewClaim(
         string id,
