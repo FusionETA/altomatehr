@@ -1,6 +1,6 @@
 namespace AltomateHR.Api.Modules.TeamChat;
 
-// One company's day, for the 08:00 summary in the daily chat. The "Waiting"
+// One company's day, for the 18:00 summary in the daily chat. The "Waiting"
 // counts are as of now, not of the day.
 public sealed record CompanyActivity(
     string OrganizationId,

@@ -28,6 +28,7 @@ public class AuthService : IAuthService
     private readonly ISuperadminRegistry? _superadmins;
     private readonly TeamChat.ITeamChatAlerts? _teamChat;
     private readonly IOrganizationStatus? _status;
+    private readonly ILoginGuard? _guard;
 
     public AuthService(
         ITokenService tokens,
@@ -42,8 +43,10 @@ public class AuthService : IAuthService
         IOrganizationRepository organizations,
         ISuperadminRegistry? superadmins = null,
         TeamChat.ITeamChatAlerts? teamChat = null,
-        IOrganizationStatus? status = null)
+        IOrganizationStatus? status = null,
+        ILoginGuard? guard = null)
     {
+        _guard = guard;
         _superadmins = superadmins;
         _teamChat = teamChat;
         _status = status;
@@ -59,8 +62,13 @@ public class AuthService : IAuthService
         _organizations = organizations;
     }
 
-    public async Task<User?> VerifyPasswordAsync(string email, string password)
+    public async Task<User?> VerifyPasswordAsync(string email, string password, string? clientIp = null)
     {
+        // Locked out: refused before the password is looked at, right or not —
+        // otherwise the lock would still answer "that one was right".
+        var now = DateTime.UtcNow;
+        if (_guard?.Check(email, clientIp, now) is { } block) throw new LoginBlockedException(block, now);
+
         var user = await _userRepo.GetByEmailAsync(email);
 
         // Verify against the stored hash — BCrypt (native) OR legacy scrypt (migrated
@@ -87,15 +95,27 @@ public class AuthService : IAuthService
                     OrganizationId: owner.OrganizationId,
                     ActorEmail: user.Email,
                     ActorName: user.Email));
+            }
 
-                // Said in the team's alert chat only once an account reaches
-                // several failures in a short time, not on every typo.
+            // Counted for unknown emails too, so a lock says nothing about
+            // which addresses exist. The team's alert chat hears of each lock
+            // and block — not of every typo.
+            if (_guard is not null)
+            {
+                var outcome = _guard.RecordFailure(email, clientIp, now);
                 if (_teamChat is not null)
-                    await _teamChat.SignInFailedAsync(user.Id, user.Email, owner.OrganizationId);
+                {
+                    if (outcome.AccountLockedFor is { } locked)
+                        await _teamChat.AccountLockedAsync(email.Trim(), user?.Id, owner?.OrganizationId, locked, clientIp);
+                    if (outcome.IpBlockedFor is { } blocked && clientIp is not null)
+                        await _teamChat.IpBlockedAsync(clientIp, blocked, outcome.IpBlockedAgainToday, outcome.EmailsTriedFromIp);
+                }
             }
 
             return null;
         }
+
+        _guard?.RecordSuccess(email);
 
         // Transparent upgrade: a legacy scrypt password that just verified is re-hashed
         // to BCrypt, so this account's NEXT login uses the native format and the old
@@ -109,9 +129,9 @@ public class AuthService : IAuthService
         return user;
     }
 
-    public async Task<AuthResult?> LoginAsync(string email, string password)
+    public async Task<AuthResult?> LoginAsync(string email, string password, string? clientIp = null)
     {
-        var user = await VerifyPasswordAsync(email, password);
+        var user = await VerifyPasswordAsync(email, password, clientIp);
         if (user is null) return null;
 
         // Log the account into its home org — the company they work at NOW (see
@@ -381,6 +401,8 @@ public class AuthService : IAuthService
 
         user.PasswordHash = BC.HashPassword(newPassword);
         await _userRepo.UpdateAsync(user);
+        // A new password ends any lock the old one's guessing caused.
+        _guard?.ClearAccount(user.Email);
 
         record.ConsumedAt = DateTime.UtcNow;
         await _otpRepo.UpdateAsync(record);

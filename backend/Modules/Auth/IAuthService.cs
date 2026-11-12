@@ -4,13 +4,17 @@ namespace AltomateHR.Api.Modules.Auth;
 // token / not a member of the target org) so the controller decides the HTTP status.
 public interface IAuthService
 {
-    Task<AuthResult?> LoginAsync(string email, string password);
+    // clientIp: the caller's real IP, for the per-IP lockout (LoginGuard).
+    Task<AuthResult?> LoginAsync(string email, string password, string? clientIp = null);
 
     // The password check alone — no session, no refresh token, no login entry.
     // For a companion app that authenticates someone before minting ITS own
     // session. Null for an unknown email or a wrong password (a failure is
     // still audited, as a failed login is).
-    Task<Entities.User?> VerifyPasswordAsync(string email, string password);
+    // Throws LoginBlockedException while the account (or, given `clientIp`,
+    // that IP) is locked out — see LoginGuard. A companion app checking a
+    // password from its own server passes no IP: the account rule still holds.
+    Task<Entities.User?> VerifyPasswordAsync(string email, string password, string? clientIp = null);
     Task<AuthResult?> RefreshAsync(string refreshToken);
 
     // Re-mint the token for another org the user belongs to. Null = not a member.

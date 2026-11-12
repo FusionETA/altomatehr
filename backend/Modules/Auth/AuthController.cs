@@ -36,17 +36,28 @@ public class AuthController : ControllerBase
         AuthResult? result;
         try
         {
-            result = await _auth.LoginAsync(dto.Email, dto.Password);
+            result = await _auth.LoginAsync(dto.Email, dto.Password, _currentUser.IpAddress);
         }
         catch (CompanyDeactivatedException ex)
         {
             return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
+        }
+        catch (LoginBlockedException ex)
+        {
+            return TooManyAttempts(ex);
         }
         if (result is null)
             return Unauthorized(new { message = "Invalid credentials." });
 
         SetRefreshCookie(result);
         return Ok(ToResponse(result));
+    }
+
+    // A lock or block from LoginGuard: 429, saying how long, with Retry-After.
+    private ObjectResult TooManyAttempts(LoginBlockedException ex)
+    {
+        Response.Headers.RetryAfter = ((int)Math.Ceiling(Math.Max(1, ex.RetryAfter.TotalSeconds))).ToString();
+        return StatusCode(StatusCodes.Status429TooManyRequests, new { message = ex.Message });
     }
 
     // POST /auth/refresh

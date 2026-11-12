@@ -186,7 +186,18 @@ public class PartnerApiController : ControllerBase
         if (caller is null)
             return Unauthorized(new { message = "Invalid or revoked API key." });
 
-        var identity = await _identity.VerifyAsync(caller, dto.Email ?? string.Empty, dto.Password ?? string.Empty);
+        PartnerIdentity? identity;
+        try
+        {
+            identity = await _identity.VerifyAsync(caller, dto.Email ?? string.Empty, dto.Password ?? string.Empty);
+        }
+        catch (Auth.LoginBlockedException ex)
+        {
+            // The account is locked (LoginGuard). Locks are kept for unknown
+            // emails too, so saying so tells the key holder nothing new.
+            Response.Headers.RetryAfter = ((int)Math.Ceiling(Math.Max(1, ex.RetryAfter.TotalSeconds))).ToString();
+            return StatusCode(StatusCodes.Status429TooManyRequests, new { message = ex.Message });
+        }
 
         // One answer for a wrong password, an unknown email, a non-admin, and
         // someone who administers a different company. Anything finer tells a

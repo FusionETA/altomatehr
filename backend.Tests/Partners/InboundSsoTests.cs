@@ -190,9 +190,9 @@ public class InboundSsoTests
                 "access", "admin@acme.com", "Admin", organizationId,
                 "refresh", DateTime.UtcNow.AddDays(7), ViaSso: sso));
 
-        public Task<AltomateHR.Api.Modules.Auth.Entities.User?> VerifyPasswordAsync(string email, string password) =>
+        public Task<AltomateHR.Api.Modules.Auth.Entities.User?> VerifyPasswordAsync(string email, string password, string? clientIp = null) =>
             Task.FromResult<AltomateHR.Api.Modules.Auth.Entities.User?>(null);
-        public Task<AuthResult?> LoginAsync(string email, string password) =>
+        public Task<AuthResult?> LoginAsync(string email, string password, string? clientIp = null) =>
             throw new NotSupportedException();
         public Task<AuthResult?> RefreshAsync(string refreshToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<UserOrgDto>> GetOrgsAsync(string userId) => throw new NotSupportedException();

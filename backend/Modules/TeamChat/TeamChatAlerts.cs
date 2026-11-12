@@ -16,7 +16,6 @@ public class TeamChatAlerts : ITeamChatAlerts
     private readonly ICurrentUser _currentUser;
     private readonly TeamChatOptions _options;
     private readonly ILogger<TeamChatAlerts> _logger;
-    private readonly ISignInFailureTracker? _failures;
 
     public TeamChatAlerts(
         ITeamChatQueue queue,
@@ -24,8 +23,7 @@ public class TeamChatAlerts : ITeamChatAlerts
         IOrganizationRepository organizations,
         ICurrentUser currentUser,
         IOptions<TeamChatOptions> options,
-        ILogger<TeamChatAlerts> logger,
-        ISignInFailureTracker? failures = null)
+        ILogger<TeamChatAlerts> logger)
     {
         _queue = queue;
         _users = users;
@@ -33,7 +31,6 @@ public class TeamChatAlerts : ITeamChatAlerts
         _currentUser = currentUser;
         _options = options.Value;
         _logger = logger;
-        _failures = failures;
     }
 
     // ---- Action chat ----
@@ -96,19 +93,17 @@ public class TeamChatAlerts : ITeamChatAlerts
                 user?.Name, user?.Email ?? userId, role, await CompanyNameAsync(organizationId), via, _currentUser.IpAddress);
         });
 
-    public Task SignInFailedAsync(string userId, string email, string organizationId)
-    {
-        // Counted even when no chat is set up would be wasted work; and only
-        // the failure that reaches the threshold is said.
-        if (_failures is null || !_options.IsConfigured(TeamChatChannel.Alert)) return Task.CompletedTask;
-        if (!_failures.RecordAndShouldAlert(userId, DateTime.UtcNow)) return Task.CompletedTask;
-
-        return SayAsync(TeamChatChannel.Alert, "failed-sign-ins", async () =>
+    public Task AccountLockedAsync(string email, string? userId, string? organizationId, TimeSpan duration, string? ip) =>
+        SayAsync(TeamChatChannel.Alert, "account-locked", async () =>
         {
-            var user = await _users.GetByIdAsync(userId);
-            return SignInFailedText(user?.Name, email, await CompanyNameAsync(organizationId), _currentUser.IpAddress);
+            var user = userId is null ? null : await _users.GetByIdAsync(userId);
+            var company = organizationId is null ? null : await CompanyNameAsync(organizationId);
+            return AccountLockedText(user?.Name, email, user is not null, company, duration, ip);
         });
-    }
+
+    public Task IpBlockedAsync(string ip, TimeSpan duration, bool againToday, IReadOnlyList<string> emailsTried) =>
+        SayAsync(TeamChatChannel.Alert, "ip-blocked", () =>
+            Task.FromResult(IpBlockedText(ip, duration, againToday, emailsTried)));
 
     public Task PortalPasswordViewedAsync(string organizationId, string portal) =>
         SayAsync(TeamChatChannel.Alert, "portal-password", async () =>
@@ -224,10 +219,41 @@ public class TeamChatAlerts : ITeamChatAlerts
         return string.Join("\n", lines);
     }
 
-    public static string SignInFailedText(string? name, string email, string company, string? ip) =>
-        string.Join("\n",
-            $"⚠️ {SignInFailureTracker.Threshold} wrong passwords in {SignInFailureTracker.Window.TotalMinutes:0} minutes: {Who(name, email)}",
-            $"Company: {Clean(company)}{Ip(ip)}");
+    public static string AccountLockedText(
+        string? name, string email, bool knownAccount, string? company, TimeSpan duration, string? ip)
+    {
+        var lines = new List<string>
+        {
+            $"🔒 Account locked for {Span(duration)}: {Who(name, email)}",
+            $"{Modules.Auth.LoginGuard.AccountThreshold} wrong passwords in a row{Ip(ip)}",
+        };
+        lines.Add(knownAccount
+            ? company is null ? "No company" : $"Company: {Clean(company)}"
+            : "No AltomateHR account has this email — someone is guessing addresses.");
+        return string.Join("\n", lines);
+    }
+
+    public static string IpBlockedText(string ip, TimeSpan duration, bool againToday, IReadOnlyList<string> emailsTried)
+    {
+        const int shown = 5;
+        var lines = new List<string>
+        {
+            $"⛔ IP {Clean(ip)} blocked from signing in for {Span(duration)}"
+            + (againToday ? " (blocked again today)" : ""),
+            $"{Modules.Auth.LoginGuard.IpThreshold} wrong passwords in {Modules.Auth.LoginGuard.Window.TotalMinutes:0} minutes",
+        };
+        if (emailsTried.Count > 0)
+        {
+            var listed = string.Join(", ", emailsTried.Take(shown).Select(Clean));
+            lines.Add($"Tried: {listed}{(emailsTried.Count > shown ? $" and {emailsTried.Count - shown} more" : "")}");
+        }
+        return string.Join("\n", lines);
+    }
+
+    private static string Span(TimeSpan d) =>
+        d.TotalMinutes >= 60 && d.TotalMinutes % 60 == 0
+            ? d.TotalHours == 1 ? "1 hour" : $"{d.TotalHours:0} hours"
+            : $"{d.TotalMinutes:0} minutes";
 
     public static string PortalPasswordViewedText(string company, string portal, string? by, string? ip)
     {

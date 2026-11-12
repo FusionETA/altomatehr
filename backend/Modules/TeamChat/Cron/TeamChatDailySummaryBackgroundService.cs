@@ -1,13 +1,13 @@
 namespace AltomateHR.Api.Modules.TeamChat.Cron;
 
-// Posts the daily summary to the team's daily chat at 08:00
+// Posts the daily summary to the team's daily chat at 18:00
 // Asia/Kuala_Lumpur. Same idiom as ApprovalDigestBackgroundService: a
 // 30-minute tick gated on the hour and a last-run date, set only on success
 // so a failed run retries within the same hour.
 public class TeamChatDailySummaryBackgroundService : BackgroundService
 {
     private static readonly TimeSpan TickInterval = TimeSpan.FromMinutes(30);
-    private const int FireHourMyt = 8;
+    private const int FireHourMyt = TeamChatDailySummaryService.CutOffHourMyt;
 
     private static readonly TimeZoneInfo Myt = TimeZoneInfo.FindSystemTimeZoneById("Asia/Kuala_Lumpur");
 

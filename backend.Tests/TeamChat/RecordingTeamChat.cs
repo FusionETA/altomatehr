@@ -38,8 +38,11 @@ public sealed class RecordingTeamChat : ITeamChatAlerts
     public Task SignedInAsync(string userId, string role, string organizationId, string via) =>
         Say($"sign-in {userId} {via}");
 
-    public Task SignInFailedAsync(string userId, string email, string organizationId) =>
-        Say($"sign-in-failed {userId}");
+    public Task AccountLockedAsync(string email, string? userId, string? organizationId, TimeSpan duration, string? ip) =>
+        Say($"account-locked {email}");
+
+    public Task IpBlockedAsync(string ip, TimeSpan duration, bool againToday, IReadOnlyList<string> emailsTried) =>
+        Say($"ip-blocked {ip}");
 
     public Task PortalPasswordViewedAsync(string organizationId, string portal) =>
         Say($"portal-password {portal}");

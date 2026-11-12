@@ -102,7 +102,7 @@ public class TeamChatActivityTests
         Action = AuditActions.AuthLogin, CreatedAt = at,
     };
 
-    // The summary is claimed per day, so a restart in the 08:00 hour (or a
+    // The summary is claimed per day, so a restart in the 18:00 hour (or a
     // second server) doesn't post it again.
     [Fact]
     public async Task TheSummary_IsPostedOncePerDay()
