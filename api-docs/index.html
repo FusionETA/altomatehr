@@ -334,7 +334,9 @@
         for 1 hour if it was already blocked earlier the same day. Unknown emails are counted
         too, so a <code>429</code> never tells you whether an email exists.
         Which IP is counted depends on the key: with the master key, the <code>clientIp</code>
-        you send (send none and no IP rule applies); with a company key, one shared bucket for
+        you send, counted apart from sign-ins at AltomateHR itself (send none and no IP rule
+        applies); while several attempts for one account are still being checked, a further one
+        gets <code>429</code> with a "try again in a moment" message. With a company key, one shared bucket for
         that key, so one person guessing passwords through your app can lock your key's
         verifications for 15 minutes. Pass the person's real IP with a master key where you can,
         and stop retrying on <code>429</code>: wait for <code>Retry-After</code>.
