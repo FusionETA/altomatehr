@@ -217,6 +217,20 @@ public class SalaryAdjustmentImportTests : IDisposable
         Assert.Contains(refused.Errors, e => e.Message.Contains("can't be below 0"));
     }
 
+    // Back off a deliberate 0 is a change to their pay, recorded like any other —
+    // not mistaken for filling in an empty salary.
+    [Fact]
+    public async Task ComingBackFromABasicOfZero_IsRecordedInTheHistory()
+    {
+        await Import("E-001,,0,2026-05-01,OTHER,Commission only");
+        var back = await Import("E-001,,5000,2026-06-01,RAISE,Back on basic");
+
+        Assert.Equal(1, back.Changed);
+        Assert.Equal(5000m, Monthly("usr-1"));
+        var latest = (await _history.GetForEmployeeAsync("emp-usr-1")).OrderByDescending(c => c.EffectiveDate).First();
+        Assert.Equal((0m, 5000m), (latest.PreviousMonthlySalary, latest.NewMonthlySalary));
+    }
+
     // One bad row saves nothing — including the good rows — and every
     // problem is reported at once.
     [Fact]

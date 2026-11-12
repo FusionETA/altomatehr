@@ -148,7 +148,7 @@ public class EmployeeProfileService : IEmployeeProfileService
             //   • a correction the admin marked as a typo, and
             //   • a first salary (nothing, or RM 0, was set before): filling
             //     in an empty field is not a change to anyone's pay.
-            if (!dto.SalaryChangeIsCorrection && HadASalary(before))
+            if (!dto.SalaryChangeIsCorrection && await HadASalaryAsync(before))
             {
                 await _salaryChanges.RecordAsync(before, profile, new Payroll.Dtos.RecordSalaryChangeDto
                 {
@@ -318,10 +318,14 @@ public class EmployeeProfileService : IEmployeeProfileService
 
     private static DateTime TodayInMalaysia() => TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, Myt).Date;
 
-    private static bool HadASalary(EmployeeProfile before) =>
-        before.SalaryType == Policies.Entities.SalaryType.HOURLY
-            ? before.HourlyRate is > 0m
-            : before.MonthlySalary is > 0m;
+    // A monthly RM 0 with a salary history was set on purpose (staff paid
+    // only commission), so moving off it is a change to their pay too.
+    private async Task<bool> HadASalaryAsync(EmployeeProfile before)
+    {
+        if (before.SalaryType == Policies.Entities.SalaryType.HOURLY) return before.HourlyRate is > 0m;
+        if (before.MonthlySalary is > 0m) return true;
+        return before.MonthlySalary == 0m && (await _salaryChanges.GetForEmployeeAsync(before.Id)).Count > 0;
+    }
 
     // Just the three salary fields, detached from the tracked entity.
     private static EmployeeProfile SalarySnapshot(EmployeeProfile profile) => new()

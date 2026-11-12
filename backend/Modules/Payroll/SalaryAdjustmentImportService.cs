@@ -195,7 +195,13 @@ public class SalaryAdjustmentImportService : ISalaryAdjustmentImportService
             profile.UpdatedAt = DateTime.UtcNow;
             await _profiles.UpdateAsync(profile);
 
-            if (current is null or <= 0m)
+            // Filling in an empty salary isn't a change. A monthly RM 0 that
+            // has a history was set on purpose (commission only), so coming
+            // back off it is recorded like any other change.
+            var firstSalary = current is null or < 0m
+                || (current == 0m && (profile.SalaryType == SalaryType.HOURLY
+                    || (await _salaryChanges.GetForEmployeeAsync(profile.Id)).Count == 0));
+            if (firstSalary)
             {
                 first++;   // filling in an empty salary is not a change to anyone's pay
                 continue;
