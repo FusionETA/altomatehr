@@ -796,11 +796,14 @@ export function EmployeeDetail({
       (profile.salaryType === "HOURLY"
         ? profile.hourlyRate !== baseline.hourlyRate
         : profile.monthlySalary !== baseline.monthlySalary));
+  // RM 0 with a salary history is a real salary (commission-only staff, set
+  // to 0 on purpose), so moving off it is a change too — as the server says.
   const hadSalary =
     baseline !== null &&
     (baseline.salaryType === "HOURLY"
       ? (baseline.hourlyRate ?? 0) > 0
-      : (baseline.monthlySalary ?? 0) > 0);
+      : (baseline.monthlySalary ?? 0) > 0 ||
+        (baseline.monthlySalary === 0 && (salaryHistoryQuery.data?.length ?? 0) > 0));
 
   // TP3 figures only apply in the year they're entered against, so figures
   // with no year would be silently ignored by payroll. The server refuses

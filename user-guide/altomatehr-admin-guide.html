@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 6c7e1df
+  user-guide-covered-up-to: fdcc89a
 -->
 <html lang="en">
 <head>
@@ -813,7 +813,8 @@
       <li><span class="btn-name">Salary adjustments</span> — shown only if your access includes Payroll. A
         pay round for many people at once. <span class="btn-name">Download template</span> (everyone with their current
         salary), fill in <em>New Salary</em> — and optionally Effective Date, Reason and Notes — only for people whose
-        pay is changing, then upload it. A new salary applies straight away, so the effective date can be today or
+        pay is changing, then upload it. A monthly New Salary of 0 is accepted, for staff paid only commission; an
+        hourly rate must be above 0, and a negative amount is refused. A new salary applies straight away, so the effective date can be today or
         earlier, not later. It's all or nothing: if any row has a problem, nothing is saved and the rows are listed.
         Each change goes into the person's salary history, and draft payroll runs are marked for
         a re-run. Archived people are refused, with one exception: someone who has left but whose final month is still
@@ -1055,6 +1056,8 @@
     </ul>
     <p><span class="btn-name">Salary history</span>, under the salary, lists every real change with its date, reason and
       the old and new figure.</p>
+    <p>A monthly salary of RM 0 — set on purpose for commission-only staff — counts as a real salary once it is in the
+      history. Changing it to another amount asks the same question, and the change goes into the history.</p>
 
     <figure class="shot" data-place="Employees">
       <div class="shot-grid" data-orient="screen">

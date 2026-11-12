@@ -322,7 +322,7 @@
               <tr><td><code>Employee No</code></td><td>One of No/Email</td><td>Aliases: employee number, staff id, employee id.</td></tr>
               <tr><td><code>Email</code></td><td>One of No/Email</td><td></td></tr>
               <tr><td><code>Name</code>, <code>Salary Type</code>, <code>Current Salary</code></td><td>No</td><td>Read-only, for reference — never written back.</td></tr>
-              <tr><td><code>New Salary</code></td><td>Yes (to act on the row)</td><td>A monthly salary for MONTHLY staff, an hourly rate for HOURLY staff. Must be &gt; 0.</td></tr>
+              <tr><td><code>New Salary</code></td><td>Yes (to act on the row)</td><td>A monthly salary for MONTHLY staff, an hourly rate for HOURLY staff. MONTHLY may be <code>0</code> (staff paid only commission); HOURLY must be &gt; 0; negative is refused.</td></tr>
               <tr><td><code>Effective Date</code></td><td>No</td><td>Blank = today. <strong>Cannot be in the future</strong> — the new salary applies immediately, since there is one current salary per employee. For an archived leaver see the note below.</td></tr>
               <tr><td><code>Reason</code></td><td>No</td><td><code>RAISE</code> (default), <code>PROMOTION</code>, <code>DEMOTION</code>, <code>RESTRUCTURE</code>, <code>OTHER</code>.</td></tr>
               <tr><td><code>Notes</code></td><td>No</td><td>Max 500 characters.</td></tr>
@@ -343,7 +343,7 @@
             <tbody>
               <tr><td><code>ok</code></td><td>boolean</td><td></td></tr>
               <tr><td><code>changed</code></td><td>int</td><td>Recorded in the salary history.</td></tr>
-              <tr><td><code>firstSalaries</code></td><td>int</td><td>Salary set for the first time — no history entry, since there was nothing to change from.</td></tr>
+              <tr><td><code>firstSalaries</code></td><td>int</td><td>Salary set for the first time — no history entry, since there was nothing to change from. A current salary that is empty, or hourly 0, counts as first. A monthly <code>0</code> that already has salary history was set on purpose, so moving off it is recorded in <code>changed</code>.</td></tr>
               <tr><td><code>unchanged</code></td><td>int</td><td>New Salary equalled the current one.</td></tr>
             </tbody>
           </table>
@@ -351,7 +351,7 @@
         <h3>Errors</h3>
         <p>
           <code>400</code> on any row problem: <code>{ "ok": false, "message": "…file-level…" }</code>
-          or <code>{ "ok": false, "errors": [{ "row": 4, "message": "Jane Tan: New Salary must be an amount above 0." }] }</code>.
+          or <code>{ "ok": false, "errors": [{ "row": 4, "message": "Jane Tan: New Salary must be an amount." }] }</code>. Salary messages: <code>"New Salary must be an amount"</code> (not a number), <code>"New Salary can't be below 0"</code>, and <code>"New hourly rate must be above 0"</code> (HOURLY staff, 0 or less).
         </p>
 <pre><code>curl -X POST https://&lt;api-host&gt;/payroll/salary-changes/import \
   -H "Authorization: Bearer wp_live_xxx" \

@@ -200,12 +200,20 @@ public static class PayrollJournal
         foreach (var row in input.Rows)
         {
             // Unpaid leave is netted out of the salary debit rather than
-            // credited separately — see the deduction loop below.
-            var salary = Money.Round2(Math.Max(0m, row.ProratedPay - UnpaidLeave(row)));
+            // credited separately — see the deduction loop below. When it is
+            // more than the salary (a basic of 0, paid commission only), the
+            // rest is credited to the same account, or the journal wouldn't
+            // balance.
+            var salary = Money.Round2(row.ProratedPay - UnpaidLeave(row));
             if (salary > 0m)
             {
                 lines.Add(Line_(input, salaryCode, salary,
                     $"SALARY - {row.EmployeeName}", row.ProjectName));
+            }
+            else if (salary < 0m)
+            {
+                lines.Add(Line_(input, salaryCode, salary,
+                    $"UNPAID LEAVE - {row.EmployeeName}", row.ProjectName));
             }
 
             // The engine writes overtime as its own column, not as a line
@@ -258,7 +266,9 @@ public static class PayrollJournal
 
         foreach (var row in input.Rows)
         {
-            Add(salary, row.ProjectName, Math.Max(0m, row.ProratedPay - UnpaidLeave(row)));
+            // Unclamped: unpaid leave beyond someone's salary (a basic of 0)
+            // still has to come off, or the journal wouldn't balance.
+            Add(salary, row.ProjectName, row.ProratedPay - UnpaidLeave(row));
             Add(overtime, row.ProjectName, row.OtPay);
 
             foreach (var item in row.Allowances)
@@ -280,8 +290,9 @@ public static class PayrollJournal
 
         foreach (var (project, amount) in salary.OrderBy(p => p.Key, StringComparer.Ordinal))
         {
-            if (amount <= 0m) continue;
-            lines.Add(Line_(input, salaryCode, Money.Round2(amount), $"SALARY - {project}", project));
+            if (Money.Round2(amount) == 0m) continue;
+            lines.Add(Line_(input, salaryCode, Money.Round2(amount),
+                amount > 0m ? $"SALARY - {project}" : $"UNPAID LEAVE - {project}", project));
         }
 
         foreach (var (project, amount) in overtime.OrderBy(p => p.Key, StringComparer.Ordinal))

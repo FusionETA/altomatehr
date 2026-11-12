@@ -241,6 +241,26 @@ public class PayrollJournalTests
         Assert.Equal(0m, result.Balance);
     }
 
+    // Commission-only staff have a basic of 0, so unpaid leave can't come out
+    // of a salary debit: what's left is credited to salary instead, in both
+    // modes, or the journal would be out by the unpaid leave.
+    [Theory]
+    [InlineData(XeroAggregationMode.PER_EMPLOYEE)]
+    [InlineData(XeroAggregationMode.SUM_BY_PROJECT)]
+    public void UnpaidLeave_BeyondABasicOfZero_IsCredited_AndBalances(XeroAggregationMode mode)
+    {
+        var result = Build(Input(mapping: Mapping(aggregation: mode), rows:
+        [
+            Row(proratedPay: 0m, epfEmployee: 0m, epfEmployer: 0m, pcb: 0m,
+                allowances: [new("wages_commission", 1800m, "Commission")],
+                deductions: [new("deduct_unpaid_leave", 100m, "1 day unpaid")]),
+        ]));
+
+        Assert.Equal(-100m, result.Lines.Single(l => l.Description.StartsWith("UNPAID LEAVE -")).Amount);
+        Assert.DoesNotContain(result.Lines, l => l.Description.StartsWith("SALARY -"));
+        Assert.Equal(0m, result.Balance);
+    }
+
     // The engine writes overtime as its own column, not a line item, so it is
     // resolved through the `wages_overtime` category.
     [Fact]

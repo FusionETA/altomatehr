@@ -1773,6 +1773,25 @@ public class PayrollRunServiceTests : IDisposable
         Assert.False(line.SubjectToEis);
     }
 
+    // Someone paid only commission: a monthly basic of 0 (ABPay posts it that
+    // way) still makes a payslip, with EPF on the commission.
+    [Fact]
+    public async Task GenerateAsync_PaysCommissionOnly_OnABasicOfZero()
+    {
+        var profile = AddEmployee("usr-1", "Amy", monthlySalary: 0m);
+        var run = await CreateRunAsync();
+        await AddAdjustmentAsync(run.Id, profile.Id, manualJson: """
+            [{"kind":"ALLOWANCE","category":"wages_commission","label":"Commission","amount":1800}]
+            """);
+
+        var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        Assert.Equal(0m, payslip.BasicPay);
+        Assert.Equal(1800m, Assert.Single(payslip.LineItems).Amount);
+        Assert.True(payslip.EpfEmployee > 0m);
+        Assert.True(payslip.NetPay > 0m && payslip.NetPay < 1800m);
+    }
+
     [Fact]
     public async Task GenerateAsync_TakesAManualDeductionOffNetPay()
     {
