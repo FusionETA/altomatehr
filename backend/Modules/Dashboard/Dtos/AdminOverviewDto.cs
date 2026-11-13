@@ -13,6 +13,10 @@ public class AdminOverviewDto
     public UpcomingClaimRunDto? UpcomingClaimRun { get; set; }
     public OverturnedSupervisorsDto OverturnedSupervisors { get; set; } = new();
     public List<DocumentExpiryAlertDto> DocumentAlerts { get; set; } = new();
+
+    // How far ahead DocumentAlerts looks: 60 days, or the company's first
+    // expiry reminder when that is earlier (e.g. 90).
+    public int DocumentWindowDays { get; set; } = 60;
 }
 
 // A foreign worker's work permit or passport that has lapsed or lapses soon.

@@ -69,6 +69,8 @@ export type AdminOverview = {
   upcomingClaimRun: UpcomingClaimRun | null;
   overturnedSupervisors: { total: number; samples: OverturnedSupervisor[] };
   documentAlerts: DocumentExpiryAlert[];
+  /** How far ahead documentAlerts looks: 60, or the company's first reminder if earlier. */
+  documentWindowDays: number;
 };
 
 export const getAdminOverview = () => apiGet<AdminOverview>("/admin/overview");

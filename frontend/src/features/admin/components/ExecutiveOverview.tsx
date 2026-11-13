@@ -31,7 +31,9 @@ export function ExecutiveOverview({ data }: { data: AdminOverview }) {
       {/* An alert, not analytics: only there when a permit or passport needs
           action, and first so it isn't scrolled past. Most orgs have no
           foreign workers. */}
-      {data.documentAlerts?.length ? <DocumentsCard alerts={data.documentAlerts} /> : null}
+      {data.documentAlerts?.length ? (
+        <DocumentsCard alerts={data.documentAlerts} windowDays={data.documentWindowDays ?? 60} />
+      ) : null}
       {has("claims") ? <ProjectClaimsCard projects={data.projectSpend} /> : null}
       {has("attendance") ? <AttendanceHealthCard projects={data.attendanceHealth} /> : null}
       {has("overtime") ? <SlowOtApproversCard approvers={data.slowOtApprovers} /> : null}
@@ -61,13 +63,13 @@ const DOCUMENT_LABEL: Record<DocumentExpiryAlert["document"], string> = {
   PASSPORT: "Passport",
 };
 
-function DocumentsCard({ alerts }: { alerts: DocumentExpiryAlert[] }) {
+function DocumentsCard({ alerts, windowDays }: { alerts: DocumentExpiryAlert[]; windowDays: number }) {
   const expired = alerts.filter((a) => a.daysLeft < 0).length;
   return (
     <section className={CARD}>
       <CardHead
         title="Documents expiring"
-        meta={expired > 0 ? `${expired} expired` : "Next 60 days"}
+        meta={expired > 0 ? `${expired} expired` : `Next ${windowDays} days`}
       />
       <div className={`${SCROLL_LIST} space-y-3`}>
         {alerts.map((a) => {

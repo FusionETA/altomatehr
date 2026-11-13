@@ -153,6 +153,10 @@ public class NotificationSettingService : INotificationSettingService
             ReminderDaysOf(setting));
     }
 
+    public async Task<int> FirstReminderDaysAsync(NotificationKind kind) =>
+        ((await _repo.GetAllForCurrentOrgAsync()).FirstOrDefault(s => s.Kind == kind) ?? Defaults(kind))
+            .FirstReminderDays;
+
     // Earliest first; a second reminder only when it's closer than the first.
     private static IReadOnlyList<int> ReminderDaysOf(NotificationSetting s) =>
         s.SecondReminderDays is { } second && second < s.FirstReminderDays

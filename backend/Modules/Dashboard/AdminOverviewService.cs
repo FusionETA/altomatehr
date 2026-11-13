@@ -29,9 +29,10 @@ public class AdminOverviewService : IAdminOverviewService
     private const int OverturnedSampleSize = 5;
 
     // How soon before a work permit or passport lapses it shows on the
-    // overview — the same 60 days the profile's "Expires in N days" line uses.
-    // Renewing a PLKS takes weeks, so a shorter warning arrives too late to act
-    // on. (The reminders themselves go at 30 days and on the day.)
+    // overview — at least the 60 days the profile's "Expires in N days" line
+    // uses (renewing a PLKS takes weeks), and further when the company's
+    // first reminder goes earlier (Settings → Notifications), so a reminder
+    // never points at a card that doesn't list the document yet.
     public const int DocumentWarnDays = 60;
 
     private static readonly TimeZoneInfo Myt = TimeZoneInfo.FindSystemTimeZoneById("Asia/Kuala_Lumpur");
@@ -42,6 +43,7 @@ public class AdminOverviewService : IAdminOverviewService
     private readonly IApprovalRouter _router;
     private readonly IEmployeeRowResolver _employees;
     private readonly IEmployeeProfileService _profiles;
+    private readonly NotificationSettings.INotificationSettingService? _notificationSettings;
 
     public AdminOverviewService(
         IClaimsService claims,
@@ -49,9 +51,11 @@ public class AdminOverviewService : IAdminOverviewService
         IModuleAccessService modules,
         IApprovalRouter router,
         IEmployeeRowResolver employees,
-        IEmployeeProfileService profiles)
+        IEmployeeProfileService profiles,
+        NotificationSettings.INotificationSettingService? notificationSettings = null)
     {
         _profiles = profiles;
+        _notificationSettings = notificationSettings;
         _claims = claims;
         _projects = projects;
         _modules = modules;
@@ -79,19 +83,23 @@ public class AdminOverviewService : IAdminOverviewService
         }
 
         // Not tied to a module: every company may employ foreign workers.
+        dto.DocumentWindowDays = _notificationSettings is null
+            ? DocumentWarnDays
+            : Math.Max(DocumentWarnDays,
+                await _notificationSettings.FirstReminderDaysAsync(NotificationSettings.Entities.NotificationKind.DOCUMENT_EXPIRY));
         dto.DocumentAlerts = await DocumentAlertsAsync(
-            TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, Myt).Date);
+            TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, Myt).Date, dto.DocumentWindowDays);
 
         // AttendanceHealth (attendance) / SlowOtApprovers (overtime) are built next.
         return dto;
     }
 
     // Card — foreign workers whose work permit or passport has lapsed or lapses
-    // within DocumentWarnDays, soonest first. Who counts is ExpiringDocuments'
+    // within `withinDays` (DocumentWarnDays or more), soonest first. Who counts is ExpiringDocuments'
     // rule, the same one the expiry reminders use.
-    public async Task<List<DocumentExpiryAlertDto>> DocumentAlertsAsync(DateTime today)
+    public async Task<List<DocumentExpiryAlertDto>> DocumentAlertsAsync(DateTime today, int withinDays = DocumentWarnDays)
     {
-        var due = ExpiringDocuments.Due(await _profiles.GetIdentityDocumentsAsync(), today, DocumentWarnDays);
+        var due = ExpiringDocuments.Due(await _profiles.GetIdentityDocumentsAsync(), today, withinDays);
         if (due.Count == 0) return [];
 
         var people = await _employees.GetSnapshotAsync();

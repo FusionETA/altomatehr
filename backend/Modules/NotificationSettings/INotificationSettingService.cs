@@ -16,6 +16,10 @@ public interface INotificationSettingService
     // email staff, and the admins to tell — the ticked ones, or the owner when
     // nobody is ticked (or every ticked admin has since left).
     Task<EffectiveNotificationSetting> ForOrgAsync(string organizationId, NotificationKind kind);
+
+    // The current company's earliest reminder, in days before the date (the
+    // first "days before" choice; 30 by default).
+    Task<int> FirstReminderDaysAsync(NotificationKind kind);
 }
 
 // Owners: the company's owner(s), who also get anything none of the chosen

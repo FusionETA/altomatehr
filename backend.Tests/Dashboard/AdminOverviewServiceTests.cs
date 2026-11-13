@@ -120,6 +120,17 @@ public class AdminOverviewServiceTests
         Assert.Equal("A1234567", alerts[1].DocumentNumber);
     }
 
+    // A company reminding 90 days ahead sees 90 days on the card, so the
+    // reminder's link shows the document; otherwise the card stays at 60.
+    [Fact]
+    public async Task DocumentAlerts_WidenToTheCompanysFirstReminder()
+    {
+        var service = Create([], [Permit("usr-siti", 80)]);
+
+        Assert.Empty(await service.DocumentAlertsAsync(Today));
+        Assert.Single(await service.DocumentAlertsAsync(Today, withinDays: 90));
+    }
+
     // A citizen or PR has no permit to renew; nobody archived or gone needs one.
     [Fact]
     public async Task DocumentAlerts_LeaveOutCitizensPrsAndPeopleWhoLeft()
