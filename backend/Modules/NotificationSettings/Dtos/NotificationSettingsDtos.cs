@@ -45,7 +45,9 @@ public class NotificationSettingDto
 
 public class UpdateNotificationSettingDto
 {
-    public bool Enabled { get; set; }
+    // On unless sent as false: a caller that leaves it out must not switch
+    // the reminders off by accident.
+    public bool Enabled { get; set; } = true;
 
     [MaxLength(100)]
     public List<string> AdminUserIds { get; set; } = new();

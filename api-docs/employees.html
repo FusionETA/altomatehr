@@ -515,6 +515,7 @@
               <tr><td><code>ssfwNumber</code></td><td>string | null</td><td></td></tr>
               <tr><td><code>workPermitNumber</code></td><td>string | null</td><td>Max 40 characters. A foreign worker's Immigration work permit (PLKS) number &mdash; a separate document from <code>ssfwNumber</code>.</td></tr>
               <tr><td><code>workPermitExpiry</code></td><td>string (date) | null</td><td>When the work permit lapses. Stored date-only: any time part you send is dropped. <code>null</code> clears it. Meaningful for foreign workers only.</td></tr>
+              <tr><td><code>passportExpiry</code></td><td>string (date) | null</td><td>When the passport lapses (the passport number is <code>idNumber</code> when <code>idType</code> is <code>PASSPORT</code>). Stored date-only: any time part you send is dropped. <code>null</code> clears it. Meaningful for foreign workers only. Like <code>workPermitExpiry</code>, it drives the <a href="organization.html#notification-settings">expiry reminders</a>. Like every field here, omitting it on the PUT clears it.</td></tr>
             </tbody>
           </table>
         </div>
@@ -937,9 +938,10 @@
           matching sheet column (see <code>GET /employees/export/fields</code> for the full,
           grouped list) — dates as <code>YYYY-MM-DD</code>, booleans as <code>Yes</code>/<code>No</code>,
           percentages as plain numbers, money tolerant of formatting like <code>"RM 5,000.00"</code>.
-          The work permit columns are <code>Work Permit No</code> (<code>workPermitNumber</code>,
-          max 40 characters) and <code>Work Permit Expiry</code> (<code>workPermitExpiry</code>,
-          <code>YYYY-MM-DD</code>); they sit in the "Personal" group, are optional, and &mdash;
+          The work permit and passport columns are <code>Work Permit No</code> (<code>workPermitNumber</code>,
+          max 40 characters), <code>Work Permit Expiry</code> (<code>workPermitExpiry</code>,
+          <code>YYYY-MM-DD</code>) and <code>Passport Expiry</code> (<code>passportExpiry</code>,
+          <code>YYYY-MM-DD</code>; the passport number goes in <code>ID Number</code>); they sit in the "Personal" group, are optional, and &mdash;
           unlike the salary, IC and bank columns &mdash; are in the file whether or not the key's
           org grants Payroll access.
           Statutory/salary/bank columns are only in the file for a key whose org grants Payroll

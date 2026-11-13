@@ -827,6 +827,127 @@
       </section>
     </section>
 
+    <section class="section" id="notification-settings">
+      <h2>Notification settings</h2>
+      <p>
+        Who is told about what, per company. Today there is one notification,
+        <code>DOCUMENT_EXPIRY</code>: a reminder that a foreign worker's work permit or passport is
+        about to expire (or has). Work permits and passports share one set of settings. No plan module is needed.
+        Both endpoints are for the company's Admin or Owner, which every API key is.
+      </p>
+
+      <section class="endpoint" id="get-notification-settings">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/notification-settings</span>
+          <span class="tag scope">organizations:read</span>
+        </div>
+        <p>Every configurable notification, and the people that can be chosen to receive it.</p>
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>admins[]</code></td><td>array</td><td>The owner and every admin, the owner first then by name.</td></tr>
+              <tr><td><code>admins[].userId</code></td><td>string</td><td>The user id. This is what <code>adminUserIds</code> takes.</td></tr>
+              <tr><td><code>admins[].name</code>, <code>admins[].email</code></td><td>string</td><td></td></tr>
+              <tr><td><code>admins[].role</code></td><td>string</td><td>The person's role in the company, e.g. <code>Owner</code> or <code>Admin</code>.</td></tr>
+              <tr><td><code>admins[].isLimited</code></td><td>boolean</td><td><code>true</code> when this admin's access covers only some staff, so they only hear about those people.</td></tr>
+              <tr><td><code>notifications[]</code></td><td>array</td><td>One entry per notification, with the company's saved choices, or the defaults until someone saves.</td></tr>
+              <tr><td><code>notifications[].kind</code></td><td>string</td><td><code>DOCUMENT_EXPIRY</code>.</td></tr>
+              <tr><td><code>notifications[].title</code>, <code>.description</code></td><td>string</td><td>Display text.</td></tr>
+              <tr><td><code>notifications[].enabled</code></td><td>boolean</td><td>Default <code>true</code>.</td></tr>
+              <tr><td><code>notifications[].adminUserIds</code></td><td>string[]</td><td>The admins chosen to hear about it. Someone who has since stopped being an admin is left out. When empty, the owner is told.</td></tr>
+              <tr><td><code>notifications[].emailStaff</code></td><td>boolean</td><td>Also email the staff member concerned. Default <code>false</code> (they are told in the app only).</td></tr>
+              <tr><td><code>notifications[].firstReminderDays</code></td><td>integer</td><td>Days before the expiry date of the first reminder. Default <code>30</code>.</td></tr>
+              <tr><td><code>notifications[].secondReminderDays</code></td><td>integer | null</td><td>Days before the expiry date of an optional second reminder.</td></tr>
+              <tr><td><code>notifications[].reminderDayOptions</code></td><td>integer[]</td><td>The values the two reminder fields accept: <code>[7, 14, 30, 60, 90]</code>.</td></tr>
+              <tr><td><code>notifications[].updatedAt</code></td><td>string | null</td><td>ISO 8601 UTC. <code>null</code> until someone saves, when the defaults are in use.</td></tr>
+              <tr><td><code>notifications[].updatedByName</code></td><td>string | null</td><td>Who saved it last.</td></tr>
+            </tbody>
+          </table>
+        </div>
+<pre><code>{
+  "admins": [
+    { "userId": "user_123", "name": "Jane Tan", "email": "jane@example.com", "role": "Owner", "isLimited": false }
+  ],
+  "notifications": [
+    {
+      "kind": "DOCUMENT_EXPIRY",
+      "title": "Work permit &amp; passport expiry",
+      "description": "Foreign staff only · sent at 08:00 · work permits and passports share these settings",
+      "enabled": true,
+      "adminUserIds": [],
+      "emailStaff": false,
+      "firstReminderDays": 30,
+      "secondReminderDays": null,
+      "reminderDayOptions": [7, 14, 30, 60, 90],
+      "updatedAt": null,
+      "updatedByName": null
+    }
+  ]
+}</code></pre>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>403</code> &mdash; the key lacks <code>organizations:read</code>.</li>
+        </ul>
+<pre><code>curl https://&lt;api-host&gt;/notification-settings \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="update-notification-settings">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/notification-settings/{kind}</span>
+          <span class="tag scope">organizations:write</span>
+        </div>
+        <p>Save one notification's choices. <code>{kind}</code> is <code>DOCUMENT_EXPIRY</code>.</p>
+        <div class="callout warn">
+          <strong>This PUT replaces all of the notification's choices.</strong> Send every field: one you
+          omit is written as its default (<code>enabled</code> <code>true</code>, no admins,
+          <code>emailStaff</code> <code>false</code>, <code>firstReminderDays</code> <code>30</code>, no second
+          reminder). <code>GET</code> first and send the whole object back.
+        </div>
+        <h3>Request body</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>enabled</code></td><td>boolean</td><td>no</td><td>Default <code>true</code>. <code>false</code> switches the reminders off for the whole company.</td></tr>
+              <tr><td><code>adminUserIds</code></td><td>string[]</td><td>no</td><td>User ids from <code>admins[].userId</code>, at most 100. Blanks and duplicates are dropped. Empty means the owner. If everyone chosen has since left, the owner is told instead.</td></tr>
+              <tr><td><code>emailStaff</code></td><td>boolean</td><td>no</td><td>Also email the staff member concerned.</td></tr>
+              <tr><td><code>firstReminderDays</code></td><td>integer</td><td>no</td><td>One of <code>7, 14, 30, 60, 90</code>. Default <code>30</code>.</td></tr>
+              <tr><td><code>secondReminderDays</code></td><td>integer | null</td><td>no</td><td>One of the same values and <strong>smaller than</strong> <code>firstReminderDays</code> (closer to the date). <code>null</code> for no second reminder.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The saved notification, in the shape of one <code>notifications[]</code> entry above, with <code>updatedAt</code> and <code>updatedByName</code> filled in.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> <code>{ "message": "…" }</code> &mdash; a chosen user isn't the owner or an admin of this company; <code>firstReminderDays</code> isn't one of the options; <code>secondReminderDays</code> isn't one of the options or isn't smaller than <code>firstReminderDays</code>.</li>
+          <li><code>400</code> <code>{ "errors": { … } }</code> &mdash; field validation, e.g. more than 100 <code>adminUserIds</code>, or an unknown <code>{kind}</code>.</li>
+          <li><code>403</code> &mdash; the key lacks <code>organizations:write</code>.</li>
+        </ul>
+        <h3>Things that bite</h3>
+        <ul>
+          <li><strong>It is a settings change.</strong> For a signed-in admin it needs the owner's &ldquo;Change settings&rdquo; access, which an API key always has, so a key is never refused for that reason.</li>
+          <li>The reminders go out at 08:00 to foreign staff only, based on the <code>workPermitExpiry</code> and <code>passportExpiry</code> in <a href="employees.html#save-profile">the employee profile</a>.</li>
+          <li>Each save is recorded in the company's activity log.</li>
+        </ul>
+<pre><code>curl -X PUT https://&lt;api-host&gt;/notification-settings/DOCUMENT_EXPIRY \
+  -H "Authorization: Bearer wp_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "enabled": true,
+    "adminUserIds": ["user_123"],
+    "emailStaff": true,
+    "firstReminderDays": 60,
+    "secondReminderDays": 14
+  }'</code></pre>
+      </section>
+    </section>
+
     <section class="section" id="not-available">
       <h2>Not available to API keys</h2>
       <p>
