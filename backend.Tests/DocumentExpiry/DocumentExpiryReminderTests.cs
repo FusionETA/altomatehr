@@ -29,6 +29,11 @@ public class DocumentExpiryReminderTests
 
     // ---- When ----
 
+    private static readonly int[] Thirty = [30];
+    private static readonly int[] SixtyAndThirty = [60, 30];
+
+    private static (DocumentReminderStage, int) Before(int days) => (DocumentReminderStage.BEFORE, days);
+
     [Theory]
     [InlineData(31, null)]
     [InlineData(30, DocumentReminderStage.BEFORE)]
@@ -36,19 +41,41 @@ public class DocumentExpiryReminderTests
     [InlineData(0, DocumentReminderStage.ON_THE_DAY)]
     [InlineData(-40, DocumentReminderStage.EXPIRED)] // already lapsed when switched on
     public void StageFor_PicksTheDueReminder(int daysLeft, DocumentReminderStage? expected) =>
-        Assert.Equal(expected, DocumentExpiryReminderService.StageFor(daysLeft, []));
+        Assert.Equal(expected, DocumentExpiryReminderService.StageFor(daysLeft, [], Thirty));
 
     [Fact]
     public void StageFor_SendsEachReminderOnce()
     {
-        Assert.Null(DocumentExpiryReminderService.StageFor(29, [DocumentReminderStage.BEFORE]));
-        Assert.Null(DocumentExpiryReminderService.StageFor(0, [DocumentReminderStage.ON_THE_DAY]));
+        Assert.Null(DocumentExpiryReminderService.StageFor(29, [Before(30)], Thirty));
+        Assert.Null(DocumentExpiryReminderService.StageFor(0, [(DocumentReminderStage.ON_THE_DAY, 0)], Thirty));
         // The day after: the on-the-day reminder already said it expired.
-        Assert.Null(DocumentExpiryReminderService.StageFor(-1, [DocumentReminderStage.ON_THE_DAY]));
-        Assert.Null(DocumentExpiryReminderService.StageFor(-5, [DocumentReminderStage.EXPIRED]));
+        Assert.Null(DocumentExpiryReminderService.StageFor(-1, [(DocumentReminderStage.ON_THE_DAY, 0)], Thirty));
+        Assert.Null(DocumentExpiryReminderService.StageFor(-5, [(DocumentReminderStage.EXPIRED, -1)], Thirty));
         // 30 days before doesn't stand in for the day itself.
         Assert.Equal(DocumentReminderStage.ON_THE_DAY,
-            DocumentExpiryReminderService.StageFor(0, [DocumentReminderStage.BEFORE]));
+            DocumentExpiryReminderService.StageFor(0, [Before(30)], Thirty));
+    }
+
+    // 60 and 30: one at 60, quiet until 30, one at 30.
+    [Fact]
+    public void StageFor_TwoReminders_OneInEachWindow()
+    {
+        Assert.Null(DocumentExpiryReminderService.StageFor(61, [], SixtyAndThirty));
+        Assert.Equal(DocumentReminderStage.BEFORE, DocumentExpiryReminderService.StageFor(60, [], SixtyAndThirty));
+        Assert.Null(DocumentExpiryReminderService.StageFor(45, [Before(60)], SixtyAndThirty));
+        Assert.Equal(DocumentReminderStage.BEFORE, DocumentExpiryReminderService.StageFor(30, [Before(60)], SixtyAndThirty));
+        Assert.Null(DocumentExpiryReminderService.StageFor(29, [Before(60), Before(30)], SixtyAndThirty));
+        // Entered late, at 20 days: one reminder, not two.
+        Assert.Equal(DocumentReminderStage.BEFORE, DocumentExpiryReminderService.StageFor(20, [], SixtyAndThirty));
+        Assert.Null(DocumentExpiryReminderService.StageFor(19, [Before(20)], SixtyAndThirty));
+    }
+
+    // Changed from 60 to 30 after the 60-day one went: the 30-day one still goes.
+    [Fact]
+    public void StageFor_SettingChangedMidway_StillRemindsAtTheNewPoint()
+    {
+        Assert.Null(DocumentExpiryReminderService.StageFor(40, [Before(60)], Thirty));
+        Assert.Equal(DocumentReminderStage.BEFORE, DocumentExpiryReminderService.StageFor(30, [Before(60)], Thirty));
     }
 
     // ---- Who ----
@@ -168,6 +195,21 @@ public class DocumentExpiryReminderTests
         Assert.Equal(1, (await world.RunAsync(Today.AddDays(7))).Reminders);
     }
 
+    // The company's chosen timing drives the run: 60 and 30 days before.
+    [Fact]
+    public async Task ChosenDaysBefore_RemindAtSixtyThenThirty()
+    {
+        var world = new World();
+        world.Staff("rina", "Indonesian", permitDays: 60);
+        await world.SaveSettingAsync(enabled: true, emailStaff: false, first: 60, second: 30);
+
+        Assert.Equal(1, (await world.RunAsync()).Reminders);
+        Assert.Equal(0, (await world.RunAsync(Today.AddDays(15))).Reminders);
+        Assert.Equal(1, (await world.RunAsync(Today.AddDays(30))).Reminders);
+        Assert.Contains(world.Notes.Sent, n => n.Title == "Your work permit expires in 60 days");
+        Assert.Contains(world.Notes.Sent, n => n.Title == "Your work permit expires in 30 days");
+    }
+
     [Fact]
     public async Task ManyDocumentsForOneAdmin_OneBellNote_EveryDocumentInTheEmail()
     {
@@ -255,14 +297,21 @@ public class DocumentExpiryReminderTests
             await db.SaveChangesAsync();
         }
 
-        public async Task SaveSettingAsync(bool enabled, bool emailStaff, params string[] admins)
+        public async Task SaveSettingAsync(bool enabled, bool emailStaff, params string[] admins) =>
+            await SaveSettingAsync(enabled, emailStaff, 30, null, admins);
+
+        public async Task SaveSettingAsync(bool enabled, bool emailStaff, int first, int? second, params string[] admins)
         {
             await using var db = Context(Org);
             var service = new NotificationSettingService(
                 new NotificationSettingRepository(db), _directory,
                 new StubCurrentUser { OrganizationId = Org, UserId = "owner" }, new FakeAuditService());
             await service.UpdateAsync(NotificationKind.DOCUMENT_EXPIRY,
-                new UpdateNotificationSettingDto { Enabled = enabled, EmailStaff = emailStaff, AdminUserIds = [.. admins] });
+                new UpdateNotificationSettingDto
+                {
+                    Enabled = enabled, EmailStaff = emailStaff, AdminUserIds = [.. admins],
+                    FirstReminderDays = first, SecondReminderDays = second,
+                });
         }
 
         public async Task<DocumentExpiryRunResult> RunAsync(DateTime? today = null)
@@ -342,7 +391,31 @@ public class NotificationSettingServiceTests
         var saved = await service.UpdateAsync(NotificationKind.DOCUMENT_EXPIRY,
             new UpdateNotificationSettingDto { Enabled = true, AdminUserIds = ["ben", "ben"], EmailStaff = true });
         Assert.Equal(["ben"], saved.AdminUserIds);
-        Assert.Equal("Work permit & passport expiry · to Ben · staff emailed", Assert.Single(audit.Written).Summary);
+        Assert.Equal("Work permit & passport expiry · to Ben · 30 days before · staff emailed", Assert.Single(audit.Written).Summary);
+    }
+
+    [Theory]
+    [InlineData(45, null)]   // not one of the choices
+    [InlineData(30, 30)]     // the second must be closer than the first
+    [InlineData(30, 60)]
+    public async Task ReminderDaysMustBeFromTheList_SecondCloserThanFirst(int first, int? second)
+    {
+        var (service, _) = Create();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.UpdateAsync(NotificationKind.DOCUMENT_EXPIRY,
+            new UpdateNotificationSettingDto { Enabled = true, FirstReminderDays = first, SecondReminderDays = second }));
+    }
+
+    [Fact]
+    public async Task ReminderDays_DefaultThirty_SecondOptional()
+    {
+        var (service, _) = Create();
+        Assert.Equal([30], (await service.ForOrgAsync("org-a", NotificationKind.DOCUMENT_EXPIRY)).ReminderDays);
+
+        await service.UpdateAsync(NotificationKind.DOCUMENT_EXPIRY,
+            new UpdateNotificationSettingDto { Enabled = true, FirstReminderDays = 60, SecondReminderDays = 14 });
+
+        Assert.Equal([60, 14], (await service.ForOrgAsync("org-a", NotificationKind.DOCUMENT_EXPIRY)).ReminderDays);
     }
 
     [Fact]

@@ -27,6 +27,10 @@ public class NotificationSettingService : INotificationSettingService
         _audit = audit;
     }
 
+    // The "days before" choices. A list rather than any number, so a typo
+    // can't turn 30 into 300.
+    public static readonly IReadOnlyList<int> ReminderDayOptions = [7, 14, 30, 60, 90];
+
     // What a company gets before anyone saves: on, to the owner, staff told
     // in the app only. Emailing every staff member is a choice to make.
     private static NotificationSetting Defaults(NotificationKind kind) =>
@@ -36,7 +40,7 @@ public class NotificationSettingService : INotificationSettingService
     {
         NotificationKind.DOCUMENT_EXPIRY => (
             "Work permit & passport expiry",
-            "Foreign staff only · 30 days before and on the expiry day · sent at 08:00"),
+            "Foreign staff only · sent at 08:00 · work permits and passports share these settings"),
         _ => (kind.ToString(), ""),
     };
 
@@ -86,12 +90,19 @@ public class NotificationSettingService : INotificationSettingService
             .ToList();
         if (picked.Any(id => !adminIds.Contains(id)))
             throw new ArgumentException("Only the owner or an admin of this company can be chosen.");
+        if (!ReminderDayOptions.Contains(dto.FirstReminderDays))
+            throw new ArgumentException($"Choose {string.Join(", ", ReminderDayOptions)} days before.");
+        if (dto.SecondReminderDays is { } second
+            && (!ReminderDayOptions.Contains(second) || second >= dto.FirstReminderDays))
+            throw new ArgumentException("The second reminder has to be closer to the date than the first.");
 
         var setting = (await _repo.GetAllForCurrentOrgAsync()).FirstOrDefault(s => s.Kind == kind)
                       ?? new NotificationSetting { Kind = kind };
         setting.Enabled = dto.Enabled;
         setting.AdminUserIds = picked.Count == 0 ? null : OrgModules.Join(picked);
         setting.EmailStaff = dto.EmailStaff;
+        setting.FirstReminderDays = dto.FirstReminderDays;
+        setting.SecondReminderDays = dto.SecondReminderDays;
         setting.UpdatedAt = DateTime.UtcNow;
         setting.UpdatedByUserId = _currentUser.UserId;
         await _repo.SaveAsync(setting);
@@ -103,10 +114,15 @@ public class NotificationSettingService : INotificationSettingService
             !dto.Enabled
                 ? $"{title} · off"
                 : $"{title} · to {(picked.Count == 0 ? "the owner" : string.Join(", ", picked.Select(id => names.GetValueOrDefault(id).Name ?? id)))}"
+                  + $" · {dto.FirstReminderDays}{(dto.SecondReminderDays is { } s2 ? $" and {s2}" : "")} days before"
                   + (dto.EmailStaff ? " · staff emailed" : ""),
             TargetType: "NotificationSetting",
             TargetId: setting.Id,
-            Metadata: new { Kind = kind.ToString(), dto.Enabled, AdminUserIds = picked, dto.EmailStaff }));
+            Metadata: new
+            {
+                Kind = kind.ToString(), dto.Enabled, AdminUserIds = picked, dto.EmailStaff,
+                dto.FirstReminderDays, dto.SecondReminderDays,
+            }));
 
         var editor = _currentUser.UserId is { } me ? await _directory.GetUserAsync(me) : null;
         return ToDto(setting, adminIds, editor?.Name);
@@ -115,7 +131,7 @@ public class NotificationSettingService : INotificationSettingService
     public async Task<EffectiveNotificationSetting> ForOrgAsync(string organizationId, NotificationKind kind)
     {
         var setting = await _repo.GetForOrgAsync(organizationId, kind) ?? Defaults(kind);
-        if (!setting.Enabled) return new EffectiveNotificationSetting(false, false, [], []);
+        if (!setting.Enabled) return new EffectiveNotificationSetting(false, false, [], [], []);
 
         var admins = (await _directory.GetMembershipsForOrgAsync(organizationId))
             .Where(m => m.OrganizationId == organizationId && OrgRoles.IsAdministrative(m.Role))
@@ -133,8 +149,15 @@ public class NotificationSettingService : INotificationSettingService
             setting.EmailStaff,
             [.. chosen.Select(a => new NotificationRecipient(
                 a.UserId, IsLimited(a) ? OrgModules.Split(a.PolicyScope) : null))],
-            [.. owners.Select(o => o.UserId)]);
+            [.. owners.Select(o => o.UserId)],
+            ReminderDaysOf(setting));
     }
+
+    // Earliest first; a second reminder only when it's closer than the first.
+    private static IReadOnlyList<int> ReminderDaysOf(NotificationSetting s) =>
+        s.SecondReminderDays is { } second && second < s.FirstReminderDays
+            ? [s.FirstReminderDays, second]
+            : [s.FirstReminderDays];
 
     private static NotificationSettingDto ToDto(
         NotificationSetting s, IReadOnlySet<string> adminIds, string? updatedByName)
@@ -149,6 +172,9 @@ public class NotificationSettingService : INotificationSettingService
             // Someone ticked who has since stopped being an admin isn't shown.
             AdminUserIds = [.. OrgModules.Split(s.AdminUserIds).Where(adminIds.Contains)],
             EmailStaff = s.EmailStaff,
+            FirstReminderDays = s.FirstReminderDays,
+            SecondReminderDays = s.SecondReminderDays,
+            ReminderDayOptions = [.. ReminderDayOptions],
             UpdatedAt = s.UpdatedByUserId is null ? null : s.UpdatedAt,
             UpdatedByName = updatedByName,
         };

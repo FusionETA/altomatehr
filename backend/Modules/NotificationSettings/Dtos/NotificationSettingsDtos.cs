@@ -32,6 +32,11 @@ public class NotificationSettingDto
     public bool Enabled { get; set; }
     public List<string> AdminUserIds { get; set; } = new();
     public bool EmailStaff { get; set; }
+    public int FirstReminderDays { get; set; }
+    public int? SecondReminderDays { get; set; }
+
+    // The choices for the two "days before" dropdowns.
+    public List<int> ReminderDayOptions { get; set; } = new();
 
     // Null until someone saves it (the defaults are in use).
     public DateTime? UpdatedAt { get; set; }
@@ -46,4 +51,8 @@ public class UpdateNotificationSettingDto
     public List<string> AdminUserIds { get; set; } = new();
 
     public bool EmailStaff { get; set; }
+
+    // One of ReminderDayOptions; the second, if any, closer to the date.
+    public int FirstReminderDays { get; set; } = 30;
+    public int? SecondReminderDays { get; set; }
 }

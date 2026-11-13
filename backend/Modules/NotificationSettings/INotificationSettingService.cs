@@ -20,9 +20,11 @@ public interface INotificationSettingService
 
 // Owners: the company's owner(s), who also get anything none of the chosen
 // admins covers (every chosen admin limited to other staff).
+// ReminderDays: how many days before a date to remind, earliest first
+// (e.g. [60, 30]); the reminder on the day itself is separate.
 public sealed record EffectiveNotificationSetting(
     bool Enabled, bool EmailStaff, IReadOnlyList<NotificationRecipient> Admins,
-    IReadOnlyList<string> Owners);
+    IReadOnlyList<string> Owners, IReadOnlyList<int> ReminderDays);
 
 // An admin to tell. PolicyScope set = their access covers only the staff on
 // those policies (IEmployeeScopeResolver turns it into people).

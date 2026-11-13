@@ -32,6 +32,7 @@ namespace AltomateHR.Api.Migrations
                     ExpiryDate = table.Column<DateTime>(type: "datetime(6)", nullable: false),
                     Stage = table.Column<string>(type: "varchar(20)", maxLength: 20, nullable: false)
                         .Annotation("MySql:CharSet", "utf8mb4"),
+                    DaysLeft = table.Column<int>(type: "int", nullable: false),
                     SentAt = table.Column<DateTime>(type: "datetime(6)", nullable: false)
                 },
                 constraints: table =>
@@ -54,6 +55,8 @@ namespace AltomateHR.Api.Migrations
                     AdminUserIds = table.Column<string>(type: "varchar(4000)", maxLength: 4000, nullable: true)
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     EmailStaff = table.Column<bool>(type: "tinyint(1)", nullable: false),
+                    FirstReminderDays = table.Column<int>(type: "int", nullable: false),
+                    SecondReminderDays = table.Column<int>(type: "int", nullable: true),
                     UpdatedAt = table.Column<DateTime>(type: "datetime(6)", nullable: false),
                     UpdatedByUserId = table.Column<string>(type: "varchar(40)", maxLength: 40, nullable: true)
                         .Annotation("MySql:CharSet", "utf8mb4")
@@ -67,7 +70,7 @@ namespace AltomateHR.Api.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_DocumentExpiryReminders_OrganizationId_UserId_Document_Expir~",
                 table: "DocumentExpiryReminders",
-                columns: new[] { "OrganizationId", "UserId", "Document", "ExpiryDate", "Stage" },
+                columns: new[] { "OrganizationId", "UserId", "Document", "ExpiryDate", "Stage", "DaysLeft" },
                 unique: true);
 
             migrationBuilder.CreateIndex(

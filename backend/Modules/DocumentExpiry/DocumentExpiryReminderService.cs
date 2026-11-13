@@ -15,17 +15,17 @@ namespace AltomateHR.Api.Modules.DocumentExpiry;
 //
 //   · Who: current foreign staff (ExpiringDocuments — the same rule as the
 //     dashboard's "Documents expiring" card).
-//   · When: 30 days before (or the first day it's within 30 days, for a date
-//     entered late), on the day, and once if it had already expired when
-//     first seen. Each once per expiry date — a renewed date starts over.
+//   · When: at the company's chosen days before (Settings → Notifications:
+//     30 by default, optionally a second closer one, e.g. 60 and 30) — or the
+//     first day inside that window, for a date entered late — on the day, and
+//     once if it had already expired when first seen. Each once per expiry
+//     date; a renewed date starts over.
 //   · To: the person (in the app + push, and email when Settings →
 //     Notifications says so) and the admins chosen there (in the app + push,
 //     and one email listing the day's reminders). An admin whose access is
 //     limited only hears about the staff it covers.
 public class DocumentExpiryReminderService : IDocumentExpiryReminderService
 {
-    public const int DaysBefore = 30;
-
     // More than this for one admin in one day becomes one "N documents" note
     // in the bell rather than a push per document (the email lists them all).
     private const int MaxSeparateAdminNotes = 3;
@@ -59,15 +59,31 @@ public class DocumentExpiryReminderService : IDocumentExpiryReminderService
         _logger = logger;
     }
 
-    // Which reminder a document is due, given those already sent for its
-    // current expiry date. Null = nothing today.
-    public static DocumentReminderStage? StageFor(int daysLeft, IReadOnlyCollection<DocumentReminderStage> sent)
+    // Which reminder a document is due today, given those already sent for
+    // its current expiry date (with the days left when each went) and the
+    // company's chosen days before, e.g. [60, 30]. Null = nothing today.
+    public static DocumentReminderStage? StageFor(
+        int daysLeft,
+        IReadOnlyCollection<(DocumentReminderStage Stage, int DaysLeft)> sent,
+        IReadOnlyList<int> reminderDays)
     {
-        if (daysLeft > DaysBefore) return null;
-        if (daysLeft > 0) return sent.Contains(DocumentReminderStage.BEFORE) ? null : DocumentReminderStage.BEFORE;
-        if (daysLeft == 0) return sent.Contains(DocumentReminderStage.ON_THE_DAY) ? null : DocumentReminderStage.ON_THE_DAY;
+        if (daysLeft > 0)
+        {
+            // The closest chosen point it's inside: with 60 and 30, day 45 is
+            // in the 60-day window and day 20 in the 30-day one. One reminder
+            // per window — so a date entered at 20 days gets one, not two, and
+            // moving 60 → 30 after the 60-day one went still sends at 30.
+            var inside = reminderDays.Where(p => p >= daysLeft).ToList();
+            if (inside.Count == 0) return null;
+            var point = inside.Min();
+            return sent.Any(s => s.Stage == DocumentReminderStage.BEFORE && s.DaysLeft <= point)
+                ? null
+                : DocumentReminderStage.BEFORE;
+        }
+        if (daysLeft == 0)
+            return sent.Any(s => s.Stage == DocumentReminderStage.ON_THE_DAY) ? null : DocumentReminderStage.ON_THE_DAY;
         // Past it: once, unless the on-the-day reminder already said so.
-        return sent.Contains(DocumentReminderStage.ON_THE_DAY) || sent.Contains(DocumentReminderStage.EXPIRED)
+        return sent.Any(s => s.Stage is DocumentReminderStage.ON_THE_DAY or DocumentReminderStage.EXPIRED)
             ? null
             : DocumentReminderStage.EXPIRED;
     }
@@ -106,11 +122,12 @@ public class DocumentExpiryReminderService : IDocumentExpiryReminderService
         var setting = await _settings.ForOrgAsync(orgId, NotificationKind.DOCUMENT_EXPIRY);
         if (!setting.Enabled) return (0, 0, 0);
 
-        var docs = ExpiringDocuments.Due(await _repo.GetDocumentsAsync(orgId), today, DaysBefore);
+        var docs = ExpiringDocuments.Due(
+            await _repo.GetDocumentsAsync(orgId), today, setting.ReminderDays.DefaultIfEmpty(0).Max());
         if (docs.Count == 0) return (0, 0, 0);
 
         var sentBefore = (await _repo.GetSentAsync(orgId))
-            .ToLookup(r => (r.UserId, r.Document, r.ExpiryDate.Date), r => r.Stage);
+            .ToLookup(r => (r.UserId, r.Document, r.ExpiryDate.Date), r => (r.Stage, r.DaysLeft));
 
         var users = new Dictionary<string, Auth.Entities.User?>(StringComparer.Ordinal);
         async Task<Auth.Entities.User?> UserAsync(string id)
@@ -122,7 +139,8 @@ public class DocumentExpiryReminderService : IDocumentExpiryReminderService
         var due = new List<Due>();
         foreach (var doc in docs)
         {
-            var stage = StageFor(doc.DaysLeft, [.. sentBefore[(doc.UserId, doc.Document, doc.Expiry.Date)]]);
+            var stage = StageFor(
+                doc.DaysLeft, [.. sentBefore[(doc.UserId, doc.Document, doc.Expiry.Date)]], setting.ReminderDays);
             if (stage is null) continue;
             var name = (await UserAsync(doc.UserId))?.Name;
             due.Add(new Due(doc, stage.Value, string.IsNullOrWhiteSpace(name) ? "A staff member" : name.Trim()));
@@ -139,6 +157,7 @@ public class DocumentExpiryReminderService : IDocumentExpiryReminderService
             Document = d.Doc.Document,
             ExpiryDate = d.Doc.Expiry.Date,
             Stage = d.Stage,
+            DaysLeft = d.Doc.DaysLeft,
             SentAt = now,
         })]);
 

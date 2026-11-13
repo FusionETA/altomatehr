@@ -493,6 +493,11 @@ export type NotificationSetting = {
   /** Empty = the owner gets it. */
   adminUserIds: string[];
   emailStaff: boolean;
+  /** Days before the date for the first reminder, and optionally a second, closer one. */
+  firstReminderDays: number;
+  secondReminderDays: number | null;
+  /** The choices for both: 7, 14, 30, 60, 90. */
+  reminderDayOptions: number[];
   updatedAt: string | null;
   updatedByName: string | null;
 };
@@ -506,6 +511,8 @@ export type UpdateNotificationSetting = {
   enabled: boolean;
   adminUserIds: string[];
   emailStaff: boolean;
+  firstReminderDays: number;
+  secondReminderDays: number | null;
 };
 
 export const getNotificationSettings = () => apiGet<NotificationSettings>("/notification-settings");

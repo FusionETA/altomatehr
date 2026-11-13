@@ -210,13 +210,13 @@ function documentExpiryHint(expiry: string | null | undefined, empty: string, to
 }
 
 export function workPermitExpiryHint(expiry: string | null | undefined, today = new Date()): string {
-  return documentExpiryHint(expiry, "When the permit lapses — they and HR are reminded 30 days before and on the day.", today);
+  return documentExpiryHint(expiry, "When the permit lapses — they and HR are reminded ahead of it and on the day (Settings → Notifications).", today);
 }
 
 export function passportExpiryHint(expiry: string | null | undefined, today = new Date()): string {
   return documentExpiryHint(
     expiry,
-    "When the passport lapses (its number is the ID number) — reminders go 30 days before and on the day.",
+    "When the passport lapses (its number is the ID number) — reminders go ahead of it and on the day.",
     today,
   );
 }

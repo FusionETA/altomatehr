@@ -1012,6 +1012,9 @@ namespace AltomateHR.Api.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("varchar(255)");
 
+                    b.Property<int>("DaysLeft")
+                        .HasColumnType("int");
+
                     b.Property<string>("Document")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -1040,7 +1043,7 @@ namespace AltomateHR.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("OrganizationId", "UserId", "Document", "ExpiryDate", "Stage")
+                    b.HasIndex("OrganizationId", "UserId", "Document", "ExpiryDate", "Stage", "DaysLeft")
                         .IsUnique();
 
                     b.ToTable("DocumentExpiryReminders");
@@ -2080,6 +2083,9 @@ namespace AltomateHR.Api.Migrations
                     b.Property<bool>("Enabled")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<int>("FirstReminderDays")
+                        .HasColumnType("int");
+
                     b.Property<string>("Kind")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -2089,6 +2095,9 @@ namespace AltomateHR.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("varchar(40)");
+
+                    b.Property<int?>("SecondReminderDays")
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");

@@ -26,6 +26,12 @@ public class NotificationSetting : ITenantScoped
     // app and as a phone push; this only adds the email.
     public bool EmailStaff { get; set; }
 
+    // For reminders ahead of a date (document expiry): how many days before
+    // the first one goes, and optionally a second, closer one. On top of the
+    // reminder on the day itself. One choice for the whole company.
+    public int FirstReminderDays { get; set; } = 30;
+    public int? SecondReminderDays { get; set; }
+
     public DateTime UpdatedAt { get; set; }
 
     [MaxLength(40)]

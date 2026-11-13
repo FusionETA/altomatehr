@@ -15,6 +15,8 @@ import {
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
 const BOX = "min-w-0 rounded-[22px] border border-border/70 p-4 sm:p-5";
+const SELECT =
+  "h-10 rounded-2xl border border-border bg-card px-3 text-sm font-semibold text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50";
 
 // Settings → Notifications: who hears about what. One card per notification
 // the company can configure; each has its own admins and staff switch.
@@ -62,6 +64,8 @@ function NotificationCard({
   const [enabled, setEnabled] = useState(setting.enabled);
   const [picked, setPicked] = useState<string[]>(setting.adminUserIds);
   const [emailStaff, setEmailStaff] = useState(setting.emailStaff);
+  const [firstDays, setFirstDays] = useState(setting.firstReminderDays);
+  const [secondDays, setSecondDays] = useState<number | null>(setting.secondReminderDays);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
@@ -69,6 +73,8 @@ function NotificationCard({
   const dirty =
     enabled !== saved.enabled ||
     emailStaff !== saved.emailStaff ||
+    firstDays !== saved.firstReminderDays ||
+    secondDays !== saved.secondReminderDays ||
     [...picked].sort().join() !== [...saved.adminUserIds].sort().join();
 
   // The page is first drawn from the cache, then refreshed. When the fresh
@@ -84,6 +90,8 @@ function NotificationCard({
     setEnabled(setting.enabled);
     setPicked(setting.adminUserIds);
     setEmailStaff(setting.emailStaff);
+    setFirstDays(setting.firstReminderDays);
+    setSecondDays(setting.secondReminderDays);
   }, [setting]);
 
   const owner = admins.find((a) => a.role === "Owner");
@@ -97,6 +105,8 @@ function NotificationCard({
     setEnabled(saved.enabled);
     setPicked(saved.adminUserIds);
     setEmailStaff(saved.emailStaff);
+    setFirstDays(saved.firstReminderDays);
+    setSecondDays(saved.secondReminderDays);
     setError(null);
   }
 
@@ -108,6 +118,8 @@ function NotificationCard({
         enabled,
         adminUserIds: picked,
         emailStaff,
+        firstReminderDays: firstDays,
+        secondReminderDays: secondDays,
       });
       setSaved(updated);
       setPicked(updated.adminUserIds);
@@ -142,6 +154,62 @@ function NotificationCard({
             />
           </label>
         </div>
+
+        <fieldset
+          className={`${BOX} ${enabled ? "" : "opacity-60"}`}
+          disabled={!enabled || readOnly || saving}
+        >
+          <legend className="px-1.5 text-sm font-bold text-foreground">When</legend>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-3 text-sm text-foreground">
+            <label className="flex items-center gap-2">
+              Remind
+              <select
+                value={firstDays}
+                onChange={(e) => {
+                  const days = Number(e.target.value);
+                  setFirstDays(days);
+                  // The second has to stay closer to the date than the first.
+                  if (secondDays !== null && secondDays >= days) setSecondDays(null);
+                  setJustSaved(false);
+                }}
+                className={SELECT}
+              >
+                {setting.reminderDayOptions.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+              days before,
+            </label>
+            <label className="flex items-center gap-2">
+              and again
+              <select
+                value={secondDays ?? ""}
+                onChange={(e) => {
+                  setSecondDays(e.target.value === "" ? null : Number(e.target.value));
+                  setJustSaved(false);
+                }}
+                className={SELECT}
+              >
+                <option value="">—</option>
+                {setting.reminderDayOptions
+                  .filter((d) => d < firstDays)
+                  .map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+              </select>
+              days before,
+            </label>
+            <span>and on the expiry day.</span>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            The same for everyone who gets it. A date entered when it's already inside a window gets
+            one reminder straight away.
+          </p>
+        </fieldset>
 
         <div className={`grid gap-4 lg:grid-cols-[3fr_2fr] ${enabled ? "" : "opacity-60"}`}>
           <fieldset className={BOX} disabled={!enabled || readOnly || saving}>

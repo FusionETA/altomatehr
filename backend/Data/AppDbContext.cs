@@ -407,11 +407,11 @@ public class AppDbContext : DbContext
         notificationSetting.Property(s => s.Kind).HasConversion<string>().HasMaxLength(40);
         notificationSetting.HasIndex(s => new { s.OrganizationId, s.Kind }).IsUnique();
 
-        // Each expiry reminder once per (person, document, date, stage).
+        // Each expiry reminder once per (person, document, date, stage, days left).
         var expiryReminder = modelBuilder.Entity<Modules.DocumentExpiry.Entities.DocumentExpiryReminder>();
         expiryReminder.Property(r => r.Document).HasConversion<string>().HasMaxLength(20);
         expiryReminder.Property(r => r.Stage).HasConversion<string>().HasMaxLength(20);
-        expiryReminder.HasIndex(r => new { r.OrganizationId, r.UserId, r.Document, r.ExpiryDate, r.Stage }).IsUnique();
+        expiryReminder.HasIndex(r => new { r.OrganizationId, r.UserId, r.Document, r.ExpiryDate, r.Stage, r.DaysLeft }).IsUnique();
 
         // A re-subscribing browser upserts by Endpoint — see WebPushSubscriptionRepository.
         modelBuilder.Entity<WebPushSubscription>().HasIndex(s => s.Endpoint).IsUnique();
