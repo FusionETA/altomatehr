@@ -192,12 +192,12 @@ export function epfBranchInfo(branch: EpfBranch, monthlySalary: number | null): 
 }
 
 /**
- * The work-permit expiry line under the date field: "Expired 3 Oct 2026",
+ * The expiry line under a work permit or passport date: "Expired 3 Oct 2026",
  * "Expires in 23 days (28 Oct 2026)" inside 60 days, else the plain date.
  * Calendar days in the viewer's time zone — HR reads it as a date, not a time.
  */
-export function workPermitExpiryHint(expiry: string | null | undefined, today = new Date()): string {
-  if (!expiry) return "When the permit lapses — shown here so a renewal isn't missed.";
+function documentExpiryHint(expiry: string | null | undefined, empty: string, today: Date): string {
+  if (!expiry) return empty;
   const [y, m, d] = expiry.slice(0, 10).split("-").map(Number);
   const end = new Date(y, m - 1, d);
   const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -207,4 +207,16 @@ export function workPermitExpiryHint(expiry: string | null | undefined, today = 
   if (days === 0) return `Expires today (${label}).`;
   if (days <= 60) return `Expires in ${days} day${days === 1 ? "" : "s"} (${label}).`;
   return `Valid until ${label}.`;
+}
+
+export function workPermitExpiryHint(expiry: string | null | undefined, today = new Date()): string {
+  return documentExpiryHint(expiry, "When the permit lapses — they and HR are reminded ahead of it and on the day (Settings → Notifications).", today);
+}
+
+export function passportExpiryHint(expiry: string | null | undefined, today = new Date()): string {
+  return documentExpiryHint(
+    expiry,
+    "When the passport lapses (its number is the ID number) — reminders go ahead of it and on the day.",
+    today,
+  );
 }

@@ -123,6 +123,11 @@ public class EmployeeProfile : ITenantScoped
     [MaxLength(40)] public string? WorkPermitNumber { get; set; }
     public DateTime? WorkPermitExpiry { get; set; }
 
+    // When a foreign worker's passport lapses. The passport NUMBER is IdNumber
+    // (ID type Passport); only the date lives here. Reminders go out 30 days
+    // before and on the day — see Modules/DocumentExpiry.
+    public DateTime? PassportExpiry { get; set; }
+
     // ---- Bank / payment ----
     public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.BANK_TRANSFER;
     [MaxLength(120)] public string? BankName { get; set; }

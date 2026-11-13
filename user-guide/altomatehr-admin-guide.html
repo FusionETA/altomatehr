@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 48b13c8
+  user-guide-covered-up-to: e485e71
 -->
 <html lang="en">
 <head>
@@ -440,9 +440,11 @@
     <ul>
       <li><strong>Quick actions</strong> — straight to Manage Employee, Company Structure, Organization, Policies,
         Claim item types (Chart of accounts once Xero is connected) and Projects.</li>
-      <li><strong>Work permits</strong> — shown first, and only when it applies: foreign workers whose work permit
-        has expired or runs out within 60 days, soonest first, with the permit number and how many days are left
-        (or how long ago it expired). With nothing to renew, the card isn't there.</li>
+      <li><strong>Documents expiring</strong> — shown first, and only when it applies: foreign workers whose work
+        permit or passport has expired or runs out soon, soonest first, with which document it is, its number and how
+        many days are left (or how long ago it expired). It looks 60 days ahead, or further if your company's first
+        reminder (see <a href="#settings-notifications">Notifications</a>) goes earlier than that. With nothing to
+        renew, the card isn't there.</li>
       <li><strong>Project claims</strong> — this month's spend per project. <span class="badge optional">Claims</span></li>
       <li><strong>Attendance health</strong> — on-time rate per project over 30 days, with late, missing and
         on-leave counts. <span class="badge optional">Attendance</span></li>
@@ -456,10 +458,10 @@
     <figure class="shot" data-place="Executive Overview">
       <div class="shot-grid" data-orient="screen">
         <div class="shot-item">
-          <img src="shots/admin/executive-overview.png" alt="Executive Overview with quick actions, then the Work permits card listing an expired permit and one expiring soon, above the analytics cards" loading="lazy">
+          <img src="shots/admin/executive-overview.png" alt="Executive Overview with quick actions, then the Documents expiring card listing an expired permit and one expiring soon, above the analytics cards" loading="lazy">
         </div>
       </div>
-      <p class="shot-cap shot-cap-main">Executive Overview — the Work permits card comes first</p>
+      <p class="shot-cap shot-cap-main">Executive Overview — the Documents expiring card comes first</p>
     </figure>
 
     </div>
@@ -590,6 +592,27 @@
           the company's rate from the <strong>Overtime types</strong> card (<strong>System Settings → Work Schedule</strong>), which shows greyed inside the box. Type a number to give just
           this policy its own rate. If your company has its own types, they're listed underneath with a tick:
           untick one to stop that policy's staff picking it, or type a rate to pay it differently. (The two <em>in shift</em> rates that used to be here are gone.)</p></li>
+      <li id="settings-notifications"><h4>Notifications</h4>
+        <p>Choose who hears about what. Today the page has one card, <strong>Work permit &amp; passport expiry</strong>;
+          more notifications will be listed here as they arrive. It has an <strong>On / Off</strong> switch, and then:</p>
+        <ul>
+          <li><strong>When</strong> — <em>Remind [30] days before, and again [—] days before, and on the expiry
+            day.</em> The first box offers 7, 14, 30, 60 or 90 days. The second is optional (leave it at —) and must
+            be closer to the date than the first. It is the same for everyone who gets the reminder.</li>
+          <li><strong>Admins who get it</strong> — tick the admins to notify. They get one email a day, plus a
+            notification in the app and on their phone. If nobody is ticked, the owner gets it, so a reminder is never
+            lost. An admin whose access is limited only hears about the staff their access covers, and anyone no ticked
+            admin covers goes to the owner.</li>
+          <li><strong>The staff member</strong> — they always get the reminder in the app and as a phone push.
+            <span class="btn-name">Also email them</span> (off by default) adds an email to the address they sign in
+            with.</li>
+        </ul>
+        <p>Press <span class="btn-name">Save</span> to keep your changes, or <span class="btn-name">Cancel</span> to
+          undo them. An admin without <em>Can change company settings</em> can see the page but not change it.</p>
+        <p>How the reminders work: they are checked every morning at 08:00 and cover foreign staff only. Each
+          reminder goes once per date; changing the date on the employee record restarts them. A document that has
+          already expired when it's first noticed gets one reminder. Opening an admin's reminder takes them to that
+          person's record, at the date field.</p></li>
       <li><h4>Admins <span class="badge owner">Owner only</span></h4>
         <p>Add admins and decide how far each one can go. Owners are listed too, marked <em>Owner · full access</em> —
           an owner's access can't be restricted. Each admin row shows their name with their login email underneath, a one-line summary (for example
@@ -848,7 +871,7 @@
       <tbody>
         <tr><td><strong>Personal</strong></td><td>Contact (<strong>Full name</strong> and <strong>Nickname</strong>), identity (nationality is picked from a list), PR / tax resident /
           OKU, address, emergency contact, spouse, children. For a foreign worker, <strong>Identity</strong> also has
-          the <strong>Work permit number</strong> and <strong>Work permit expiry</strong> — see below</td></tr>
+          the <strong>Work permit number</strong>, <strong>Work permit expiry</strong> and <strong>Passport expiry</strong> — see below</td></tr>
         <tr><td><strong>Employment</strong></td><td>Monthly salary or hourly rate and its <strong>Salary history</strong>,
           fixed allowances and deductions, join date, <strong>employment status</strong>, contract end date,
           <strong>Probation (months)</strong> and <strong>Confirmation date</strong> (both printed on
@@ -895,22 +918,26 @@
       </div>
       <p class="shot-cap shot-cap-main">A nickname shows beside the full name</p>
     </figure>
-    <h3>Work permits</h3>
-    <p>For a foreign worker, keep their Immigration work permit on file so a renewal isn't missed.</p>
+    <h3>Work permits and passports</h3>
+    <p>For a foreign worker, keep their Immigration work permit and passport dates on file so a renewal isn't missed.</p>
     <ol class="steps">
       <li><h4>Set the nationality first</h4>
         <p>Open the person, go to <strong>Personal</strong> and, under <strong>Identity</strong>, pick their
-          <strong>Nationality</strong>. The work permit fields appear only for someone who isn't Malaysian and has no
+          <strong>Nationality</strong>. The work permit and passport fields appear only for someone who isn't Malaysian and has no
           PR — a citizen or PR has no permit to renew.</p></li>
       <li><h4>Fill in the permit</h4>
         <p>Type the <strong>Work permit number</strong> (the Immigration work permit, not the SSFW number) and pick the
           <strong>Work permit expiry</strong> date, then save. Under the date, a line tells you where it stands:
           <em>Valid until</em> a date, <em>Expires in N days</em> once it's within 60 days, <em>Expires today</em>, or
-          <em>Expired</em>.</p></li>
-      <li><h4>Watch the Executive Overview</h4>
-        <p>Once a permit is expired or within 60 days of expiring, the person is listed on the
-          <strong>Work permits</strong> card of the <a href="#overview">Executive Overview</a>. Archived employees and
-          people who have already left aren't listed.</p></li>
+          <em>Expired</em>.</p>
+        <p>Under it, pick the <strong>Passport expiry</strong> date the same way. A passport's number is the
+          person's ID number, so there is no separate field for it.</p></li>
+      <li><h4>Watch the reminders</h4>
+        <p>Once a permit or passport is expired or close to expiring, the person is listed on the
+          <strong>Documents expiring</strong> card of the <a href="#overview">Executive Overview</a>, and reminders go
+          out — see <a href="#settings-notifications">Notifications</a> under System Settings. Archived employees and
+          people who have already left aren't listed. When you change a date (for example after a renewal), the
+          reminders for the new date start afresh.</p></li>
     </ol>
     <figure class="shot" data-place="Employees">
       <div class="shot-grid" data-orient="screen">
@@ -918,10 +945,10 @@
           <img src="shots/admin/employee-work-permit.png" alt="The Identity section of a foreign worker's Personal tab, with Work permit number, Work permit expiry and the line under it saying the permit expires in 24 days" loading="lazy">
         </div>
       </div>
-      <p class="shot-cap shot-cap-main">Work permit number and expiry, under Identity on the Personal tab</p>
+      <p class="shot-cap shot-cap-main">Work permit and passport dates, under Identity on the Personal tab</p>
     </figure>
-    <p>The import spreadsheet has <strong>Work Permit No</strong> and <strong>Work Permit Expiry</strong> columns
-      (date as YYYY-MM-DD, foreign workers only), so permits can be filled in for many people at once with
+    <p>The import spreadsheet has <strong>Work Permit No</strong> and <strong>Work Permit Expiry</strong> columns, and a <strong>Passport Expiry</strong> column
+      (dates as YYYY-MM-DD, foreign workers only), so these can be filled in for many people at once with
       <span class="btn-name">Import</span>.</p>
     <h3>Bank / payout</h3>
     <p>On the Statutory tab, <strong>Bank / payout</strong> starts with a <strong>Method</strong>:</p>

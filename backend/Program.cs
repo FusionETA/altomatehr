@@ -415,6 +415,17 @@ builder.Services.AddScoped<AltomateHR.Api.Modules.Support.ISupportService, Altom
 builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<IApprovalDigestService, ApprovalDigestService>();
 builder.Services.AddHostedService<ApprovalDigestBackgroundService>();
+
+// Settings → Notifications, and the daily work permit / passport reminders.
+builder.Services.AddScoped<AltomateHR.Api.Modules.NotificationSettings.INotificationSettingRepository,
+    AltomateHR.Api.Modules.NotificationSettings.NotificationSettingRepository>();
+builder.Services.AddScoped<AltomateHR.Api.Modules.NotificationSettings.INotificationSettingService,
+    AltomateHR.Api.Modules.NotificationSettings.NotificationSettingService>();
+builder.Services.AddScoped<AltomateHR.Api.Modules.DocumentExpiry.IDocumentExpiryRepository,
+    AltomateHR.Api.Modules.DocumentExpiry.DocumentExpiryRepository>();
+builder.Services.AddScoped<AltomateHR.Api.Modules.DocumentExpiry.IDocumentExpiryReminderService,
+    AltomateHR.Api.Modules.DocumentExpiry.DocumentExpiryReminderService>();
+builder.Services.AddHostedService<AltomateHR.Api.Modules.DocumentExpiry.Cron.DocumentExpiryReminderBackgroundService>();
 builder.Services.AddScoped<ITeamService, TeamService>();
 builder.Services.AddScoped<IApproverPositions, ApproverPositions>();
 builder.Services.AddScoped<IXeroRepository, XeroRepository>();

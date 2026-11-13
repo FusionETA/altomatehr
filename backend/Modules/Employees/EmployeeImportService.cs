@@ -163,6 +163,7 @@ public class EmployeeImportService : IEmployeeImportService
                 ["isOku"] = TabularSheet.Bool(p.IsOku),
                 ["workPermitNumber"] = p.WorkPermitNumber,
                 ["workPermitExpiry"] = TabularSheet.Date(p.WorkPermitExpiry),
+                ["passportExpiry"] = TabularSheet.Date(p.PassportExpiry),
                 ["phone"] = p.Phone,
                 ["alternateEmail"] = p.AlternateEmail,
                 ["addressLine1"] = p.AddressLine1,
@@ -511,6 +512,7 @@ public class EmployeeImportService : IEmployeeImportService
         c.Flag("isOku", "OKU", false, v => p.IsOku = v);
         c.Text("workPermitNumber", 40, v => p.WorkPermitNumber = v);
         c.Date("workPermitExpiry", v => p.WorkPermitExpiry = v);
+        c.Date("passportExpiry", v => p.PassportExpiry = v);
 
         c.Text("phone", 40, v => p.Phone = v);
         c.Text("alternateEmail", 120, v => p.AlternateEmail = v);

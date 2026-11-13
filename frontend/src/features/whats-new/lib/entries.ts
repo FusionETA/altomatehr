@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 48b13c8
+// whats-new-covered-up-to: e485e71
 
 // A line is for everyone, or — wrapped in admins(…) — for admins and owners
 // only. Employees and supervisors never see an admins line, so it doesn't
@@ -28,6 +28,22 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-11-13",
+    title: "Work permit and passport reminders",
+    new: [
+      "Foreign staff now get a reminder in the app and on their phone before a work permit or passport expires, and on the day.",
+      admins("Settings → Notifications is a new page. Its Work permit & passport expiry card sets when reminders go out and who gets them."),
+      admins("Reminders go 7, 14, 30, 60 or 90 days before a date (30 by default), plus an optional second one closer in, and on the day."),
+      admins("Chosen admins get reminders in the app and on their phone, plus one email a day. Nobody chosen means the owner. Limited admins hear only about their staff."),
+      admins("Turn on \"Also email the staff member\" to email them too. It's off by default, and the app and phone alert always goes."),
+      admins("Foreign staff now have a Passport expiry date next to the work permit fields. The employee import and export has a Passport Expiry column."),
+      admins("Clicking an admin reminder opens that person's record at the date to update. Each reminder goes once per expiry date, and a new date starts over."),
+    ],
+    improved: [
+      admins("The Overview's Work permits card is now Documents expiring. It lists passports too, and looks 60 days ahead or as far as your first reminder."),
+    ],
+  },
   {
     date: "2026-11-12",
     new: [

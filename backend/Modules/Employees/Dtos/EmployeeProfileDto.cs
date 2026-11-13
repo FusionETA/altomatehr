@@ -91,6 +91,7 @@ public class EmployeeProfileDto
     public string? SsfwNumber { get; set; }
     [MaxLength(40)] public string? WorkPermitNumber { get; set; }
     public DateTime? WorkPermitExpiry { get; set; }
+    public DateTime? PassportExpiry { get; set; }
 
     // ---- Bank / payment ----
     public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.BANK_TRANSFER;

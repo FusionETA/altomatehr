@@ -10,7 +10,8 @@ export type NotificationType =
   | "OVERTIME_SUBMITTED"
   | "OVERTIME_REVIEWED"
   | "APPROVAL_DIGEST"
-  | "PARTNER_MESSAGE";
+  | "PARTNER_MESSAGE"
+  | "DOCUMENT_EXPIRY";
 
 export type Notification = {
   id: string;

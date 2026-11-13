@@ -96,6 +96,7 @@ import {
   recommendSocsoScheme,
   socsoSchemeNeedsManualChoice,
   workPermitExpiryHint,
+  passportExpiryHint,
 } from "../lib/statutory";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import {
@@ -1263,6 +1264,16 @@ export function EmployeeDetail({
                           type="date"
                           value={profile.workPermitExpiry}
                           onChange={(v) => set("workPermitExpiry", v)}
+                        />
+                      </Field>
+                      <Field
+                        label="Passport expiry"
+                        hint={passportExpiryHint(profile.passportExpiry)}
+                      >
+                        <Text
+                          type="date"
+                          value={profile.passportExpiry}
+                          onChange={(v) => set("passportExpiry", v)}
                         />
                       </Field>
                     </>

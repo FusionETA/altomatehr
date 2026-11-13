@@ -102,6 +102,8 @@ public static class EmployeeImportSheet
             "Foreign workers: the Immigration work permit (PLKS) — not the SSFW number."),
         (new("workPermitExpiry", "Work Permit Expiry", false, "", ["permit expiry", "plks expiry"]),
             "YYYY-MM-DD. Foreign workers only."),
+        (new("passportExpiry", "Passport Expiry", false, "", ["passport expiry", "passport expiry date"]),
+            "YYYY-MM-DD. Foreign workers only; the passport number goes in ID Number."),
 
         // ---- Contact & address ----
         (new("phone", "Phone", false, "012-345 6789", ["mobile", "phone no"]), "Free text."),
@@ -176,7 +178,7 @@ public static class EmployeeImportSheet
     [
         ("Employee", [EmailKey, NameKey, NicknameKey, RoleKey, EmployeeNumberKey, JobTitleKey, JoinDateKey, DateOfBirthKey, PolicyKey, ShiftKey]),
         ("Personal", ["idNumber", "idType", "nationality", "gender", "race", "maritalStatus", "hasPr", "isResident", "isOku",
-            "workPermitNumber", "workPermitExpiry"]),
+            "workPermitNumber", "workPermitExpiry", "passportExpiry"]),
         ("Contact & address", ["phone", "alternateEmail", "addressLine1", "addressLine2", "city", "postcode", "state"]),
         ("Emergency contact", ["emergencyContactName", "emergencyContactPhone", "emergencyContactRelation"]),
         ("Employment", ["leaveDate", "department", "location", "workSchedule"]),

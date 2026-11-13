@@ -576,6 +576,8 @@ public class EmployeeTransferService : IEmployeeTransferService
         to.HasPr = from.HasPr;
         to.IdType = from.IdType;
         to.IdNumber = from.IdNumber;
+        // The passport is the person's, so its expiry travels with its number.
+        to.PassportExpiry = from.PassportExpiry;
         to.MaritalStatus = from.MaritalStatus;
         to.IsResident = from.IsResident;
         to.IsOku = from.IsOku;
