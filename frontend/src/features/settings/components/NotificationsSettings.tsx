@@ -218,6 +218,9 @@ function NotificationRow({
       });
       setSaved(updated);
       setPicked(updated.adminUserIds);
+      setEmailStaff(updated.emailStaff);
+      setFirstDays(updated.firstReminderDays);
+      setSecondDays(updated.secondReminderDays);
       setJustSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save.");
@@ -235,6 +238,9 @@ function NotificationRow({
           <button
             type="button"
             onClick={onToggleOpen}
+            // Not while a save is on its way: closing would reset the form to
+            // the old values just before the new ones come back.
+            disabled={saving}
             aria-expanded={open}
             aria-controls={panelId}
             className="-m-2 flex w-[calc(100%+1rem)] min-w-0 items-center gap-3 rounded-2xl p-2 text-left hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"

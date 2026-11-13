@@ -346,6 +346,9 @@ const admin = {
     await inDemoCo(page);
     await go(page, "settings/settings-notifications");
     await page.getByText("Work permit & passport expiry").first().waitFor({ timeout: 15000 });
+    // Rows start closed; open this one so the picture shows its settings.
+    await page.getByRole("button", { name: /Work permit & passport expiry/ }).first().click();
+    await page.getByText("Admins who get it").first().waitFor();
     await settle(page);
     await page.mouse.move(5, 5);
     await shoot(page, "admin", "settings-notifications");
