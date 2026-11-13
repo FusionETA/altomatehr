@@ -425,7 +425,9 @@ export function AdminShell({
           </HorizontalScrollArea>
         ) : null}
 
-        <main className="flex-1 pb-16 lg:pb-10">
+        {/* Bottom room for the Ask FAH button (fixed, bottom-right), so a
+            page's last row (a Save button, usually) can scroll clear of it. */}
+        <main className="flex-1 pb-24 lg:pb-28">
           <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
             {/* Keyed on the active view so it remounts per tab, letting the
                 enter animation re-fire — the content eases in instead of
