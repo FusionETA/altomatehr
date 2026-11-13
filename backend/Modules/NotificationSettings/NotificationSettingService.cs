@@ -115,23 +115,25 @@ public class NotificationSettingService : INotificationSettingService
     public async Task<EffectiveNotificationSetting> ForOrgAsync(string organizationId, NotificationKind kind)
     {
         var setting = await _repo.GetForOrgAsync(organizationId, kind) ?? Defaults(kind);
-        if (!setting.Enabled) return new EffectiveNotificationSetting(false, false, []);
+        if (!setting.Enabled) return new EffectiveNotificationSetting(false, false, [], []);
 
         var admins = (await _directory.GetMembershipsForOrgAsync(organizationId))
             .Where(m => m.OrganizationId == organizationId && OrgRoles.IsAdministrative(m.Role))
             .ToList();
 
         var picked = OrgModules.Split(setting.AdminUserIds).ToHashSet(StringComparer.Ordinal);
+        var owners = admins.Where(a => IsOwner(a.Role)).ToList();
         var chosen = admins.Where(a => picked.Contains(a.UserId)).ToList();
         // Nobody ticked, or everyone ticked has gone: the owner, so a
         // reminder is never sent to nobody.
-        if (chosen.Count == 0) chosen = admins.Where(a => IsOwner(a.Role)).ToList();
+        if (chosen.Count == 0) chosen = owners;
 
         return new EffectiveNotificationSetting(
             true,
             setting.EmailStaff,
             [.. chosen.Select(a => new NotificationRecipient(
-                a.UserId, IsLimited(a) ? OrgModules.Split(a.PolicyScope) : null))]);
+                a.UserId, IsLimited(a) ? OrgModules.Split(a.PolicyScope) : null))],
+            [.. owners.Select(o => o.UserId)]);
     }
 
     private static NotificationSettingDto ToDto(

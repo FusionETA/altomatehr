@@ -155,8 +155,11 @@ public class DocumentExpiryReminderService : IDocumentExpiryReminderService
                 staffEmails++;
         }
 
-        // The admins.
-        var adminEmails = 0;
+        // The admins: each chosen one gets the staff their access covers.
+        // Anyone none of them covers (every chosen admin limited to other
+        // staff) goes to the owner, so no reminder reaches no admin at all.
+        var recipients = new List<(string UserId, List<Due> Items)>();
+        var told = new HashSet<Due>();
         foreach (var admin in setting.Admins)
         {
             var covered = admin.PolicyScope is null
@@ -164,23 +167,38 @@ public class DocumentExpiryReminderService : IDocumentExpiryReminderService
                 : (await _scope.ResolveAsync(orgId, admin.UserId, admin.PolicyScope)).UserIds
                     .ToHashSet(StringComparer.Ordinal);
             var theirs = due.Where(d => covered is null || covered.Contains(d.Doc.UserId)).ToList();
-            if (theirs.Count == 0) continue;
+            told.UnionWith(theirs);
+            if (theirs.Count > 0) recipients.Add((admin.UserId, theirs));
+        }
+        var nobodys = due.Where(d => !told.Contains(d)).ToList();
+        if (nobodys.Count > 0)
+        {
+            foreach (var owner in setting.Owners)
+            {
+                var i = recipients.FindIndex(r => r.UserId == owner);
+                if (i >= 0) recipients[i] = (owner, [.. recipients[i].Items, .. nobodys]);
+                else recipients.Add((owner, nobodys));
+            }
+        }
 
+        var adminEmails = 0;
+        foreach (var (adminId, theirs) in recipients)
+        {
             if (theirs.Count <= MaxSeparateAdminNotes)
             {
                 foreach (var d in theirs)
-                    await _notifications.NotifyAsync(orgId, admin.UserId, NotificationType.DOCUMENT_EXPIRY,
+                    await _notifications.NotifyAsync(orgId, adminId, NotificationType.DOCUMENT_EXPIRY,
                         AdminTitle(d), AdminBody(d), AdminUrl(d));
             }
             else
             {
-                await _notifications.NotifyAsync(orgId, admin.UserId, NotificationType.DOCUMENT_EXPIRY,
+                await _notifications.NotifyAsync(orgId, adminId, NotificationType.DOCUMENT_EXPIRY,
                     $"{theirs.Count} documents need renewing",
                     "Work permits and passports expiring or expired — see the email or the dashboard's Documents expiring card.",
                     "/overview");
             }
 
-            if ((await UserAsync(admin.UserId)) is { Email.Length: > 0 } adminUser
+            if ((await UserAsync(adminId)) is { Email.Length: > 0 } adminUser
                 && await _email.SendAsync(adminUser.Email, AdminSubject(theirs.Count, orgName),
                     AdminEmail(adminUser.Name, theirs, orgName)))
                 adminEmails++;

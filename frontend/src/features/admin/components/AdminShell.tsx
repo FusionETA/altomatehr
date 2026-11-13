@@ -146,7 +146,11 @@ export function AdminShell({
     const [path, query = ""] = url.split("?");
     if (path === "/employees") {
       // "/employees?employee=…&section=…&field=…" — open that person's record
-      // at that field (features/employees/lib/profile-link).
+      // at that field (features/employees/lib/profile-link). The link goes on
+      // the NEW history entry only: written onto the page being left, Back
+      // would return there with it and the next visit to Manage Employee
+      // would reopen this record.
+      open("company", "manage-employee");
       const link = new URLSearchParams(query);
       const params = new URLSearchParams(window.location.search);
       for (const key of ["employee", "section", "field"]) {
@@ -156,7 +160,6 @@ export function AdminShell({
       }
       window.history.replaceState(null, "", `${window.location.pathname}?${params.toString().replace(/%2F/g, "/")}`);
       setLinkVisit((n) => n + 1);
-      open("company", "manage-employee");
     } else if (path === "/overview") selectParent("overview");
     else if (path === "/claims") selectParent("claims");
     else if (path === "/leave") selectParent("leave");

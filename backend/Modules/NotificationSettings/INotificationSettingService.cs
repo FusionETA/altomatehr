@@ -18,8 +18,11 @@ public interface INotificationSettingService
     Task<EffectiveNotificationSetting> ForOrgAsync(string organizationId, NotificationKind kind);
 }
 
+// Owners: the company's owner(s), who also get anything none of the chosen
+// admins covers (every chosen admin limited to other staff).
 public sealed record EffectiveNotificationSetting(
-    bool Enabled, bool EmailStaff, IReadOnlyList<NotificationRecipient> Admins);
+    bool Enabled, bool EmailStaff, IReadOnlyList<NotificationRecipient> Admins,
+    IReadOnlyList<string> Owners);
 
 // An admin to tell. PolicyScope set = their access covers only the staff on
 // those policies (IEmployeeScopeResolver turns it into people).

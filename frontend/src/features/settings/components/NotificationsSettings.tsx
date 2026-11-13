@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { Switch } from "@/shared/components/ui/switch";
 import { SkeletonPanel } from "@/shared/components/Skeleton";
@@ -66,14 +66,25 @@ function NotificationCard({
   const [error, setError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
 
-  // A background refresh of the page replaces the starting point, but never
-  // what's being edited.
-  useEffect(() => setSaved(setting), [setting]);
-
   const dirty =
     enabled !== saved.enabled ||
     emailStaff !== saved.emailStaff ||
     [...picked].sort().join() !== [...saved.adminUserIds].sort().join();
+
+  // The page is first drawn from the cache, then refreshed. When the fresh
+  // copy differs (someone else saved since), take it — unless this admin has
+  // started editing, in which case their edits stay and only the starting
+  // point moves. Otherwise a cached "On" would sit on screen as an unsaved
+  // edit, and Save would quietly undo the other admin's change.
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  useEffect(() => {
+    setSaved(setting);
+    if (dirtyRef.current) return;
+    setEnabled(setting.enabled);
+    setPicked(setting.adminUserIds);
+    setEmailStaff(setting.emailStaff);
+  }, [setting]);
 
   const owner = admins.find((a) => a.role === "Owner");
 
@@ -170,7 +181,8 @@ function NotificationCard({
               {picked.length === 0
                 ? `Nobody is ticked, so ${owner?.name || "the owner"} (the owner) gets it.`
                 : "If nobody is ticked, the owner gets it, so a reminder is never lost."}{" "}
-              An admin whose access is limited only hears about the staff it covers.
+              An admin whose access is limited only hears about the staff it covers; anyone no
+              ticked admin covers goes to the owner.
             </p>
           </fieldset>
 

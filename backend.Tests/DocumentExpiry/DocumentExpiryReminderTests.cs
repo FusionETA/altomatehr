@@ -98,9 +98,27 @@ public class DocumentExpiryReminderTests
 
         Assert.Equal(["Arjun's work permit expires in 5 days"],
             world.Notes.Sent.Where(n => n.UserId == "chong").Select(n => n.Title));
-        var mail = Assert.Single(world.Mail.Sent);
+        var mail = Assert.Single(world.Mail.Sent, m => m.To == "chong@x.test");
         Assert.Contains("Arjun", mail.Html);
         Assert.DoesNotContain("Rina", mail.Html);
+    }
+
+    // Only a limited admin ticked: the staff they don't cover still reach an
+    // admin — the owner — rather than nobody.
+    [Fact]
+    public async Task StaffNoTickedAdminCovers_GoToTheOwner()
+    {
+        var world = new World();
+        world.Staff("rina", "Indonesian", permitDays: 5);
+        world.Staff("arjun", "Nepali", permitDays: 5);
+        world.LimitedAdmin("chong", covers: ["arjun"]);
+        await world.SaveSettingAsync(enabled: true, emailStaff: false, "chong");
+
+        await world.RunAsync();
+
+        Assert.Equal(["Rina's work permit expires in 5 days"],
+            world.Notes.Sent.Where(n => n.UserId == "owner").Select(n => n.Title));
+        Assert.Equal(["chong@x.test", "owner@x.test"], world.Mail.Sent.Select(m => m.To).Order());
     }
 
     [Fact]

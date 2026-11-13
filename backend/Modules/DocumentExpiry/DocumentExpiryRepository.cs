@@ -43,6 +43,16 @@ public class DocumentExpiryRepository : IDocumentExpiryRepository
     {
         if (reminders.Count == 0) return;
         _db.DocumentExpiryReminders.AddRange(reminders);
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch
+        {
+            // Rows that failed to save would otherwise stay tracked and fail
+            // every later company's save in the same run.
+            _db.ChangeTracker.Clear();
+            throw;
+        }
     }
 }
