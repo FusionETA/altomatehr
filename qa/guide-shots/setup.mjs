@@ -111,16 +111,17 @@ async function setNickname(userId, nickname) {
 }
 
 const steps = {
-  // Two foreign workers with permits for the Executive Overview "Work permits"
-  // card and the profile's work permit fields: one expired, one due soon.
+  // Two foreign workers with permits and passports for the Executive Overview
+  // "Documents expiring" card and the profile's work permit and passport
+  // fields: one permit expired, one due soon, and both passports due.
   // Rerunnable (sets the same values each time, relative to today).
   "work-permits": async () => {
     // Gender, birth date, passport and marital status are made up too, so the
     // profile screen doesn't show red "Required" outlines in the guide shot.
     const adminToken = await demoAdmin(); // the demo company, wherever sign-in landed
-    for (const [userId, nationality, number, days, gender, passport] of [
-      ["usr-demo-arjun", "Indian", "PLKS-DEMO-0001", 24, "MALE", "X0000001"],
-      ["usr-demo-priya", "Indonesian", "PLKS-DEMO-0002", -6, "FEMALE", "X0000002"],
+    for (const [userId, nationality, number, days, gender, passport, passportDays] of [
+      ["usr-demo-arjun", "Indian", "PLKS-DEMO-0001", 24, "MALE", "X0000001", 45],
+      ["usr-demo-priya", "Indonesian", "PLKS-DEMO-0002", -6, "FEMALE", "X0000002", 12],
     ]) {
       const got = await call(adminToken, "GET", `/employees/${userId}/profile`);
       if (got.status !== 200) { console.log(userId, "profile:", got.status, got.data); continue; }
@@ -137,6 +138,7 @@ const steps = {
         isResident: false,
         workPermitNumber: number,
         workPermitExpiry: mytDate(days),
+        passportExpiry: mytDate(passportDays),
       });
       console.log("work permit", userId, nationality, mytDate(days), "→", r.status, r.status === 200 ? "" : JSON.stringify(r.data));
     }

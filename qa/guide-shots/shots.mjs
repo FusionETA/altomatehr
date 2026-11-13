@@ -332,21 +332,35 @@ const admin = {
     await shoot(page, "admin", "policy-overtime-rates");
     await page.keyboard.press("Escape");
   },
-  // Needs `node setup.mjs work-permits` so the "Work permits" card shows first.
+  // Needs `node setup.mjs work-permits` so the "Documents expiring" card shows first.
   "executive-overview": async (page) => {
     await inDemoCo(page);
     await go(page, "overview");
-    await page.getByText("Work permits").first().waitFor({ timeout: 15000 });
+    await page.getByText("Documents expiring").first().waitFor({ timeout: 15000 });
     await settle(page);
     await shoot(page, "admin", "executive-overview");
   },
-  // A foreign worker's Personal → Identity with the work permit fields
-  // (needs `node setup.mjs work-permits`).
+  // System Settings → Notifications: the "Work permit & passport expiry" card
+  // (when, which admins, and the staff email switch).
+  "settings-notifications": async (page) => {
+    await inDemoCo(page);
+    await go(page, "settings/settings-notifications");
+    await page.getByText("Work permit & passport expiry").first().waitFor({ timeout: 15000 });
+    await settle(page);
+    await page.mouse.move(5, 5);
+    await shoot(page, "admin", "settings-notifications");
+  },
+  // A foreign worker's Personal → Identity with the work permit and passport
+  // expiry fields (needs `node setup.mjs work-permits`).
   "employee-work-permit": async (page) => {
+    await inDemoCo(page);
     await go(page, "company/manage-employee");
+    // The list pages at 20, so search rather than hope Arjun is on page one.
+    await page.getByPlaceholder("Search employees").fill("Arjun");
     await clickText(page, "Arjun Pillai");
     await clickText(page, "Personal");
     await page.getByText("Work permit number").first().waitFor();
+    await page.getByText("Passport expiry").first().waitFor();
     await scrollTo(page, "Identity", 100, true);
     await page.mouse.move(5, 5); // no hover ring on a field
     await shoot(page, "admin", "employee-work-permit");
