@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: e485e71
+  user-guide-covered-up-to: 811048b
 -->
 <html lang="en">
 <head>
@@ -593,8 +593,11 @@
           this policy its own rate. If your company has its own types, they're listed underneath with a tick:
           untick one to stop that policy's staff picking it, or type a rate to pay it differently. (The two <em>in shift</em> rates that used to be here are gone.)</p></li>
       <li id="settings-notifications"><h4>Notifications</h4>
-        <p>Choose who hears about what. Today the page has one card, <strong>Work permit &amp; passport expiry</strong>;
-          more notifications will be listed here as they arrive. It has an <strong>On / Off</strong> switch, and then:</p>
+        <p>Choose who hears about what. Each notification is a row; today there is one,
+          <strong>Work permit &amp; passport expiry</strong>, and more will be listed here as they arrive. Closed, a row shows its name,
+          a one-line summary (for example <em>30 days before · Owner (nobody ticked) · staff email off</em>, or
+          <em>Off · nobody is reminded</em>) and an <strong>On / Off</strong> switch. The switch saves straight away.
+          Click the row to open its full form. Only one row is open at a time. The form has:</p>
         <ul>
           <li><strong>When</strong> — <em>Remind [30] days before, and again [—] days before, and on the expiry
             day.</em> The first box offers 7, 14, 30, 60 or 90 days. The second is optional (leave it at —) and must
@@ -608,7 +611,7 @@
             with.</li>
         </ul>
         <p>Press <span class="btn-name">Save</span> to keep your changes, or <span class="btn-name">Cancel</span> to
-          undo them. An admin without <em>Can change company settings</em> can see the page but not change it.</p>
+          undo them. If you close a row that has unsaved changes, you're asked <em>Discard your changes?</em>. An admin without <em>Can change company settings</em> can see the page but not change it.</p>
         <p>How the reminders work: they are checked every morning at 08:00 and cover foreign staff only. Each
           reminder goes once per date; changing the date on the employee record restarts them. A document that has
           already expired when it's first noticed gets one reminder. Opening an admin's reminder takes them to that
@@ -739,7 +742,7 @@
     <figure class="shot" data-place="System Settings">
       <div class="shot-grid" data-orient="screen">
         <div class="shot-item">
-          <img src="shots/admin/settings-notifications.png" alt="System Settings → Notifications: the Work permit &amp; passport expiry card switched On, the When line set to remind 30 days before and on the expiry day, the Admins who get it list with the owner and two limited admins, and the Also email them switch for the staff member" loading="lazy">
+          <img src="shots/admin/settings-notifications.png" alt="System Settings → Notifications: the Work permit &amp; passport expiry row opened, with its On switch, the When line set to remind 30 days before and on the expiry day, the Admins who get it list with the owner and two limited admins, and the Also email them switch for the staff member" loading="lazy">
           <p class="shot-cap">Notifications</p>
         </div>
       </div>
