@@ -37,7 +37,7 @@ export const WHATS_NEW: WhatsNewEntry[] = [
       admins("The Work permit & passport expiry row sets reminders 7 to 90 days before (30 by default), an optional second one closer in, and on the day."),
       admins("Chosen admins get reminders in the app and on their phone, plus one email a day. Nobody chosen means the owner. Limited admins hear only about their staff."),
       admins("Turn on \"Also email the staff member\" to email them too. It's off by default, and the app and phone alert always goes."),
-      admins("Foreign staff now have a Passport expiry date next to the work permit fields. The employee import and export has a Passport Expiry column."),
+      admins("Foreign staff now have a Passport expiry date next to the work permit fields."),
       admins("Clicking an admin reminder opens that person's record at the date to update. Each reminder goes once per expiry date, and a new date starts over."),
     ],
     improved: [
