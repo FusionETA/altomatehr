@@ -13,6 +13,7 @@ import { EmployeesSettings } from "@/features/settings/components/EmployeesSetti
 import { OrganizationSettings } from "@/features/settings/components/OrganizationSettings";
 import { PoliciesSettings } from "@/features/settings/components/PoliciesSettings";
 import { AdminsSettings } from "@/features/settings/components/AdminsSettings";
+import { NotificationsSettings } from "@/features/settings/components/NotificationsSettings";
 import { ApiIntegrationsSettings } from "@/features/settings/components/ApiIntegrationsSettings";
 import { ApiMonitoringPanel } from "@/features/api-monitoring/components/ApiMonitoringPanel";
 import { ProjectsSettings } from "@/features/settings/components/ProjectsSettings";
@@ -85,6 +86,9 @@ export function AdminShell({
   const activeChild = nav.child ?? defaultChildOf(findNavItem(nav.parent));
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  // Bumped when a notification opens someone's record, so the employee page
+  // re-reads the link even if it's already the page on screen.
+  const [linkVisit, setLinkVisit] = useState(0);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const whatsNew = useWhatsNew(user.email, "admins");
 
@@ -139,8 +143,22 @@ export function AdminShell({
   // has no router, so map the paths the backend actually sends to nav ids.
   // Anything unmapped just closes the bell without navigating.
   function navigateFromNotification(url: string) {
-    const path = url.split("?")[0];
-    if (path === "/claims") selectParent("claims");
+    const [path, query = ""] = url.split("?");
+    if (path === "/employees") {
+      // "/employees?employee=…&section=…&field=…" — open that person's record
+      // at that field (features/employees/lib/profile-link).
+      const link = new URLSearchParams(query);
+      const params = new URLSearchParams(window.location.search);
+      for (const key of ["employee", "section", "field"]) {
+        const value = link.get(key);
+        if (value) params.set(key, value);
+        else params.delete(key);
+      }
+      window.history.replaceState(null, "", `${window.location.pathname}?${params.toString().replace(/%2F/g, "/")}`);
+      setLinkVisit((n) => n + 1);
+      open("company", "manage-employee");
+    } else if (path === "/overview") selectParent("overview");
+    else if (path === "/claims") selectParent("claims");
     else if (path === "/leave") selectParent("leave");
     else if (path === "/attendance" || path === "/overtime") selectParent("attendance");
   }
@@ -417,7 +435,7 @@ export function AdminShell({
                 mispositions floating buttons and modal overlays for as long as
                 it runs. */}
             <div
-              key={activeChild}
+              key={`${activeChild}-${linkVisit}`}
               className="min-h-[60vh] animate-in fade-in-0 duration-200 ease-out"
             >
               <AdminContent activeChild={activeChild} user={user} onOpen={open} />
@@ -462,6 +480,8 @@ function AdminContent({
       return <WorkScheduleSettings />;
     case "settings-policies":
       return <PoliciesSettings />;
+    case "settings-notifications":
+      return <NotificationsSettings />;
     case "settings-admins":
       return <AdminsSettings />;
     case "settings-api":

@@ -1007,6 +1007,45 @@ namespace AltomateHR.Api.Migrations
                     b.ToTable("Claims");
                 });
 
+            modelBuilder.Entity("AltomateHR.Api.Modules.DocumentExpiry.Entities.DocumentExpiryReminder", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("Document")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime>("ExpiryDate")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime>("SentAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Stage")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "UserId", "Document", "ExpiryDate", "Stage")
+                        .IsUnique();
+
+                    b.ToTable("DocumentExpiryReminders");
+                });
+
             modelBuilder.Entity("AltomateHR.Api.Modules.Documents.Entities.DocumentTemplate", b =>
                 {
                     b.Property<string>("Id")
@@ -1294,6 +1333,9 @@ namespace AltomateHR.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime?>("PassportExpiry")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<string>("PaymentMethod")
                         .IsRequired()
@@ -2021,6 +2063,46 @@ namespace AltomateHR.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("LeaveTypes");
+                });
+
+            modelBuilder.Entity("AltomateHR.Api.Modules.NotificationSettings.Entities.NotificationSetting", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("AdminUserIds")
+                        .HasMaxLength(4000)
+                        .HasColumnType("varchar(4000)");
+
+                    b.Property<bool>("EmailStaff")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "Kind")
+                        .IsUnique();
+
+                    b.ToTable("NotificationSettings");
                 });
 
             modelBuilder.Entity("AltomateHR.Api.Modules.Notifications.Entities.Notification", b =>

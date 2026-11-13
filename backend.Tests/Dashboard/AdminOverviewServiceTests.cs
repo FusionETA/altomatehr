@@ -52,7 +52,7 @@ public class AdminOverviewServiceTests
 
     private static AdminOverviewService Create(
         IEnumerable<Claim> claims,
-        IReadOnlyList<WorkPermitDto> permits,
+        IReadOnlyList<IdentityDocumentsDto> permits,
         FakeApprovalRouter? router = null,
         params string[] modules)
     {
@@ -68,11 +68,11 @@ public class AdminOverviewServiceTests
             new FakeWorkPermits(permits));
     }
 
-    // ---- Work permits ----
+    // ---- Documents expiring ----
 
     private static readonly DateTime Today = new(2026, 10, 5);
 
-    private static WorkPermitDto Permit(
+    private static IdentityDocumentsDto Permit(
         string userId, int daysFromToday, string nationality = "Indonesian",
         bool pr = false, bool archived = false, DateTime? left = null) => new()
         {
@@ -87,20 +87,42 @@ public class AdminOverviewServiceTests
 
     // Lapsed and lapsing-within-60-days permits, soonest first; later ones wait.
     [Fact]
-    public async Task WorkPermitAlerts_ListExpiredAndSoonToExpire_SoonestFirst()
+    public async Task DocumentAlerts_ListExpiredAndSoonToExpire_SoonestFirst()
     {
         var service = Create([], [Permit("usr-siti", 30), Permit("usr-ahmad", -3), Permit("usr-aisha", 61)]);
 
-        var alerts = await service.WorkPermitAlertsAsync(Today);
+        var alerts = await service.DocumentAlertsAsync(Today);
 
         Assert.Equal(["Ahmad Ali", "Siti Nur"], alerts.Select(a => a.EmployeeName));
         Assert.Equal([-3, 30], alerts.Select(a => a.DaysLeft));
-        Assert.Equal("PLKS-usr-ahmad", alerts[0].WorkPermitNumber);
+        Assert.Equal("PLKS-usr-ahmad", alerts[0].DocumentNumber);
+        Assert.All(alerts, a => Assert.Equal(IdentityDocument.WORK_PERMIT, a.Document));
+    }
+
+    // A passport shows beside the permit: one row per document, its number
+    // being the ID number when the ID type is Passport.
+    [Fact]
+    public async Task DocumentAlerts_ListPassportsToo()
+    {
+        var both = Permit("usr-siti", 40);
+        both.PassportNumber = "A1234567";
+        both.PassportExpiry = Today.AddDays(10);
+        var passportOnly = Permit("usr-ahmad", 0);
+        passportOnly.WorkPermitExpiry = null;
+        passportOnly.PassportExpiry = Today.AddDays(-2);
+        var service = Create([], [both, passportOnly]);
+
+        var alerts = await service.DocumentAlertsAsync(Today);
+
+        Assert.Equal(
+            [("usr-ahmad", IdentityDocument.PASSPORT, -2), ("usr-siti", IdentityDocument.PASSPORT, 10), ("usr-siti", IdentityDocument.WORK_PERMIT, 40)],
+            alerts.Select(a => (a.EmployeeId, a.Document, a.DaysLeft)));
+        Assert.Equal("A1234567", alerts[1].DocumentNumber);
     }
 
     // A citizen or PR has no permit to renew; nobody archived or gone needs one.
     [Fact]
-    public async Task WorkPermitAlerts_LeaveOutCitizensPrsAndPeopleWhoLeft()
+    public async Task DocumentAlerts_LeaveOutCitizensPrsAndPeopleWhoLeft()
     {
         var service = Create([],
         [
@@ -112,7 +134,7 @@ public class AdminOverviewServiceTests
             Permit("usr-siti", 60),
         ]);
 
-        var alerts = await service.WorkPermitAlertsAsync(Today);
+        var alerts = await service.DocumentAlertsAsync(Today);
 
         Assert.Equal(["usr-siti"], alerts.Select(a => a.EmployeeId));
     }
@@ -256,9 +278,9 @@ internal sealed class FakeModuleAccessService : IModuleAccessService
     public Task<IReadOnlyCollection<string>> GetOrgModulesAsync() => Task.FromResult(_ceiling);
 }
 
-internal sealed class FakeWorkPermits(IReadOnlyList<WorkPermitDto> permits) : IEmployeeProfileService
+internal sealed class FakeWorkPermits(IReadOnlyList<IdentityDocumentsDto> permits) : IEmployeeProfileService
 {
-    public Task<IReadOnlyList<WorkPermitDto>> GetWorkPermitsAsync() => Task.FromResult(permits);
+    public Task<IReadOnlyList<IdentityDocumentsDto>> GetIdentityDocumentsAsync() => Task.FromResult(permits);
     public Task<EmployeeProfileDto?> GetAsync(string userId) => throw new NotSupportedException();
     public Task<EmployeeProfileDto?> SaveAsync(string userId, EmployeeProfileDto dto) => throw new NotSupportedException();
 }

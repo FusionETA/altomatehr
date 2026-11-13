@@ -25,4 +25,9 @@ public enum NotificationType
     // own title/body directly rather than us templating one per business
     // event, since the partner spec carries no event-type field.
     PARTNER_MESSAGE,
+
+    // A foreign worker's work permit or passport expires soon, today, or has
+    // expired — to the person and to the admins chosen in Settings →
+    // Notifications. See Modules/DocumentExpiry.
+    DOCUMENT_EXPIRY,
 }

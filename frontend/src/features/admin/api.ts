@@ -48,11 +48,13 @@ export type OverturnedSupervisor = {
   claimIds: string[];
 };
 
-// A foreign worker whose work permit has lapsed or lapses within 60 days.
-export type WorkPermitAlert = {
+// A foreign worker's work permit or passport that has lapsed or lapses within
+// 60 days. One row per document.
+export type DocumentExpiryAlert = {
   employeeId: string;
   employeeName: string;
-  workPermitNumber: string | null;
+  document: "WORK_PERMIT" | "PASSPORT";
+  documentNumber: string | null;
   expiry: string;
   /** Negative once expired; 0 = expires today. */
   daysLeft: number;
@@ -66,7 +68,7 @@ export type AdminOverview = {
   stalePendingClaims: StalePendingClaim[];
   upcomingClaimRun: UpcomingClaimRun | null;
   overturnedSupervisors: { total: number; samples: OverturnedSupervisor[] };
-  workPermitAlerts: WorkPermitAlert[];
+  documentAlerts: DocumentExpiryAlert[];
 };
 
 export const getAdminOverview = () => apiGet<AdminOverview>("/admin/overview");

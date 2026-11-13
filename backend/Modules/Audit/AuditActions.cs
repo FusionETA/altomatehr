@@ -17,6 +17,7 @@ public static class AuditActions
     public const string SettingsOrgSignatureUpdate = "settings.org.signature.update";
     public const string SettingsOrgSignatureRemove = "settings.org.signature.remove";
     public const string SettingsClaimsUpdate = "settings.claims.update";
+    public const string SettingsNotificationsUpdate = "settings.notifications.update";
 
     // Payroll configuration — what these decide ends up on a statutory filing,
     // so every change is recorded.
@@ -191,6 +192,7 @@ public static class AuditActions
         [SettingsOrgSignatureUpdate] = "Signature updated",
         [SettingsOrgSignatureRemove] = "Signature removed",
         [SettingsClaimsUpdate] = "Claim settings updated",
+        [SettingsNotificationsUpdate] = "Notification settings updated",
         [AccountCreate] = "Account created",
         [AccountUpdate] = "Account updated",
         [AccountArchive] = "Account archived",

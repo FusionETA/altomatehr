@@ -28,10 +28,11 @@ public class AdminOverviewService : IAdminOverviewService
     // so it lists the few worth talking to rather than ranking everybody.
     private const int OverturnedSampleSize = 5;
 
-    // How soon before a work permit lapses it shows on the overview — the same
-    // 60 days the profile's "Expires in N days" line uses. Renewing a PLKS
-    // takes weeks, so a shorter warning arrives too late to act on.
-    public const int WorkPermitWarnDays = 60;
+    // How soon before a work permit or passport lapses it shows on the
+    // overview — the same 60 days the profile's "Expires in N days" line uses.
+    // Renewing a PLKS takes weeks, so a shorter warning arrives too late to act
+    // on. (The reminders themselves go at 30 days and on the day.)
+    public const int DocumentWarnDays = 60;
 
     private static readonly TimeZoneInfo Myt = TimeZoneInfo.FindSystemTimeZoneById("Asia/Kuala_Lumpur");
 
@@ -78,39 +79,30 @@ public class AdminOverviewService : IAdminOverviewService
         }
 
         // Not tied to a module: every company may employ foreign workers.
-        dto.WorkPermitAlerts = await WorkPermitAlertsAsync(
+        dto.DocumentAlerts = await DocumentAlertsAsync(
             TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, Myt).Date);
 
         // AttendanceHealth (attendance) / SlowOtApprovers (overtime) are built next.
         return dto;
     }
 
-    // Card — foreign workers whose work permit has lapsed or lapses within
-    // WorkPermitWarnDays, soonest first. A citizen or PR has no permit to renew,
-    // and nobody archived or already gone needs one.
-    public async Task<List<WorkPermitAlertDto>> WorkPermitAlertsAsync(DateTime today)
+    // Card — foreign workers whose work permit or passport has lapsed or lapses
+    // within DocumentWarnDays, soonest first. Who counts is ExpiringDocuments'
+    // rule, the same one the expiry reminders use.
+    public async Task<List<DocumentExpiryAlertDto>> DocumentAlertsAsync(DateTime today)
     {
-        var permits = await _profiles.GetWorkPermitsAsync();
-        var due = permits
-            .Where(p => !p.IsArchived
-                && !(p.LeaveDate is { } left && left.Date < today)
-                && !p.HasPr
-                && !string.IsNullOrWhiteSpace(p.Nationality)
-                && !Payroll.PayslipCalculator.IsMalaysianNationality(p.Nationality))
-            .Select(p => (Permit: p, DaysLeft: (int)(p.WorkPermitExpiry.Date - today).TotalDays))
-            .Where(x => x.DaysLeft <= WorkPermitWarnDays)
-            .OrderBy(x => x.DaysLeft)
-            .ToList();
+        var due = ExpiringDocuments.Due(await _profiles.GetIdentityDocumentsAsync(), today, DocumentWarnDays);
         if (due.Count == 0) return [];
 
         var people = await _employees.GetSnapshotAsync();
-        return [.. due.Select(x => new WorkPermitAlertDto
+        return [.. due.Select(d => new DocumentExpiryAlertDto
         {
-            EmployeeId = x.Permit.UserId,
-            EmployeeName = people.NameOf(x.Permit.UserId),
-            WorkPermitNumber = x.Permit.WorkPermitNumber,
-            Expiry = x.Permit.WorkPermitExpiry,
-            DaysLeft = x.DaysLeft,
+            EmployeeId = d.UserId,
+            EmployeeName = people.NameOf(d.UserId),
+            Document = d.Document,
+            DocumentNumber = d.Number,
+            Expiry = d.Expiry,
+            DaysLeft = d.DaysLeft,
         })];
     }
 

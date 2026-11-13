@@ -470,3 +470,45 @@ export const getApiKeys = () => apiGet<ApiKey[]>("/api-keys");
 export const createApiKey = (body: { name: string; scopes: string[] }) =>
   apiPost<CreatedApiKey>("/api-keys", body);
 export const revokeApiKey = (id: string) => apiDelete<void>(`/api-keys/${id}`);
+
+// ─── Settings → Notifications ────────────────────────────────────────────
+
+export type NotificationKind = "DOCUMENT_EXPIRY";
+
+/** Someone who can be picked: the owner and every admin. */
+export type NotificationAdmin = {
+  userId: string;
+  name: string;
+  email: string;
+  role: string;
+  /** Their access covers only some staff, so they only hear about those people. */
+  isLimited: boolean;
+};
+
+export type NotificationSetting = {
+  kind: NotificationKind;
+  title: string;
+  description: string;
+  enabled: boolean;
+  /** Empty = the owner gets it. */
+  adminUserIds: string[];
+  emailStaff: boolean;
+  updatedAt: string | null;
+  updatedByName: string | null;
+};
+
+export type NotificationSettings = {
+  admins: NotificationAdmin[];
+  notifications: NotificationSetting[];
+};
+
+export type UpdateNotificationSetting = {
+  enabled: boolean;
+  adminUserIds: string[];
+  emailStaff: boolean;
+};
+
+export const getNotificationSettings = () => apiGet<NotificationSettings>("/notification-settings");
+
+export const updateNotificationSetting = (kind: NotificationKind, body: UpdateNotificationSetting) =>
+  apiPut<NotificationSetting>(`/notification-settings/${kind}`, body);

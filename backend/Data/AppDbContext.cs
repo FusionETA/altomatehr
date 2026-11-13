@@ -107,6 +107,8 @@ public class AppDbContext : DbContext
     public DbSet<PayrollRunMember> PayrollRunMembers => Set<PayrollRunMember>();
     public DbSet<UnpaidLeaveSettlement> UnpaidLeaveSettlements => Set<UnpaidLeaveSettlement>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<Modules.NotificationSettings.Entities.NotificationSetting> NotificationSettings => Set<Modules.NotificationSettings.Entities.NotificationSetting>();
+    public DbSet<Modules.DocumentExpiry.Entities.DocumentExpiryReminder> DocumentExpiryReminders => Set<Modules.DocumentExpiry.Entities.DocumentExpiryReminder>();
     public DbSet<WebPushSubscription> WebPushSubscriptions => Set<WebPushSubscription>();
     public DbSet<DocumentTemplate> DocumentTemplates => Set<DocumentTemplate>();
     public DbSet<GeneratedDocument> GeneratedDocuments => Set<GeneratedDocument>();
@@ -400,6 +402,17 @@ public class AppDbContext : DbContext
         notification.HasIndex(n => new { n.UserId, n.CreatedAt });
         notification.HasIndex(n => new { n.UserId, n.ReadAt });
 
+        // Settings → Notifications: one row per company per notification.
+        var notificationSetting = modelBuilder.Entity<Modules.NotificationSettings.Entities.NotificationSetting>();
+        notificationSetting.Property(s => s.Kind).HasConversion<string>().HasMaxLength(40);
+        notificationSetting.HasIndex(s => new { s.OrganizationId, s.Kind }).IsUnique();
+
+        // Each expiry reminder once per (person, document, date, stage).
+        var expiryReminder = modelBuilder.Entity<Modules.DocumentExpiry.Entities.DocumentExpiryReminder>();
+        expiryReminder.Property(r => r.Document).HasConversion<string>().HasMaxLength(20);
+        expiryReminder.Property(r => r.Stage).HasConversion<string>().HasMaxLength(20);
+        expiryReminder.HasIndex(r => new { r.OrganizationId, r.UserId, r.Document, r.ExpiryDate, r.Stage }).IsUnique();
+
         // A re-subscribing browser upserts by Endpoint — see WebPushSubscriptionRepository.
         modelBuilder.Entity<WebPushSubscription>().HasIndex(s => s.Endpoint).IsUnique();
         modelBuilder.Entity<WebPushSubscription>().HasIndex(s => s.UserId);
@@ -549,6 +562,10 @@ public class AppDbContext : DbContext
                  && (_scope.ProfileIds == null || _scope.ProfileIds.Contains(s.EmployeeProfileId)));
         modelBuilder.Entity<Notification>().HasQueryFilter(
             n => _currentUser.OrganizationId == null || n.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<Modules.NotificationSettings.Entities.NotificationSetting>().HasQueryFilter(
+            s => _currentUser.OrganizationId == null || s.OrganizationId == _currentUser.OrganizationId);
+        modelBuilder.Entity<Modules.DocumentExpiry.Entities.DocumentExpiryReminder>().HasQueryFilter(
+            r => _currentUser.OrganizationId == null || r.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<DocumentTemplate>().HasQueryFilter(
             t => _currentUser.OrganizationId == null || t.OrganizationId == _currentUser.OrganizationId);
         modelBuilder.Entity<OrganizationSignature>().HasQueryFilter(

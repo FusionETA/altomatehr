@@ -868,8 +868,8 @@ public class EmployeeImportTests
     // that fails and is never saved can't leave its edits behind in the store.
     internal sealed class FakeProfileService(IEnumerable<EmployeeProfile> profiles) : IEmployeeProfileService
     {
-        public Task<IReadOnlyList<WorkPermitDto>> GetWorkPermitsAsync() =>
-            Task.FromResult<IReadOnlyList<WorkPermitDto>>([]);
+        public Task<IReadOnlyList<IdentityDocumentsDto>> GetIdentityDocumentsAsync() =>
+            Task.FromResult<IReadOnlyList<IdentityDocumentsDto>>([]);
 
         public Dictionary<string, EmployeeProfile> Store { get; } =
             profiles.ToDictionary(p => p.UserId);

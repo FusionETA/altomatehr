@@ -12,15 +12,17 @@ public class AdminOverviewDto
     public List<StalePendingClaimDto> StalePendingClaims { get; set; } = new();
     public UpcomingClaimRunDto? UpcomingClaimRun { get; set; }
     public OverturnedSupervisorsDto OverturnedSupervisors { get; set; } = new();
-    public List<WorkPermitAlertDto> WorkPermitAlerts { get; set; } = new();
+    public List<DocumentExpiryAlertDto> DocumentAlerts { get; set; } = new();
 }
 
-// A foreign worker whose work permit has lapsed or lapses soon.
-public class WorkPermitAlertDto
+// A foreign worker's work permit or passport that has lapsed or lapses soon.
+// One row per document, so someone with both expiring appears twice.
+public class DocumentExpiryAlertDto
 {
     public string EmployeeId { get; set; } = string.Empty;
     public string EmployeeName { get; set; } = string.Empty;
-    public string? WorkPermitNumber { get; set; }
+    public Employees.IdentityDocument Document { get; set; }
+    public string? DocumentNumber { get; set; }
     public DateTime Expiry { get; set; }
     // Negative once expired; 0 = expires today.
     public int DaysLeft { get; set; }

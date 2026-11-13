@@ -331,7 +331,7 @@ public class LeaveCronServiceTests
         public Task<AltomateHR.Api.Modules.Employees.Dtos.EmployeeProfileDto?> SaveAsync(
             string userId, AltomateHR.Api.Modules.Employees.Dtos.EmployeeProfileDto dto) =>
             throw new NotSupportedException();
-        public Task<IReadOnlyList<AltomateHR.Api.Modules.Employees.Dtos.WorkPermitDto>> GetWorkPermitsAsync() =>
+        public Task<IReadOnlyList<AltomateHR.Api.Modules.Employees.Dtos.IdentityDocumentsDto>> GetIdentityDocumentsAsync() =>
             throw new NotSupportedException();
     }
 
