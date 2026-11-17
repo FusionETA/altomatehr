@@ -111,7 +111,7 @@
           already has an unnamed run (<code>409</code> otherwise). Nobody is paid twice for a month: anyone
           already in another run that month is dropped from a new one, and left out of a re-run. Every run
           has its own <code>id</code>; the <a href="#run-object"><code>label</code></a> (&ldquo;October 2026
-          &ndash; Workers&rdquo;) tells them apart, and a named run's file names carry its
+          &ndash; Workers&rdquo;) tells them apart, and a named run's document file names (not the bank file's) carry its
           name (see <a href="#run-files">Run names in file names</a>).</li>
         <li><strong>Two employee ids.</strong> Every id on this page is an
           <code>employeeProfileId</code> from <code>GET /payroll/employees</code> or the
@@ -467,7 +467,7 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
             <tr><td><code>periodLabel</code></td><td>string</td><td>The month only, e.g. <code>"January 2026"</code>, rendered server-side. Identical for every run of the month.</td></tr>
             <tr><td><code>name</code></td><td>string or null</td><td>The run's name within its month, e.g. <code>"Workers"</code>. Null for an unnamed run.</td></tr>
             <tr><td><code>label</code></td><td>string</td><td>The label to show when a month has several runs: <code>"October 2026 &ndash; Workers"</code> (an en dash), or just the month when the run is unnamed. Also what <code>alsoReverted</code>, <code>attachedToRunPeriod</code> and the run's own documents use.</td></tr>
-            <tr><td><code>runNumber</code></td><td>number</td><td>1 for the month's first run, 2 for the next, and so on. Not reused while a later run exists. Used for a bank file's batch id and the file-name tag of an unnamed later run.</td></tr>
+            <tr><td><code>runNumber</code></td><td>number</td><td>1 for the month's first run, 2 for the next, and so on. Not reused while a later run exists. Used for a bank file's batch id or sequence number (Maybank, Public Bank) and the file-name tag of an unnamed later run.</td></tr>
             <tr><td><code>status</code></td><td>string</td><td><code>"DRAFT"</code> · <code>"PENDING_APPROVAL"</code> · <code>"SUBMITTED"</code>.</td></tr>
             <tr><td><code>source</code></td><td>string</td><td><code>"COMPUTED"</code> (the normal path) or <code>"IMPORTED"</code> (seeded from a migration — its statutory files, bank file and run reports are refused; its payslips are still downloadable).</td></tr>
             <tr><td><code>skipProration</code></td><td>boolean</td><td>True when the pay figures are final and joiners/leavers are not prorated. See <a href="#update">PATCH</a>.</td></tr>
@@ -1367,9 +1367,12 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
         <code>Payroll_Summary_January_2026_Workers.pdf</code>,
         <code>ABPay {Company name} 2026-01 Workers.xlsx</code> &mdash; except the PCB (CP39) file, whose name is
         letters and digits only because the e-PCB upload refuses anything else: <code>{10-digit employer no}012026Workers.txt</code>.
-        This covers the statutory files, the bank file, the payslips ZIP, the documents bundle, the statutory and allowance/deduction zips, the run
+        This covers the statutory files, the payslips ZIP, the documents bundle, the statutory and allowance/deduction zips, the run
         summary, payment schedule, PCB details, allowance, deduction and manual-payment reports and the
         ABPay timesheet. The single payslip PDF and the TP1 documents are per employee and keep their names.
+        <strong>The bank file is the exception and never carries the tag</strong>: a bank's upload portal reads the file name
+        (Public Bank rejects anything outside its own pattern), so each bank keeps runs apart its own way &mdash; see the
+        <a href="#doc-bank-file">bank-file endpoint</a>.
         A run's own documents (summary, payment schedule, and so on) head their pages with the run
         <code>label</code>; a payslip still shows the month only.
       </div>
@@ -1823,10 +1826,10 @@ curl "https://&lt;api-host&gt;/payroll/runs/month/2026/1/summary?format=xlsx" \
           </table>
         </div>
         <h3>Response <code>200</code></h3>
-        <p>Maybank's TXT batch id carries <code>R{runNumber}</code> after the period (e.g. <code>202601R2</code>) for a month's second and later runs, so each upload's batch id is unique; the first run keeps the plain period. Every format's file name also carries the run's <a href="#run-files">name tag</a>.</p>
+        <p>Maybank's TXT batch id carries <code>R{runNumber}</code> after the period (e.g. <code>202601R2</code>) for a month's second and later runs, so each upload's batch id is unique; the first run keeps the plain period. A bank file's name never carries the run's name (the bank's portal reads it). Public Bank's ECP spreadsheet is named <code>{10-digit account}PR{ddMMyy}{NN}.xlsx</code>, where <code>{ddMMyy}</code> is the payment date and <code>NN</code> is the run number, <code>01</code> for the first run and <code>02</code> for the second, up to <code>99</code> (e.g. <code>1234567890PR31012601.xlsx</code>), so two runs paid the same day get names the bank accepts.</p>
         <p>Content type and filename depend on the configured bank (e.g. Public Bank's ECP spreadsheet, Maybank's TXT, CIMB's Excel template, or Hong Leong's two formats).</p>
         <p>For CIMB, <code>Content-Type</code> is an Excel workbook (<code>.xlsx</code>), filename <code>CIMB_Bulk_Payroll_{MM}{YYYY}.xlsx</code> (e.g. <code>CIMB_Bulk_Payroll_012026.xlsx</code>). One sheet, <code>EPF</code> (CIMB's template name): row 1 is the template's field rules, row 2 the headers (<code>*Beneficiary Name</code>, <code>Beneficiary ID</code>, <code>*BNM Code</code>, <code>*Account Number</code>, <code>*Payment Amount</code>, <code>Reference Number</code>), and one payee per row from row 3. <code>Beneficiary ID</code> is blank; <code>*BNM Code</code> is CIMB's dropdown label (e.g. <code>35-CIMB Bank Berhad</code>); the account number is text; the amount is a number to 2 decimals. Names and reference have <code>-</code> and <code>/</code> replaced by spaces and are cut to CIMB's lengths (40 and 30).</p>
-        <p>For OCBC, <code>Content-Type</code> is <code>text/plain</code> (ASCII, CRLF line endings), filename <code>OCBC_GIRO_Payroll_{MM}{YYYY}_T{tapeId}.txt</code> (e.g. <code>OCBC_GIRO_Payroll_012026_T001.txt</code>, plus the run's name tag when it has one). Every line is exactly 480 characters: one header (<code>01</code>) with the company, its debiting account, the tape id and the value date; one detail line (<code>02</code>) per payee with account, amount in sen, name, routing ID and reference; one trailer (<code>03</code>) with the payee count and total. Beneficiary names are cut to 22 characters, and an account number longer than 17 digits is refused rather than cut.</p>
+        <p>For OCBC, <code>Content-Type</code> is <code>text/plain</code> (ASCII, CRLF line endings), filename <code>OCBC_GIRO_Payroll_{MM}{YYYY}_T{tapeId}.txt</code> (e.g. <code>OCBC_GIRO_Payroll_012026_T001.txt</code>). Every line is exactly 480 characters: one header (<code>01</code>) with the company, its debiting account, the tape id and the value date; one detail line (<code>02</code>) per payee with account, amount in sen, name, routing ID and reference; one trailer (<code>03</code>) with the payee count and total. Beneficiary names are cut to 22 characters, and an account number longer than 17 digits is refused rather than cut.</p>
         <h3>Errors</h3>
         <ul>
           <li><code>404</code> — no such run.</li>

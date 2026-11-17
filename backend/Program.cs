@@ -93,6 +93,17 @@ builder.Services.AddCors(options =>
               .WithExposedHeaders("Content-Disposition", "X-Bundle-Skipped", "X-Bundle-File-Count")
               .AllowCredentials()));   // allow the browser to send/receive cookies cross-origin
 
+// The public payroll calculator on altomate.io's payroll page: its own,
+// narrower policy — the marketing site only, POST with a JSON body, no
+// credentials. Origins live in config (PayrollCalculator:AllowedOrigins) so
+// staging can be added without a code change.
+builder.Services.AddCors(options =>
+    options.AddPolicy(AltomateHR.Api.Modules.PayrollCalculator.PayrollCalculatorController.PolicyName, policy =>
+        policy.WithOrigins(
+                  builder.Configuration.GetSection("PayrollCalculator:AllowedOrigins").Get<string[]>() ?? [])
+              .WithMethods("POST", "OPTIONS")
+              .WithHeaders("Content-Type")));
+
 // Database (EF Core + Pomelo/MySQL). Connection string from user-secrets — never committed.
 var connectionString = builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException(
@@ -184,12 +195,39 @@ builder.Services.AddRateLimiter(options =>
                 ((int)retryAfter.TotalSeconds).ToString();
         }
 
+        // The public payroll calculator answers in its widget's error shape.
+        if (context.HttpContext.Request.Path.StartsWithSegments("/public/v1/payroll-calculator"))
+        {
+            context.HttpContext.Response.Headers.CacheControl = "no-store";
+            await Results.Json(
+                new AltomateHR.Api.Modules.PayrollCalculator.Dtos.PayrollCalculatorErrorBody(
+                    new AltomateHR.Api.Modules.PayrollCalculator.Dtos.PayrollCalculatorError(
+                        null, "rate_limited", "Too many calculations in a short time. Wait a minute, then try again.")),
+                statusCode: StatusCodes.Status429TooManyRequests)
+                .ExecuteAsync(context.HttpContext);
+            return;
+        }
+
         await Results.Problem(
             title: "Too many requests.",
             detail: "Too many attempts. Please wait before trying again.",
             statusCode: StatusCodes.Status429TooManyRequests)
             .ExecuteAsync(context.HttpContext);
     };
+
+    // The public payroll calculator: anyone on the internet can call it, so a
+    // per-IP cap (the handover's 30 a minute). Cheap to compute, but unbounded
+    // calls are still unbounded.
+    options.AddPolicy(AltomateHR.Api.Modules.PayrollCalculator.PayrollCalculatorController.PolicyName, httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: GetClientPartitionKey(httpContext, "payroll-calculator"),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            }));
 
     // A flood guard, not the brute-force defence: LoginGuard locks an account
     // after 5 wrong passwords and blocks an IP after 10. This counts every
@@ -382,6 +420,10 @@ builder.Services.AddScoped<IEmployeeLoanService, EmployeeLoanService>();
 builder.Services.AddScoped<IPayrollXeroSyncService, PayrollXeroSyncService>();
 builder.Services.AddScoped<IPayrollSettingsRepository, PayrollSettingsRepository>();
 builder.Services.AddScoped<IPayrollSettingsService, PayrollSettingsService>();
+// Public payroll calculator (altomate.io) — prices a hypothetical employee with
+// the payroll engine; no database.
+builder.Services.AddScoped<AltomateHR.Api.Modules.PayrollCalculator.IPayrollCalculatorService,
+    AltomateHR.Api.Modules.PayrollCalculator.PayrollCalculatorService>();
 builder.Services.AddScoped<IPayrollCompanyInfoRepository, PayrollCompanyInfoRepository>();
 builder.Services.AddScoped<IPayrollCompanyInfoService, PayrollCompanyInfoService>();
 builder.Services.AddScoped<IPayrollRunRepository, PayrollRunRepository>();

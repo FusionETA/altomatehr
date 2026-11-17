@@ -648,7 +648,12 @@ public class StatutoryFileService : IStatutoryFileService
                       + "in Payroll Settings → Company Info, or pick \"Other\" if yours isn't listed.");
         }
 
-        return Tagged(format switch
+        // NOT Tagged: unlike the documents, a bank upload's name is read by the
+        // bank's portal, and Public Bank refuses anything but its own pattern
+        // (a "Workers" run came out as …PR17112601Workers.xlsx and was
+        // rejected). Each renderer keeps two runs apart in the bank's own way
+        // instead — PB's file sequence number, Maybank's batch ID.
+        return format switch
         {
             PayrollFileFormat.PbEcpXlsx =>
                 PayrollBankFileXlsx.Render(model, valueDate, settings.EcpPayorAccountNo),
@@ -686,7 +691,7 @@ public class StatutoryFileService : IStatutoryFileService
             _ => StatutoryFileResult.Refused(
                 $"The upload file for {settings.PayrollBankName} isn't available yet. Use the "
                 + "Payment Schedule PDF for now — it lists every account and amount."),
-        }, model.Run);
+        };
     }
 
     private static DateTime LastDayOfPeriod(Entities.PayrollRun run) =>

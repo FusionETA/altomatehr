@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 811048b
+  user-guide-covered-up-to: 6e1186b
 -->
 <html lang="en">
 <head>
@@ -1527,6 +1527,10 @@
           approved overtime, leave and claims. Under the month's name the run shows when it was generated and approved,
           in your own local time.</p></li>
       <li><h4>Check and adjust</h4>
+        <p>Before the run is worked out, the <strong>One-off adjustments</strong> list shows everyone on the run. Type a name or
+          employee number in <em>Search by name or employee number</em> to find someone; long lists show 25 people a page, with
+          the page buttons underneath. Each person has an <span class="btn-name">Adjust</span> button; it opens a wide side panel
+          so the boxes and one-off items have room.</p>
         <p>Open anyone's line with <span class="btn-name">Edit OT / adjustments</span> to change worked hours, overtime,
           or add a one-off allowance, deduction or expense for this month, or to set one person's employer HRDF levy. The
           <strong>Overtime</strong> box has one hours box per overtime type, each labelled with the rate it pays
@@ -1781,6 +1785,10 @@
           <p class="shot-cap">Adjustments drawer</p>
         </div>
         <div class="shot-item">
+          <img src="shots/admin/payroll-adjustments-list.png" alt="A draft run's One-off adjustments list with the Search by name or employee number box above the employees and their Adjust buttons" loading="lazy">
+          <p class="shot-cap">One-off adjustments list, with search</p>
+        </div>
+        <div class="shot-item">
           <img src="shots/admin/payroll-adjustments-basic.png" alt="The adjustments drawer for one monthly employee scrolled to the Basic this month block with its Basic (RM) field, then Working hours and the start of Unpaid leave" loading="lazy">
           <p class="shot-cap">Basic this month</p>
         </div>
@@ -1925,7 +1933,10 @@
       buttons are still there when you only want one.</p>
     <h3>The bank file follows your bank</h3>
     <ul>
-      <li><strong>Public Bank</strong> — ECP Bulk Payroll (.xlsx)</li>
+      <li><strong>Public Bank</strong> — ECP Bulk Payroll (.xlsx). The file is named with your account number, the date and the run's
+        number, for example <em>1234567890PR17112601.xlsx</em> (the last two digits are the run number, so a month paid in two runs
+        gives <em>01</em> and <em>02</em>). Keep that name when you upload it: Public Bank rejects files that have been renamed or have
+        a run's name added.</li>
       <li><strong>Maybank</strong> — Maybank2E universal payment file (.txt)</li>
       <li><strong>CIMB</strong> — BizChannel@CIMB bulk payroll (Excel), for IC and passport holders alike (see below)</li>
       <li><strong>Hong Leong</strong> — ConnectFirst, plus a ConnectBiz template</li>

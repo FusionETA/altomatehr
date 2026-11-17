@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { SlidersHorizontal, Upload } from "lucide-react";
+import { SearchInput } from "@/shared/components/SearchInput";
+import { TablePager } from "@/shared/components/TablePager";
+import { usePaged } from "@/shared/lib/use-paged";
 import {
   getPayrollEmployees,
   getRunAdjustments,
@@ -52,6 +55,7 @@ export function PayrollRunAdjustments({
   const [importing, setImporting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   // Stable key so a fresh-but-equal array from the parent doesn't refetch.
   const memberKey = memberIds.join(",");
@@ -92,6 +96,18 @@ export function PayrollRunAdjustments({
   const withSomething = employees.filter((employee) =>
     byEmployee.has(employee.employeeProfileId),
   );
+
+  // A company runs payroll for hundreds: find someone by name or staff number,
+  // a page at a time, rather than scrolling one long list.
+  const needle = query.trim().toLowerCase();
+  const shown = needle
+    ? employees.filter(
+        (employee) =>
+          employee.name.toLowerCase().includes(needle) ||
+          (employee.employeeNumber ?? "").toLowerCase().includes(needle),
+      )
+    : employees;
+  const paged = usePaged(shown, 25);
 
   return (
     <>
@@ -136,6 +152,16 @@ export function PayrollRunAdjustments({
                 </p>
               ) : null}
 
+              <SearchInput
+                value={query}
+                onChange={setQuery}
+                placeholder="Search by name or employee number"
+                className="mb-3 sm:max-w-sm"
+              />
+
+              {shown.length === 0 ? (
+                <p className={HINT}>No one on this run matches “{query.trim()}”.</p>
+              ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[620px] border-collapse">
                   <thead>
@@ -146,7 +172,7 @@ export function PayrollRunAdjustments({
                     </tr>
                   </thead>
                   <tbody>
-                    {employees.map((employee) => {
+                    {paged.pageItems.map((employee) => {
                       const adjustment = byEmployee.get(employee.employeeProfileId);
 
                       return (
@@ -199,6 +225,8 @@ export function PayrollRunAdjustments({
                   </tbody>
                 </table>
               </div>
+              )}
+              <TablePager paged={paged} noun="employee" />
             </>
           )}
         </section>

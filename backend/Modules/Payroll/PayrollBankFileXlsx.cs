@@ -154,9 +154,14 @@ public static class PayrollBankFileXlsx
 
         // PB's own convention: <10-digit account>PR<DDMMYY><NN>.xlsx. The
         // portal parses it, and will not accept the same filename twice in a
-        // day — so the name is part of the format, not a nicety.
+        // day — so the name is part of the format, not a nicety. NN is PB's
+        // own sequence for a day's files, so a month split into runs uses the
+        // run number there (01, 02 …): two runs paid on the same day get two
+        // names PB accepts. Nothing else may be added — a run's NAME on the
+        // end made PB reject the file.
+        var sequence = Math.Clamp(model.Run.RunNumber, 1, 99);
         var fileName =
-            $"{payor}PR{paymentDate:ddMMyy}01.xlsx";
+            $"{payor}PR{paymentDate:ddMMyy}{sequence:D2}.xlsx";
         return new StatutoryFileResult(true, fileName, stream.ToArray(), ContentType, null);
     }
 

@@ -198,6 +198,11 @@ does the loading.
   `Payroll_Summary_January_2026_Workers.pdf`, and with no separator on the
   all-alphanumeric CP39 name. An unnamed first run keeps exactly the old
   names. The Maybank batch ID adds `R{RunNumber}` for a month's later runs.
+- **Bank upload files are the exception: never add the run's name.** A bank's
+  portal reads the file name — Public Bank rejected `…PR17112601Workers.xlsx`.
+  Each bank keeps runs apart its own way instead: PB's `<NN>` day sequence is
+  the run number (`…PR17112602.xlsx` for the second run), Maybank's batch ID
+  carries `R{RunNumber}`.
 - **A missing IC is a refusal, not an exception.** It is an admin's data
   problem with a specific fix, so it returns a message naming the person and
   the controller answers 409.

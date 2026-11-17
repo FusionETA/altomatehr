@@ -12,10 +12,14 @@ import { createPortal } from "react-dom";
 export function DrawerPortal({
   label,
   onClose,
+  wide = false,
   children,
 }: {
   label: string;
   onClose: () => void;
+  // Room for side-by-side form fields (the run adjustment editor's category,
+  // name and amount on one line) instead of the reading width a payslip needs.
+  wide?: boolean;
   children: React.ReactNode;
 }) {
   // Escape closes. A layer that only dismisses on an outside click strands
@@ -54,7 +58,7 @@ export function DrawerPortal({
       onClick={onClose}
     >
       <div
-        className="h-full w-full max-w-2xl overflow-y-auto border-l border-border bg-background shadow-2xl"
+        className={`h-full w-full ${wide ? "max-w-4xl" : "max-w-2xl"} overflow-y-auto border-l border-border bg-background shadow-2xl`}
         onClick={(e) => e.stopPropagation()}
       >
         {children}

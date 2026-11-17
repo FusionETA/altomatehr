@@ -312,6 +312,23 @@ const steps = {
     console.log("generate:", g.status, g.status === 200 ? "ok" : JSON.stringify(g.data));
   },
 
+  // A February 2027 draft that is NOT worked out yet, so the run page shows the
+  // One-off adjustments list. Remove with payroll-draft-feb-remove.
+  "payroll-draft-feb": async () => {
+    const admin = await demoAdmin();
+    const runs = (await call(admin, "GET", "/payroll/runs")).data ?? [];
+    if (!runs.find((r) => r.periodYear === 2027 && r.periodMonth === 2)) {
+      const c = await call(admin, "POST", "/payroll/runs", { periodYear: 2027, periodMonth: 2 });
+      console.log("create draft:", c.status, c.data?.id ?? JSON.stringify(c.data));
+    }
+  },
+  "payroll-draft-feb-remove": async () => {
+    const admin = await demoAdmin();
+    const runs = (await call(admin, "GET", "/payroll/runs")).data ?? [];
+    const run = runs.find((r) => r.periodYear === 2027 && r.periodMonth === 2);
+    if (run) console.log("delete:", (await call(admin, "DELETE", `/payroll/runs/${run.id}`)).status);
+  },
+
   // Put the demo back as it was: delete the January 2027 draft.
   "payroll-draft-remove": async () => {
     const admin = await demoAdmin();
