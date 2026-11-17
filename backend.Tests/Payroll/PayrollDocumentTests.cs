@@ -401,6 +401,21 @@ public class PayrollDocumentTests
         Assert.Equal("3161234567PR31032601.xlsx", result.FileName);
     }
 
+    // A month's second run takes PB's own day sequence, 02 — never its name:
+    // PB's portal rejected "…PR17112601Workers.xlsx".
+    [Fact]
+    public void BankFile_ASecondRunUsesTheNextSequence_NotItsName()
+    {
+        var model = Model();
+        model.Run.RunNumber = 2;
+        model.Run.Name = "Workers";
+
+        var result = PayrollBankFileXlsx.Render(model, new DateTime(2026, 3, 31), "3161234567");
+
+        Assert.True(result.Ok);
+        Assert.Equal("3161234567PR31032602.xlsx", result.FileName);
+    }
+
     // Punctuation an admin types into the field is not part of the number.
     [Fact]
     public void BankFile_IgnoresPunctuationInThePayorAccount()

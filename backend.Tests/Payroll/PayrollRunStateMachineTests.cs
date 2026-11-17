@@ -707,6 +707,45 @@ public class PayrollRunStateMachineTests : IDisposable
         Assert.NotEqual((await _statutory.RenderEpfCsvAsync(first.Id)).FileName, epf);
     }
 
+    // The exception: a bank upload. Its name is read by the bank's portal, and
+    // Public Bank refused "…PR17112601Workers.xlsx". The second run takes PB's
+    // own day sequence instead, so the two files still differ.
+    [Fact]
+    public async Task ANamedRunsBankFile_KeepsTheBanksOwnName()
+    {
+        var aisyah = AddEmployee("usr-1", "Aisyah");
+        var tan = AddEmployee("usr-2", "Tan");
+        foreach (var person in new[] { aisyah, tan })
+        {
+            person.BankName = "Public Bank";
+            person.BankAccountNumber = "4123456789";
+            person.BankAccountHolderName = "Holder";
+        }
+        var settings = _db.PayrollSettings.SingleOrDefault();
+        if (settings is null)
+        {
+            settings = new PayrollSettings { OrganizationId = "org-1" };
+            _db.PayrollSettings.Add(settings);
+        }
+        settings.PayrollBankName = "Public Bank Berhad";
+        settings.EcpPayorAccountNo = "3161234567";
+        await _db.SaveChangesAsync();
+
+        var first = await NamedRunAsync(2026, 1, null, aisyah);
+        var workers = await NamedRunAsync(2026, 1, "Site Workers", tan);
+        await SubmitAsync(first.Id);
+        await SubmitAsync(workers.Id);
+
+        var payDay = new DateTime(2026, 1, 30);
+        var firstFile = await _statutory.RenderBankFileAsync(first.Id, payDay);
+        var workersFile = await _statutory.RenderBankFileAsync(workers.Id, payDay);
+
+        Assert.True(firstFile.Ok, firstFile.Error);
+        Assert.True(workersFile.Ok, workersFile.Error);
+        Assert.Equal("3161234567PR30012601.xlsx", firstFile.FileName);
+        Assert.Equal("3161234567PR30012602.xlsx", workersFile.FileName);
+    }
+
     // The month as a whole, for checking a split month: one summary across
     // its runs, watermarked while any of them is still a draft.
     [Fact]
