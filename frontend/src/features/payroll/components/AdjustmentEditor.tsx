@@ -267,7 +267,7 @@ export function AdjustmentEditor({
   }
 
   return (
-    <DrawerPortal label="Adjustments" onClose={onClose}>
+    <DrawerPortal label="Adjustments" onClose={onClose} wide>
       <div className="p-6">
         <header className="mb-6 flex items-start justify-between gap-4">
           <div>
