@@ -148,6 +148,13 @@ public static class PayslipCalculator
         public decimal YtdSocsoEis { get; init; }
         public decimal YtdAllowableDeductions { get; init; }
 
+        // Reliefs the caller has already limited and wants counted as they
+        // stand, added to this month's LP1 beside the TP1 items. Only the
+        // public payroll calculator sets it (a visitor's "other reliefs" lump
+        // sum); a real payroll run leaves it at 0 and claims through TP1 lines,
+        // which carry their own LHDN limits.
+        public decimal ExtraAllowableDeductions { get; init; }
+
         // Per-category totals for the year, so the annual exemption ceilings
         // (travel RM 6,000, childcare RM 3,000, award RM 2,000, the TP1 items)
         // pick up where the last run left off.
@@ -506,7 +513,7 @@ public static class PayslipCalculator
             YtdZakat = input.YtdZakat,
             ThisMonthSocsoEis = thisMonthSocsoEis,
             YtdSocsoEis = ytdSocsoEis,
-            ThisMonthAllowableDeductions = buckets.Tp1Relief,
+            ThisMonthAllowableDeductions = buckets.Tp1Relief + Math.Max(0m, input.ExtraAllowableDeductions),
             YtdAllowableDeductions = input.YtdAllowableDeductions,
             IsOku = input.IsOku,
             SpouseWorking = input.SpouseWorking,
