@@ -126,6 +126,9 @@ public class PayrollRunService : IPayrollRunService
         var result = new List<PayrollRunDto>(runs.Count);
         foreach (var run in runs)
         {
+            // Another group's run, with no one of theirs on it, isn't listed.
+            if (await HasNoneOfYourPeopleAsync(run)) continue;
+
             var dto = WithTotalsOf(run, await _payslips.GetForRunAsync(run.Id));   // filtered to scope
             dto.HasPeopleOutsideYourAccess = await OutsideScopeOfAsync(run) is not null;
             result.Add(dto);
@@ -165,6 +168,8 @@ public class PayrollRunService : IPayrollRunService
     {
         var run = await _runs.GetByIdAsync(id);
         if (run is null) return null;
+        // Hidden from the list, so not reachable by a link either.
+        if (await HasNoneOfYourPeopleAsync(run)) return null;
 
         var payslips = await _payslips.GetForRunAsync(run.Id);
         var lineItems = await _payslips.GetLineItemsForRunAsync(run.Id);
@@ -177,6 +182,9 @@ public class PayrollRunService : IPayrollRunService
         {
             detail.Run = WithTotalsOf(run, payslips);
             detail.Run.HasPeopleOutsideYourAccess = await OutsideScopeOfAsync(run) is not null;
+            // Their filtered roster can be empty for a run that has one.
+            if (!detail.HasRoster)
+                detail.HasRoster = (await _runMembers.GetProfileIdsForRunUnscopedAsync(run)).Count > 0;
         }
         return detail;
     }
@@ -952,6 +960,21 @@ public class PayrollRunService : IPayrollRunService
             .Concat(await _runMembers.GetProfileIdsForRunUnscopedAsync(run))
             .ToHashSet(StringComparer.Ordinal);
         return people.Count > 0 ? people : null;
+    }
+
+    // A policy-limited admin doesn't see a run with NOBODY of theirs on it —
+    // another group's run (say, a month split by policy) is none of their
+    // business, and listing it with 0 payslips only confuses. A run with
+    // anyone of theirs stays listed (view-only if it has others too), and a
+    // run with no roster and no payslips is the whole company, so it stays.
+    private async Task<bool> HasNoneOfYourPeopleAsync(PayrollRun run)
+    {
+        if (_scope is not { IsLimited: true }) return false;
+        if (await PeopleOfAsync(run) is not { } people) return false;
+
+        people.UnionWith(await _runClaims.GetProfileIdsForRunUnscopedAsync(run));
+        people.UnionWith(await _adjustments.GetProfileIdsForRunUnscopedAsync(run));
+        return !people.Any(_scope.Contains);
     }
 
     public async Task<string?> OutsideScopeAsync(string id)
@@ -2047,6 +2070,7 @@ public class PayrollRunService : IPayrollRunService
                     byPayslip.TryGetValue(p.Id, out var items) ? items : []))
                 .ToList(),
             MemberEmployeeProfileIds = memberIds,
+            HasRoster = memberIds.Count > 0,
         };
     }
 

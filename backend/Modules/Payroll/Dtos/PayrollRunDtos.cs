@@ -131,6 +131,12 @@ public class PayrollRunDetailDto
     // The roster chosen in the "Start a payroll run" picker. Empty for a run
     // that predates the picker, which means "everyone on the payroll".
     public List<string> MemberEmployeeProfileIds { get; set; } = [];
+
+    // Whether the run HAS a picked roster, even when none of it is visible:
+    // a policy-limited admin's list above is filtered to their own people, so
+    // a run of only other people's staff arrives empty — which must not read
+    // as "a pre-picker run, everyone".
+    public bool HasRoster { get; set; }
 }
 
 public class PayslipDto

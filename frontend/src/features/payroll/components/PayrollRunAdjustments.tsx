@@ -24,6 +24,7 @@ import { TableSkeleton } from "./TableSkeleton";
 export function PayrollRunAdjustments({
   runId,
   memberIds,
+  hasRoster,
   editable,
   categories,
   showRoster,
@@ -35,6 +36,10 @@ export function PayrollRunAdjustments({
   runId: string;
   // The run's chosen roster. Empty means a pre-picker run: everyone.
   memberIds: string[];
+  // The run has a roster even when `memberIds` is empty: a limited admin
+  // gets only their own people, so a run of other staff arrives with none —
+  // and that must show nobody, not everyone they can see.
+  hasRoster: boolean;
   editable: boolean;
   periodLabel: string;
   categories: AdjustmentCategory[];
@@ -71,7 +76,7 @@ export function PayrollRunAdjustments({
         // Only the people this run will pay — the ones ticked in the picker,
         // not the whole roster.
         setEmployees(
-          members.size === 0
+          members.size === 0 && !hasRoster
             ? nextEmployees
             : nextEmployees.filter((employee) => members.has(employee.employeeProfileId)),
         );
@@ -79,7 +84,7 @@ export function PayrollRunAdjustments({
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
-  }, [runId, memberKey]);
+  }, [runId, memberKey, hasRoster]);
 
   useEffect(() => {
     void load();
@@ -142,7 +147,11 @@ export function PayrollRunAdjustments({
           {loading ? (
             <TableSkeleton columns={3} label="Loading adjustments" />
           ) : employees.length === 0 ? (
-            <p className={HINT}>No employees on the payroll yet.</p>
+            <p className={HINT}>
+              {hasRoster
+                ? "Everyone on this run is outside your admin access."
+                : "No employees on the payroll yet."}
+            </p>
           ) : (
             <>
               {withSomething.length === 0 ? (

@@ -3126,6 +3126,36 @@ public class PayrollRunServiceTests : IDisposable
         Assert.True(Assert.Single(await _service.GetAllAsync()).HasPeopleOutsideYourAccess);
     }
 
+    // A run of ONLY the other group's people is none of their business:
+    // it isn't listed, and its link doesn't open.
+    [Fact]
+    public async Task ALimitedAdmin_DoesNotSeeARunWithNoneOfTheirPeople()
+    {
+        var (mine, _) = TwoPolicyCompany();
+        var run = await _service.CreateAsync(new() { PeriodYear = 2026, PeriodMonth = 1, ExcludedEmployeeProfileIds = [mine.Id] });
+        Assert.True(run.Ok, run.Error);
+        LimitTo(mine);
+
+        Assert.Empty(await _service.GetAllAsync());
+        Assert.Null(await _service.GetAsync(run.Run!.Id));
+    }
+
+    // One of theirs is enough to keep it listed (view-only, with the rest).
+    [Fact]
+    public async Task ALimitedAdmin_StillSeesARunWithSomeOfTheirPeople()
+    {
+        var (mine, _) = TwoPolicyCompany();
+        var run = await _service.CreateAsync(Period());
+        Assert.True(run.Ok, run.Error);
+        LimitTo(mine);
+
+        var listed = Assert.Single(await _service.GetAllAsync());
+        Assert.True(listed.HasPeopleOutsideYourAccess);
+        var detail = (await _service.GetAsync(run.Run!.Id))!;
+        Assert.Equal([mine.Id], detail.MemberEmployeeProfileIds);
+        Assert.True(detail.HasRoster);
+    }
+
     // Their filtered view must not mistake the other group's run for an
     // empty one ("everyone"), or pin it to their people.
     [Fact]

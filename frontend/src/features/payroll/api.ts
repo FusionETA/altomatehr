@@ -310,6 +310,10 @@ export type PayrollRunDetail = {
   // The roster chosen when the draft was created. Empty = a pre-picker run,
   // which covers everyone on the payroll.
   memberEmployeeProfileIds?: string[];
+  // True when the run has a roster even if the list above is empty — a
+  // limited admin only gets their own people, so a run of someone else's
+  // staff comes back with none.
+  hasRoster?: boolean;
 };
 
 export type SkippedEmployee = {
