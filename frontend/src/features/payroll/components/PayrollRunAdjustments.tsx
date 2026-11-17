@@ -25,6 +25,7 @@ export function PayrollRunAdjustments({
   runId,
   memberIds,
   hasRoster,
+  outsideAccess,
   editable,
   categories,
   showRoster,
@@ -40,6 +41,8 @@ export function PayrollRunAdjustments({
   // gets only their own people, so a run of other staff arrives with none —
   // and that must show nobody, not everyone they can see.
   hasRoster: boolean;
+  // The run holds people outside this admin's access.
+  outsideAccess: boolean;
   editable: boolean;
   periodLabel: string;
   categories: AdjustmentCategory[];
@@ -148,9 +151,11 @@ export function PayrollRunAdjustments({
             <TableSkeleton columns={3} label="Loading adjustments" />
           ) : employees.length === 0 ? (
             <p className={HINT}>
-              {hasRoster
-                ? "Everyone on this run is outside your admin access."
-                : "No employees on the payroll yet."}
+              {!hasRoster
+                ? "No employees on the payroll yet."
+                : outsideAccess
+                  ? "No one on this run is within your admin access."
+                  : "No one on this run is on the payroll any more."}
             </p>
           ) : (
             <>

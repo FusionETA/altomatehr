@@ -250,6 +250,7 @@ export function PayrollRunDetailView({
         runId={run.id}
         memberIds={detail.memberEmployeeProfileIds ?? []}
         hasRoster={detail.hasRoster ?? false}
+        outsideAccess={run.hasPeopleOutsideYourAccess}
         // A run holding people outside the admin's access is view-only for
         // them (the server refuses changes), like Run and Rename above.
         editable={run.status === "DRAFT" && !run.hasPeopleOutsideYourAccess}

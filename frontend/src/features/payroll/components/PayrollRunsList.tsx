@@ -259,7 +259,11 @@ function NewRunPicker({
   // A month that already has a run: this one joins it. At most one run a
   // month goes unnamed, so it needs a name while an unnamed one exists.
   const monthRuns = runs.filter((r) => r.periodYear === year && r.periodMonth === month);
-  const needsName = monthRuns.some((r) => !r.name);
+  // The server's answer counts runs a policy-limited admin can't see (their
+  // list leaves out runs with none of their people); the list is the
+  // fallback until it arrives.
+  const [unnamedInMonth, setUnnamedInMonth] = useState<boolean | null>(null);
+  const needsName = unnamedInMonth ?? monthRuns.some((r) => !r.name);
 
   const [policies, setPolicies] = useState<PayrollPickerPolicy[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -277,10 +281,12 @@ function NewRunPicker({
   // to ticked.
   useEffect(() => {
     let live = true;
+    setUnnamedInMonth(null);
     getPayrollRunPicker(year, month)
       .then((data) => {
         if (!live) return;
         setPolicies(data.policies);
+        setUnnamedInMonth(data.monthHasUnnamedRun ?? null);
         setSelected(new Set(data.policies.filter((p) => p.members.length > 0).map((p) => p.id)));
       })
       .catch((err) => {
@@ -426,7 +432,9 @@ function NewRunPicker({
               ? `${MONTHS[month - 1]} ${year} already has ${monthRuns.length === 1 ? "a run" : `${monthRuns.length} runs`} (${monthRuns
                   .map((r) => r.name ?? "unnamed")
                   .join(", ")}). Name this one so the runs and their files can be told apart. Anyone already in another run this month is greyed out below.`
-              : "Only needed if you'll pay this month in more than one run — for example one per staff group."}
+              : needsName
+                ? `${MONTHS[month - 1]} ${year} already has a run for other staff. Name this one so the runs and their files can be told apart.`
+                : "Only needed if you'll pay this month in more than one run — for example one per staff group."}
           </p>
         </div>
 

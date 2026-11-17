@@ -355,7 +355,12 @@ export type PayrollPickerPolicy = {
   members: PayrollPickerMember[];
 };
 
-export type PayrollRunPicker = { policies: PayrollPickerPolicy[] };
+export type PayrollRunPicker = {
+  policies: PayrollPickerPolicy[];
+  // The month already has an unnamed run (counting ones this admin can't
+  // see), so the new run needs a name.
+  monthHasUnnamedRun?: boolean;
+};
 
 // For the month being started: someone archived is still listed when their
 // last day falls in or after it — they're owed that month up to that day.

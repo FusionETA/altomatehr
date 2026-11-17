@@ -3140,6 +3140,21 @@ public class PayrollRunServiceTests : IDisposable
         Assert.Null(await _service.GetAsync(run.Run!.Id));
     }
 
+    // The hidden run still counts for the one-unnamed-run-a-month rule, so
+    // the picker must say a name is needed — their list can't tell them.
+    [Fact]
+    public async Task ALimitedAdmin_IsToldToNameARun_WhenTheMonthHasAHiddenUnnamedOne()
+    {
+        var (mine, _) = TwoPolicyCompany();
+        var theirs = await _service.CreateAsync(new() { PeriodYear = 2026, PeriodMonth = 1, ExcludedEmployeeProfileIds = [mine.Id] });
+        Assert.True(theirs.Ok, theirs.Error);
+        LimitTo(mine);
+
+        Assert.Empty(await _service.GetAllAsync());
+        Assert.True((await _service.GetPickerAsync(2026, 1)).MonthHasUnnamedRun);
+        Assert.False((await _service.GetPickerAsync(2026, 2)).MonthHasUnnamedRun);
+    }
+
     // One of theirs is enough to keep it listed (view-only, with the rest).
     [Fact]
     public async Task ALimitedAdmin_StillSeesARunWithSomeOfTheirPeople()
