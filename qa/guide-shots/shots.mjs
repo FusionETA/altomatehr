@@ -753,6 +753,18 @@ const admin = {
     await shoot(page, "admin", "payroll-adjustments");
     await page.getByRole("button", { name: "Cancel" }).click();
   },
+  // Needs: node setup.mjs payroll-draft-feb. February 2027 draft's One-off adjustments list with its search box.
+  "payroll-adjustments-list": async (page) => {
+    await inDemoCo(page);
+    await go(page, "payroll");
+    await clickText(page, "Payroll runs");
+    await clickText(page, "February 2027");
+    const box = page.getByPlaceholder("Search by name or employee number").first();
+    await box.waitFor({ timeout: 20000 });
+    await scrollTo(page, "One-off adjustments", 150);
+    await settle(page, 600);
+    await shoot(page, "admin", "payroll-adjustments-list");
+  },
   // The same drawer scrolled to the Overtime box: one hours box per overtime
   // type with its rate (needs `node setup.mjs overtime-types ab-outlet-ot-on`;
   // switch it back with `ab-outlet-ot-off`). Nothing is saved.
