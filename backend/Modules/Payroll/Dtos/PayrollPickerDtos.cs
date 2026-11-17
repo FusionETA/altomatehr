@@ -8,6 +8,11 @@ namespace AltomateHR.Api.Modules.Payroll.Dtos;
 public class PayrollRunPickerDto
 {
     public List<PayrollPickerPolicyDto> Policies { get; set; } = [];
+
+    // Whether the chosen month already has an unnamed run — so this one needs
+    // a name. Read across ALL the month's runs: a policy-limited admin's list
+    // leaves out runs with none of their people, but the rule still counts them.
+    public bool MonthHasUnnamedRun { get; set; }
 }
 
 public class PayrollPickerPolicyDto
