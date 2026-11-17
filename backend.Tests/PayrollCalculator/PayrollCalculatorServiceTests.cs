@@ -170,6 +170,56 @@ public class PayrollCalculatorServiceTests
         Assert.Equal(110m, Item(single, "pcb").Employee);
     }
 
+    // The working must land on the PCB actually charged, which LHDN rounds UP
+    // to the next 5 sen: RM626.64 ÷ 12 = RM52.22, charged RM52.25.
+    [Fact]
+    public void Pcb_ShowsTheFiveSenRoundUp_ToTheChargedFigure()
+    {
+        var r = Ok(Body(4037));
+        var pcb = Item(r, "pcb");
+        Assert.Equal(52.25m, pcb.Employee);
+        Assert.Contains("RM626.64 ÷ 12 months = RM52.22 a month.", pcb.Working);
+        Assert.Contains("Rounded up to the next 5 sen: RM52.25.", pcb.Working);
+    }
+
+    // P lands at RM35,000.07 at RM4,000/month: the engine still gives the
+    // rebate, so the working must not show the "RM600 + 6% …" sum.
+    [Fact]
+    public void Pcb_AtTheRebateBoundary_AddsUp()
+    {
+        var pcb = Item(Ok(Body(4000)), "pcb");
+        Assert.Equal(16.70m, pcb.Employee);
+        Assert.Contains("Tax on that is RM200.00 for the year, after LHDN's tax rebate.", pcb.Working);
+        Assert.DoesNotContain(pcb.Working, w => w.Contains("Tax on the first"));
+        Assert.Contains("Rounded up to the next 5 sen: RM16.70.", pcb.Working);
+    }
+
+    // Zakat is offset against the ROUNDED PCB (RM16.70), so RM16.69 of zakat
+    // all counts and leaves RM0.01 — no "PCB can't go below RM0" note.
+    [Fact]
+    public void Zakat_ComparesAgainstTheChargedPcb()
+    {
+        var r = Ok(Body(4000, zakat: 16.69m));
+        Assert.Equal(0.01m, Item(r, "pcb").Employee);
+        Assert.DoesNotContain(Item(r, "zakat").Working, w => w.Contains("can't go below"));
+
+        var over = Ok(Body(4000, zakat: 20m));
+        Assert.Contains("PCB can't go below RM0, so only RM16.70 of it reduces the tax.", Item(over, "zakat").Working);
+    }
+
+    [Fact]
+    public void NonResident_SmallBonus_SaysItIsUnderTheMinimum()
+    {
+        var r = Ok(Body(5000, bonus: 30, resident: false));
+        Assert.Equal(1500m, Item(r, "pcb").Employee);
+        Assert.Equal(
+            [
+                "Non-residents pay a flat 30% with no reliefs: RM5,000.00 × 30% = RM1,500.00.",
+                "Bonus RM30.00 × 30% is under RM10, so nothing is deducted on it.",
+            ],
+            Item(r, "pcb").Working);
+    }
+
     [Fact]
     public void AboveTheSocsoCeiling_SaysSo()
     {

@@ -95,8 +95,17 @@ public static class PayrollCalculatorWorking
 
         if (b.Formula == PcbFormula.NonResident)
         {
-            var taxed = request.MonthlySalary + request.Bonus;
-            lines.Add($"Non-residents pay a flat {Pct(b.Rate * 100m)}% with no reliefs: {Rm(taxed)} × {Pct(b.Rate * 100m)}% = {Rm(r.PcbNormal + r.PcbAdditional)}.");
+            // The engine prices salary and bonus separately, each rounded up
+            // to 5 sen and each under the RM10 minimum on its own, so the
+            // sentence does too.
+            var rate = Pct(b.Rate * 100m);
+            lines.Add($"Non-residents pay a flat {rate}% with no reliefs: {Rm(request.MonthlySalary)} × {rate}% = {Rm(r.PcbNormal)}{RoundedNote(request.MonthlySalary * b.Rate, r.PcbNormal)}.");
+            if (request.Bonus > 0m)
+            {
+                lines.Add(r.PcbAdditional > 0m
+                    ? $"Bonus {Rm(request.Bonus)} × {rate}% = {Rm(r.PcbAdditional)}{RoundedNote(request.Bonus * b.Rate, r.PcbAdditional)}."
+                    : $"Bonus {Rm(request.Bonus)} × {rate}% is under RM10, so nothing is deducted on it.");
+            }
         }
         else
         {
@@ -134,12 +143,14 @@ public static class PayrollCalculatorWorking
             }
             else
             {
-                lines.Add(b.P > 35000m
+                // Floored, like the engine's own rebate test: P of RM35,000.07
+                // still gets the rebate (and B already has it taken off).
+                lines.Add(Math.Floor(b.P) > 35000m
                     ? $"Tax on the first {RmWhole(b.M)} is {RmWhole(b.B)}, then {Pct(Rate(b.R))}% on the next {RmWhole(b.P - b.M)} = {Rm(b.YearlyTax)} for the year."
                     : $"Tax on that is {Rm(b.YearlyTax)} for the year, after LHDN's tax rebate.");
 
                 lines.Add(r.PcbNormal > 0m
-                    ? $"{Rm(b.YearlyTax)} ÷ 12 months = {Rm(r.PcbNormal)} a month{(Money.Round2(b.CurrentMonthPcb) != r.PcbNormal ? ", rounded up to the next 5 sen" : "")}."
+                    ? $"{Rm(b.YearlyTax)} ÷ 12 months = {Rm(r.PcbNormal)} a month."
                     : "That is under RM10 a month, so nothing is deducted.");
             }
 
@@ -148,6 +159,16 @@ public static class PayrollCalculatorWorking
                 lines.Add(r.PcbAdditional > 0m
                     ? $"The {Rm(request.Bonus)} bonus raises the year's tax by {Rm(r.PcbAdditional)}, all deducted this month."
                     : $"The {Rm(request.Bonus)} bonus adds no tax this month.");
+            }
+
+            // LHDN rounds the month's deduction UP to the next 5 sen, so the
+            // charged PCB (b.PcbTotal) can be a few sen above the parts above.
+            var beforeRounding = r.PcbNormal + r.PcbAdditional;
+            if (b.PcbTotal != beforeRounding && b.PcbTotal > 0m)
+            {
+                lines.Add(request.Bonus > 0m && r.PcbAdditional > 0m && r.PcbNormal > 0m
+                    ? $"{Rm(r.PcbNormal)} + {Rm(r.PcbAdditional)}, rounded up to the next 5 sen = {Rm(b.PcbTotal)}."
+                    : $"Rounded up to the next 5 sen: {Rm(b.PcbTotal)}.");
             }
         }
 
@@ -159,7 +180,9 @@ public static class PayrollCalculatorWorking
 
     public static IReadOnlyList<string> Zakat(PayrollCalculatorRequest request, PayslipCalculator.Result r)
     {
-        var before = r.PcbNormal + r.PcbAdditional;
+        // What zakat is offset against: the PCB as charged, after LHDN's
+        // round-up to 5 sen — not the unrounded parts.
+        var before = r.PcbCalculation.PcbTotal;
         var lines = new List<string>
         {
             $"Paid through payroll: {Rm(request.ZakatMonthly)} this month.",
@@ -200,6 +223,9 @@ public static class PayrollCalculatorWorking
     // Tax bands carry their rate as a fraction (0.06) in some places and a
     // percentage (6) in others; show it as a percentage either way.
     private static decimal Rate(decimal r) => r < 1m ? r * 100m : r;
+
+    private static string RoundedNote(decimal exact, decimal charged) =>
+        charged > 0m && Money.Round2(exact) != charged ? ", rounded up to the next 5 sen" : "";
 
     private static string Pct(decimal value) => value.ToString("0.##", CultureInfo.InvariantCulture);
 

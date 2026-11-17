@@ -136,7 +136,9 @@ public static class PcbTaxBands
             if (chargeableIncome <= band.UpperBound)
             {
                 var b = cumulativeTax;
-                if (chargeableIncome <= RebateThreshold)
+                // Floored like AnnualTax's rebate test, so B agrees with the
+                // tax actually charged (P = 35,000.07 still gets the rebate).
+                if (Math.Floor(chargeableIncome) <= RebateThreshold)
                 {
                     b -= RebateIndividual + (spouseClaimable ? RebateSpouse : 0m);
                 }
