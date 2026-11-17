@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 6e1186b
+// whats-new-covered-up-to: 3622069
 
 // A line is for everyone, or — wrapped in admins(…) — for admins and owners
 // only. Employees and supervisors never see an admins line, so it doesn't
@@ -33,9 +33,11 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     improved: [
       admins("On a payroll run, the One-off adjustments list now has a search box for name or employee number. It shows 25 people a page."),
       admins("The Adjustments panel on a payroll run is wider, so category, name and amount fit side by side."),
+      admins("If your admin access covers only some policies and a run has people outside it, One-off adjustments is view-only. There's no Import, and rows say View."),
     ],
     fixed: [
       admins("Bank upload files no longer add the run's name, which Public Bank rejected. A second run in a month gets file number 02. Amounts are unchanged."),
+      admins("If your admin access covers only some policies, payroll runs with none of your staff are hidden from the runs list, overview and direct links."),
     ],
   },
   {
