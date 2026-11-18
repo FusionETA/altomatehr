@@ -55,20 +55,24 @@ public class SupportLoginBlockService : ISupportLoginBlockService
         var who = forAccount ? Who(row) : row.Ip ?? key;
         var organizationId = forAccount && block.UserId is not null ? await OrganizationOfAsync(block.UserId) : null;
 
-        // A real account's company sees it in its own log, as "System
-        // (Support)", with the person recorded internally. An IP or an email
-        // with no account belongs to no company, so it goes in the support
-        // admin's own company's log instead.
-        await _audit.WriteAsync(new AuditEvent(
+        var entry = new AuditEvent(
             AuditActions.SupportLoginUnblock,
             forAccount ? $"Fusioneta support unlocked sign-in for {who}" : $"Fusioneta support unblocked sign-in from IP {who}",
             TargetType: forAccount ? "User" : "IpAddress",
             TargetId: forAccount ? block.UserId : who,
             Metadata: new { Kind = kind.ToString(), Until = block.UntilUtc },
             OrganizationId: organizationId,
-            Support: organizationId is not null && _currentUser.UserId is { } supportUserId
+            Support: _currentUser.UserId is { } supportUserId
                 ? new SupportActor(supportUserId, _currentUser.Email ?? string.Empty)
-                : null));
+                : null);
+
+        // A real account's company sees it in its own log, as "System
+        // (Support)", with the person recorded internally. An IP, or an email
+        // with no account, belongs to no company: internal log only. Never the
+        // session's company — a superadmin inside a customer (support mode or
+        // a switch) would otherwise write another party's IP into its log.
+        if (organizationId is not null) await _audit.WriteAsync(entry);
+        else await _audit.WriteInternalAsync(entry);
 
         if (_teamChat is not null) await _teamChat.LoginUnblockedAsync(forAccount, who, organizationId);
         return true;

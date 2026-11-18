@@ -100,8 +100,11 @@ public class SupportLoginBlockServiceTests : IDisposable
         Assert.Equal(["login-unblocked account Ali (ali@alpha.example) org-a"], _chat.Said);
     }
 
+    // An IP belongs to no company. Never the session's company: a superadmin
+    // inside a customer (support mode) would otherwise write someone else's IP
+    // into that customer's log.
     [Fact]
-    public async Task UnblockingAnIp_IsRecordedInTheSupportAdminsOwnLog()
+    public async Task UnblockingAnIp_IsRecordedInTheInternalLogOnly()
     {
         BlockIp("203.0.113.9");
         var row = Assert.Single(await _service.ListAsync());
@@ -109,9 +112,9 @@ public class SupportLoginBlockServiceTests : IDisposable
 
         Assert.True(await _service.UnblockAsync(LoginBlockKind.IP, row.Key));
 
-        var entry = Assert.Single(_audit.Written);
-        Assert.Null(entry.OrganizationId);   // falls back to the caller's own company
-        Assert.Null(entry.Support);
+        Assert.Empty(_audit.Written);
+        var entry = Assert.Single(_audit.WrittenInternally);
+        Assert.Equal("u-support", entry.Support?.UserId);
         Assert.Equal(("IpAddress", "203.0.113.9"), (entry.TargetType, entry.TargetId));
         Assert.Equal(["login-unblocked ip 203.0.113.9 "], _chat.Said);
     }
@@ -131,5 +134,21 @@ public class SupportLoginBlockServiceTests : IDisposable
 
         Assert.Single(_audit.Written);
         Assert.Single(_chat.Said);
+    }
+
+    // An address no account has belongs to no company either.
+    [Fact]
+    public async Task UnlockingAnUnknownEmail_IsRecordedInTheInternalLogOnly()
+    {
+        var now = DateTime.UtcNow;
+        for (var i = 0; i < LoginGuard.AccountThreshold; i++)
+            _guard.Fail(_guard.Begin(LoginGuard.EmailKey("bob@other.example"), "bob@other.example", null, now), now);
+        var row = Assert.Single(await _service.ListAsync());
+        Assert.Null(row.Name);
+
+        Assert.True(await _service.UnblockAsync(LoginBlockKind.ACCOUNT, row.Key));
+
+        Assert.Empty(_audit.Written);
+        Assert.Contains("bob@other.example", Assert.Single(_audit.WrittenInternally).Summary);
     }
 }

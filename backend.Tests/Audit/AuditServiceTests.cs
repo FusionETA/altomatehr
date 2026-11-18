@@ -324,6 +324,26 @@ public class AuditServiceTests
         Assert.Empty(support.Rows);
     }
 
+    // A support action belonging to no company (an IP unblocked) stays out of
+    // every customer's log — even with the session inside a customer, where
+    // WriteAsync would fall back to that customer.
+    [Fact]
+    public async Task AnInternalAction_GoesToTheSupportLogOnly_EvenFromInsideACustomer()
+    {
+        var repo = new InMemoryAuditRepository();
+        var support = new InMemorySupportAuditRepository();
+        var service = new AuditService(repo,
+            new StubCurrentUser { UserId = "usr-staff", Email = "staff@fusioneta.com", OrganizationId = "org-customer", IsSupport = true },
+            NullLogger<AuditService>.Instance, new UsersOnlyDirectory([]), support);
+
+        await service.WriteInternalAsync(new AuditEvent("support.login.unblock", "Unblocked IP 203.0.113.9",
+            TargetType: "IpAddress", TargetId: "203.0.113.9"));
+
+        Assert.Empty((await service.ListAsync(new AuditQueryDto())).Entries);
+        var row = Assert.Single(support.Rows);
+        Assert.Equal(("", "staff@fusioneta.com", "203.0.113.9"), (row.OrganizationId, row.SupportEmail, row.TargetId));
+    }
+
 }
 
 // ---- Doubles ----

@@ -15,6 +15,15 @@ internal sealed class FakeAuditService : IAuditService
         return Task.CompletedTask;
     }
 
+    // Support actions that belong to no company: the internal log only.
+    public List<AuditEvent> WrittenInternally { get; } = [];
+
+    public Task WriteInternalAsync(AuditEvent entry)
+    {
+        WrittenInternally.Add(entry);
+        return Task.CompletedTask;
+    }
+
     // Only the count, by action — enough for callers asking "has this happened before".
     public Task<AuditPageDto> ListAsync(AuditQueryDto query) =>
         Task.FromResult(new AuditPageDto

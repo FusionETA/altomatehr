@@ -218,6 +218,8 @@ public class UpperLayerRoleGuardTests
 
     private sealed class StubAudit : IAuditService
     {
+        public Task WriteInternalAsync(AuditEvent entry) => Task.CompletedTask;
+
         public Task WriteAsync(AuditEvent entry) => Task.CompletedTask;
         public Task<AuditPageDto> ListAsync(AuditQueryDto query) => throw new NotSupportedException();
         public Task<AuditVerificationDto> VerifyAsync() => throw new NotSupportedException();
