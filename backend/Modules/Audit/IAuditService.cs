@@ -33,6 +33,13 @@ public interface IAuditService
     // action that triggered it. Callers should not wrap this in try/catch.
     Task WriteAsync(AuditEvent entry);
 
+    // A Fusioneta support action that belongs to no customer company — an IP
+    // address, or an email with no account. Recorded ONLY in the internal
+    // support log, with the signed-in support user as the actor: falling back
+    // to the session's company, as WriteAsync does, would put it in whichever
+    // customer the superadmin happens to be inside. NEVER THROWS.
+    Task WriteInternalAsync(AuditEvent entry);
+
     Task<AuditPageDto> ListAsync(AuditQueryDto query);
 
     // Recompute the org's whole chain. Admin-only — it is the answer to "has

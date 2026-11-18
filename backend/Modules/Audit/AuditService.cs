@@ -116,6 +116,38 @@ public class AuditService : IAuditService
         }
     }
 
+    public async Task WriteInternalAsync(AuditEvent entry)
+    {
+        try
+        {
+            var support = entry.Support
+                ?? (_currentUser.UserId is { } userId ? new SupportActor(userId, _currentUser.Email ?? string.Empty) : null);
+            if (support is null || _support is null)
+            {
+                _logger.LogWarning("Internal audit event {Action} dropped: no support user or no support log.", entry.Action);
+                return;
+            }
+
+            await _support.AddAsync(new SupportAuditLog
+            {
+                // No company: it isn't one customer's business.
+                OrganizationId = string.Empty,
+                SupportUserId = support.UserId,
+                SupportEmail = support.Email,
+                Action = entry.Action,
+                Summary = Truncate(entry.Summary, 500),
+                TargetType = entry.TargetType,
+                TargetId = entry.TargetId,
+                IpAddress = _currentUser.IpAddress,
+                CreatedAt = DateTime.UtcNow,
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to write internal audit event {Action}.", entry.Action);
+        }
+    }
+
     public async Task<AuditPageDto> ListAsync(AuditQueryDto query)
     {
         var organizationId = _currentUser.OrganizationId;

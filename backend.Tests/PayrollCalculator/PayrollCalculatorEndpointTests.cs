@@ -19,7 +19,7 @@ namespace AltomateHR.Api.Tests.PayrollCalculator;
 // the error shape.
 public class PayrollCalculatorEndpointTests
 {
-    private const string Path = "/public/v1/payroll-calculator";
+    private const string Path = "/payroll-calculator";
 
     private static readonly object Tc1 = new
     {

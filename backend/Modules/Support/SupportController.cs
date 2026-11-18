@@ -15,8 +15,13 @@ namespace AltomateHR.Api.Modules.Support;
 public class SupportController : ControllerBase
 {
     private readonly ISupportService _support;
+    private readonly ISupportLoginBlockService _loginBlocks;
 
-    public SupportController(ISupportService support) => _support = support;
+    public SupportController(ISupportService support, ISupportLoginBlockService loginBlocks)
+    {
+        _support = support;
+        _loginBlocks = loginBlocks;
+    }
 
     // GET /support/organizations?search= — every company, by name or owner email.
     [HumanOnly]
@@ -55,6 +60,19 @@ public class SupportController : ControllerBase
             return BadRequest(new { message = ex.Message });
         }
     }
+
+    // GET /support/login-blocks — accounts locked and IPs blocked from
+    // signing in right now, after too many wrong passwords.
+    [HumanOnly]
+    [HttpGet("login-blocks")]
+    public async Task<IActionResult> LoginBlocks() => Ok(await _loginBlocks.ListAsync());
+
+    // POST /support/login-blocks/unblock — lift one early. 404 when it had
+    // already run out (or been lifted).
+    [HumanOnly]
+    [HttpPost("login-blocks/unblock")]
+    public async Task<IActionResult> Unblock(UnblockLoginDto dto) =>
+        await _loginBlocks.UnblockAsync(dto.Kind!.Value, dto.Key) ? NoContent() : NotFound();
 
     // POST /support/organizations/{id}/reactivate — open it again.
     [HumanOnly]

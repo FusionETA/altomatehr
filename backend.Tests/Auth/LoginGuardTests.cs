@@ -175,6 +175,86 @@ public class LoginGuardTests
         Assert.Equal("Too many wrong passwords from your network. Try again in 1 minute.", ip.Message);
     }
 
+    // ---- Support lifting a lock or block by hand ----
+
+    [Fact]
+    public void ActiveBlocks_ListsALockedAccount_AndABlockedIp_WithWhatWasTried()
+    {
+        var guard = new LoginGuard();
+        for (var i = 0; i < 5; i++) Wrong(guard, "Forgot@X.test", null, T.AddMinutes(i));
+        TenFrom(guard, "1.1.1.1", T.AddMinutes(1));
+
+        var blocks = guard.ActiveBlocks(T.AddMinutes(5));
+
+        Assert.Equal(2, blocks.Count);
+        var ip = Assert.Single(blocks, b => !b.ForAccount);
+        Assert.Equal("1.1.1.1", ip.Key);
+        Assert.Equal(T.AddMinutes(16), ip.UntilUtc);
+        Assert.Equal(10, ip.EmailsTried.Count);
+        var account = Assert.Single(blocks, b => b.ForAccount);
+        Assert.Equal(LoginGuard.EmailKey("forgot@x.test"), account.Key);
+        Assert.Equal("forgot@x.test", account.Email);
+        Assert.Null(account.UserId);
+
+        // Gone from the list once it runs out.
+        Assert.Empty(guard.ActiveBlocks(T.AddMinutes(30)));
+    }
+
+    [Fact]
+    public void ARealAccount_IsListedByItsUserId_AndTheEmailLastTyped()
+    {
+        var guard = new LoginGuard();
+        for (var i = 0; i < 5; i++)
+            guard.Fail(guard.Begin(LoginGuard.UserKey("u-1"), "Ali@X.test", null, T), T);
+
+        var block = Assert.Single(guard.ActiveBlocks(T));
+        Assert.Equal(("u-1", "Ali@X.test"), (block.UserId, block.Email));
+    }
+
+    [Fact]
+    public void UnlockingAnAccount_LetsItTryAgain_WithAFreshCount()
+    {
+        var guard = new LoginGuard();
+        for (var i = 0; i < 5; i++) Wrong(guard, "a@x.test", null, T);
+        Assert.NotNull(Start(guard, "a@x.test", null, T.AddMinutes(1)).Block);
+
+        Assert.True(guard.Unblock(true, LoginGuard.EmailKey("a@x.test"), T.AddMinutes(1)));
+
+        // Four more wrong ones don't lock it straight back; the fifth does.
+        for (var i = 0; i < 4; i++) Assert.Null(Wrong(guard, "a@x.test", null, T.AddMinutes(2)).AccountLockedFor);
+        Assert.NotNull(Wrong(guard, "a@x.test", null, T.AddMinutes(2)).AccountLockedFor);
+    }
+
+    [Fact]
+    public void UnblockingAnIp_LetsItIn_ButASecondBlockThatDayIsStillTheHour()
+    {
+        var guard = new LoginGuard();
+        TenFrom(guard, "1.1.1.1", T);
+        Assert.NotNull(Start(guard, "a@x.test", "1.1.1.1", T.AddMinutes(1)).Block);
+
+        Assert.True(guard.Unblock(false, "1.1.1.1", T.AddMinutes(1)));
+
+        var allowed = Start(guard, "a@x.test", "1.1.1.1", T.AddMinutes(2));
+        Assert.Null(allowed.Block);
+        guard.Abandon(allowed);
+
+        Assert.Equal(TimeSpan.FromHours(1), TenFrom(guard, "1.1.1.1", T.AddMinutes(3)).IpBlockedFor);
+    }
+
+    [Fact]
+    public void Unblock_IsFalse_WhenNothingIsInForce()
+    {
+        var guard = new LoginGuard();
+        Assert.False(guard.Unblock(false, "9.9.9.9", T));
+        Assert.False(guard.Unblock(true, LoginGuard.EmailKey("nobody@x.test"), T));
+
+        for (var i = 0; i < 5; i++) Wrong(guard, "a@x.test", null, T);
+        Assert.False(guard.Unblock(true, LoginGuard.EmailKey("a@x.test"), T.AddMinutes(16)));   // ran out
+        // An IP's key is not an account's: the kinds don't cross.
+        TenFrom(guard, "1.1.1.1", T);
+        Assert.False(guard.Unblock(true, "1.1.1.1", T));
+    }
+
     private static LoginFailureOutcome TenFrom(LoginGuard guard, string ip, DateTime at)
     {
         var last = LoginFailureOutcome.Nothing;

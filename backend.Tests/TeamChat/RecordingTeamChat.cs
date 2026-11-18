@@ -44,6 +44,9 @@ public sealed class RecordingTeamChat : ITeamChatAlerts
     public Task IpBlockedAsync(string ip, TimeSpan duration, bool againToday, IReadOnlyList<string> emailsTried) =>
         Say($"ip-blocked {ip}");
 
+    public Task LoginUnblockedAsync(bool forAccount, string who, string? organizationId) =>
+        Say($"login-unblocked {(forAccount ? "account" : "ip")} {who} {organizationId}");
+
     public Task PortalPasswordViewedAsync(string organizationId, string portal) =>
         Say($"portal-password {portal}");
 

@@ -34,6 +34,8 @@ public static class AuditActions
     public const string SupportCompanyCreate = "support.company.create";
     public const string SupportCompanyDeactivate = "support.company.deactivate";
     public const string SupportCompanyReactivate = "support.company.reactivate";
+    // Lifting a sign-in lock (an account) or block (an IP) before it ran out.
+    public const string SupportLoginUnblock = "support.login.unblock";
     public const string PayrollLoanUpdate = "payroll.loan.update";
     public const string PayrollLoanDelete = "payroll.loan.delete";
     // Changes to a loan already repaying: the balance re-spread, months
@@ -223,6 +225,7 @@ public static class AuditActions
         [XeroAppSave] = "Xero app saved",
         [XeroAppDelete] = "Xero app deleted",
         [XeroAppChoiceSet] = "Xero app changed",
+        [SupportLoginUnblock] = "Sign-in unblocked by support",
         [AuthLogin] = "Signed in",
         [AuthLoginFailed] = "Failed sign-in",
         [AuthPasswordChange] = "Password changed",

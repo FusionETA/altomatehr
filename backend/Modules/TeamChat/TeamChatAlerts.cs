@@ -105,6 +105,11 @@ public class TeamChatAlerts : ITeamChatAlerts
         SayAsync(TeamChatChannel.Alert, "ip-blocked", () =>
             Task.FromResult(IpBlockedText(ip, duration, againToday, emailsTried)));
 
+    public Task LoginUnblockedAsync(bool forAccount, string who, string? organizationId) =>
+        SayAsync(TeamChatChannel.Alert, "login-unblocked", async () =>
+            LoginUnblockedText(
+                forAccount, who, organizationId is null ? null : await CompanyNameAsync(organizationId), _currentUser.Email));
+
     public Task PortalPasswordViewedAsync(string organizationId, string portal) =>
         SayAsync(TeamChatChannel.Alert, "portal-password", async () =>
             PortalPasswordViewedText(await CompanyNameAsync(organizationId), portal, _currentUser.Email, _currentUser.IpAddress));
@@ -230,6 +235,17 @@ public class TeamChatAlerts : ITeamChatAlerts
         lines.Add(knownAccount
             ? company is null ? "No company" : $"Company: {Clean(company)}"
             : "No AltomateHR account has this email — someone is guessing addresses.");
+        return string.Join("\n", lines);
+    }
+
+    public static string LoginUnblockedText(bool forAccount, string who, string? company, string? by)
+    {
+        var lines = new List<string>
+        {
+            forAccount ? $"🔓 Account unlocked by support: {Clean(who)}" : $"🔓 IP {Clean(who)} unblocked by support",
+        };
+        if (company is not null) lines.Add($"Company: {Clean(company)}");
+        lines.Add($"By: {Clean(by ?? "unknown")}");
         return string.Join("\n", lines);
     }
 

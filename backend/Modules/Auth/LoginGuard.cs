@@ -29,6 +29,13 @@ public sealed class LoginAttempt
     public LoginBlock? Block { get; }
 }
 
+// A lock or block in force right now, for the support page. Key is what
+// Unblock takes back: an account's UserKey/EmailKey, or an IP's IpKey.
+// Email: what was last typed for the account (an EmailKey's own address).
+// EmailsTried: for an IP, the addresses its wrong passwords were for.
+public sealed record ActiveLoginBlock(
+    bool ForAccount, string Key, string? UserId, string? Email, DateTime UntilUtc, IReadOnlyList<string> EmailsTried);
+
 // What one wrong password led to: a lock, a block, both or neither.
 public sealed record LoginFailureOutcome(
     TimeSpan? AccountLockedFor,
@@ -84,6 +91,15 @@ public interface ILoginGuard
 
     // A password reset: whatever locked the account is moot now.
     void ClearAccount(string account);
+
+    // Every lock and block still in force, soonest to end first.
+    IReadOnlyList<ActiveLoginBlock> ActiveBlocks(DateTime utcNow);
+
+    // Fusioneta support lifting one by hand. Its run of wrong passwords goes
+    // too, so the next wrong one doesn't lock it straight back. An IP keeps
+    // its "blocked today" mark: blocked again, it's for the longer hour.
+    // False when nothing was in force for that key.
+    bool Unblock(bool forAccount, string key, DateTime utcNow);
 }
 
 public sealed class LoginGuard : ILoginGuard
@@ -104,6 +120,8 @@ public sealed class LoginGuard : ILoginGuard
         public readonly List<DateTime> Wrong = [];
         public int InProgress;
         public DateTime? LockedUntil;
+        // As last typed, so support can tell whose account it is.
+        public string? LastEmail;
     }
 
     private sealed class IpEntry
@@ -112,6 +130,8 @@ public sealed class LoginGuard : ILoginGuard
         public int InProgress;
         public DateTime? BlockedUntil;
         public DateOnly? LastBlockedOn;
+        // The addresses the wrong passwords that blocked it were for.
+        public IReadOnlyList<string> BlockedFor = [];
     }
 
     private readonly ConcurrentDictionary<string, AccountEntry> _accounts = new(StringComparer.Ordinal);
@@ -199,6 +219,7 @@ public sealed class LoginGuard : ILoginGuard
                 a.InProgress = Math.Max(0, a.InProgress - 1);
                 PruneAccount(a, utcNow);
                 a.Wrong.Add(utcNow);
+                a.LastEmail = attempt.Email;
                 if (a.Wrong.Count >= AccountThreshold && !(a.LockedUntil > utcNow))
                 {
                     a.LockedUntil = utcNow + AccountLock;
@@ -226,6 +247,7 @@ public sealed class LoginGuard : ILoginGuard
                     i.BlockedUntil = utcNow + ipBlocked.Value;
                     i.LastBlockedOn = today;
                     emails = [.. i.Wrong.Select(x => x.Email).Distinct(StringComparer.OrdinalIgnoreCase)];
+                    i.BlockedFor = emails;
                     i.Wrong.Clear();
                 }
             }
@@ -249,6 +271,59 @@ public sealed class LoginGuard : ILoginGuard
     }
 
     public void ClearAccount(string account) => _accounts.TryRemove(account, out _);
+
+    public IReadOnlyList<ActiveLoginBlock> ActiveBlocks(DateTime utcNow)
+    {
+        var blocks = new List<ActiveLoginBlock>();
+        foreach (var (key, a) in _accounts)
+        {
+            lock (a)
+            {
+                if (!(a.LockedUntil > utcNow)) continue;
+                var userId = key.StartsWith("user:", StringComparison.Ordinal) ? key["user:".Length..] : null;
+                var email = userId is null && key.StartsWith("email:", StringComparison.Ordinal)
+                    ? key["email:".Length..]
+                    : a.LastEmail;
+                blocks.Add(new ActiveLoginBlock(true, key, userId, email, a.LockedUntil.Value, []));
+            }
+        }
+        foreach (var (key, i) in _ips)
+        {
+            lock (i)
+            {
+                if (i.BlockedUntil > utcNow)
+                    blocks.Add(new ActiveLoginBlock(false, key, null, null, i.BlockedUntil.Value, i.BlockedFor));
+            }
+        }
+        return [.. blocks.OrderBy(b => b.UntilUtc)];
+    }
+
+    // Cleared in place rather than removed, so an attempt in progress still
+    // finds its entry to release.
+    public bool Unblock(bool forAccount, string key, DateTime utcNow)
+    {
+        if (forAccount)
+        {
+            if (!_accounts.TryGetValue(key, out var a)) return false;
+            lock (a)
+            {
+                if (!(a.LockedUntil > utcNow)) return false;
+                a.LockedUntil = null;
+                a.Wrong.Clear();
+                return true;
+            }
+        }
+
+        if (!_ips.TryGetValue(key, out var i)) return false;
+        lock (i)
+        {
+            if (!(i.BlockedUntil > utcNow)) return false;
+            i.BlockedUntil = null;
+            i.BlockedFor = [];
+            i.Wrong.Clear();
+            return true;
+        }
+    }
 
     // Once per attempt, and never for one that was refused (it held nothing).
     private static bool Resolve(LoginAttempt attempt)

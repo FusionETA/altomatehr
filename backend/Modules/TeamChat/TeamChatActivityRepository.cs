@@ -17,7 +17,7 @@ public class TeamChatActivityRepository : ITeamChatActivityRepository
 
     public TeamChatActivityRepository(AppDbContext db) => _db = db;
 
-    public async Task<IReadOnlyList<CompanyActivity>> GetAsync(DateTime fromUtc, DateTime toUtc)
+    public async Task<IReadOnlyList<CompanyActivity>> GetAsync(DateTime fromUtc, DateTime toUtc, DateTime monthStartUtc)
     {
         var companies = await _db.Organizations.AsNoTracking()
             .Where(o => o.DeactivatedAt == null)
@@ -77,10 +77,13 @@ public class TeamChatActivityRepository : ITeamChatActivityRepository
             .Where(r => r.TimeIn >= fromUtc && r.TimeIn < toUtc)
             .Select(r => new { r.OrganizationId, r.EmployeeId })
             .ToListAsync();
-        var attendanceWaiting = await CountByOrgAsync(
-            _db.AttendanceApprovalRequests.IgnoreQueryFilters()
-                .Where(a => a.ApprovalStatus == AttendanceApprovalStatus.PENDING)
-                .Select(a => a.OrganizationId));
+        // By submission, as the Approval trail filters, so the two agree.
+        var pendingAttendance = _db.AttendanceApprovalRequests.IgnoreQueryFilters()
+            .Where(a => a.ApprovalStatus == AttendanceApprovalStatus.PENDING);
+        var attendanceWaitingThisMonth = await CountByOrgAsync(
+            pendingAttendance.Where(a => a.SubmittedAt >= monthStartUtc).Select(a => a.OrganizationId));
+        var attendanceWaitingOlder = await CountByOrgAsync(
+            pendingAttendance.Where(a => a.SubmittedAt < monthStartUtc).Select(a => a.OrganizationId));
 
         static Dictionary<string, int> Tally(IEnumerable<string> orgIds) =>
             orgIds.GroupBy(id => id).ToDictionary(g => g.Key, g => g.Count());
@@ -111,7 +114,8 @@ public class TeamChatActivityRepository : ITeamChatActivityRepository
             Of(claims, c.Id),
             Of(claimsWaiting, c.Id),
             Of(people, c.Id),
-            Of(attendanceWaiting, c.Id))).ToList();
+            Of(attendanceWaitingThisMonth, c.Id),
+            Of(attendanceWaitingOlder, c.Id))).ToList();
     }
 
     public async Task<bool> TryClaimDayAsync(DateOnly day, DateTime windowEndUtc, DateTime utcNow)

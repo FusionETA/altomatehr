@@ -145,7 +145,10 @@ public class ModuleAccessTests
     {
         var ungated = typeof(OrgModules).Assembly.GetTypes()
             .Where(t => typeof(ControllerBase).IsAssignableFrom(t) && !t.IsAbstract)
-            .Where(t => t.GetCustomAttribute<RouteAttribute>()?.Template.StartsWith("payroll") == true)
+            // The "payroll" segment, not the letters: the public
+            // /payroll-calculator belongs to no module.
+            .Where(t => t.GetCustomAttribute<RouteAttribute>()?.Template is { } route
+                        && (route == "payroll" || route.StartsWith("payroll/")))
             .Where(t => !t.GetCustomAttributes<RequireModuleAttribute>().Any(a => Module(a) == OrgModules.Payroll))
             .Select(t => t.Name)
             .ToList();

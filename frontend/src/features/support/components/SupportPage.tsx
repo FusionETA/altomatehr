@@ -10,15 +10,17 @@ import { getSupportOrganizations, SUPPORT_ORGS_PATH, type SupportOrganization } 
 import { matchesSearch, planLabel } from "../lib/plan";
 import { CompanyStatusDialog } from "./CompanyStatusDialog";
 import { CreateCompanyCard } from "./CreateCompanyCard";
+import { LoginBlocksCard } from "./LoginBlocksCard";
 import { ManagePlanDialog } from "./ManagePlanDialog";
 import { XeroAppsCard } from "./XeroAppsCard";
 
-type SupportTab = "companies" | "create" | "xero";
+type SupportTab = "companies" | "create" | "xero" | "blocks";
 
 const TABS: { id: SupportTab; label: string }[] = [
   { id: "companies", label: "Companies" },
   { id: "create", label: "Create company" },
   { id: "xero", label: "Xero apps" },
+  { id: "blocks", label: "Blocked sign-ins" },
 ];
 
 // Fusioneta support: every company on the platform, to step into as support,
@@ -205,6 +207,8 @@ export function SupportPage({ onBack }: { onBack: () => void }) {
         {tab === "create" ? <CreateCompanyCard onCreated={() => void query.refresh()} /> : null}
 
         {tab === "xero" ? <XeroAppsCard /> : null}
+
+        {tab === "blocks" ? <LoginBlocksCard /> : null}
       </main>
 
       {statusOf ? (

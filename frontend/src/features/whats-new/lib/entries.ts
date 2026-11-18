@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 3622069
+// whats-new-covered-up-to: bc8db79
 
 // A line is for everyone, or — wrapped in admins(…) — for admins and owners
 // only. Employees and supervisors never see an admins line, so it doesn't
@@ -28,6 +28,12 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-11-18",
+    new: [
+      admins("If Fusioneta support lifts a sign-in block for one of your people, the Activity log shows \"Sign-in unblocked by support\"."),
+    ],
+  },
   {
     date: "2026-11-17",
     improved: [
