@@ -194,6 +194,17 @@ public class TeamChatTests
     }
 
     [Fact]
+    public void AnUnblock_SaysWhoWasLetBackIn_AndWhoBy()
+    {
+        Assert.Equal(
+            "🔓 Account unlocked by support: Ali (ali@x.test)\nCompany: Demo Co\nBy: zr@fusioneta.test",
+            TeamChatAlerts.LoginUnblockedText(true, "Ali (ali@x.test)", "Demo Co", "zr@fusioneta.test"));
+        Assert.Equal(
+            "🔓 IP 1.2.3.4 unblocked by support\nBy: zr@fusioneta.test",
+            TeamChatAlerts.LoginUnblockedText(false, "1.2.3.4", null, "zr@fusioneta.test"));
+    }
+
+    [Fact]
     public void ARevert_NamesTheRunsItDraggedBack()
     {
         Assert.Equal(
@@ -203,7 +214,7 @@ public class TeamChatTests
 
     // ---- Daily summary ----
 
-    private static CompanyActivity Quiet(string name) => new("o-" + name, name, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    private static CompanyActivity Quiet(string name) => new("o-" + name, name, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
     [Fact]
     public void TheDailySummary_ListsBusyCompanies_AndCountsTheQuietOnes()
@@ -211,7 +222,7 @@ public class TeamChatTests
         var busy = Quiet("Ayu Borneo") with
         {
             SignIns = 34, PeopleSignedIn = 21, RunsApproved = 1, LeaveApplied = 5, LeaveApproved = 4,
-            LeaveWaiting = 3, ClaimsSubmitted = 6, ClaimsWaiting = 9, PeopleClockedIn = 112, AttendanceWaiting = 2,
+            LeaveWaiting = 3, ClaimsSubmitted = 6, ClaimsWaiting = 9, PeopleClockedIn = 112, AttendanceWaitingThisMonth = 2,
         };
         var messages = TeamChatDailySummaryService.SummaryMessages(
             new DateOnly(2026, 11, 11), [busy, Quiet("Idle Co"), Quiet("Sleepy Co") with { LeaveWaiting = 4 }]);
@@ -220,7 +231,7 @@ public class TeamChatTests
         Assert.StartsWith("📊 Daily summary · Wed 11 Nov 2026 (6pm Tue – 6pm Wed)\n1 company active · 2 quiet", text);
         Assert.Contains(
             "🏢 Ayu Borneo\n• Sign-ins: 34 (21 people)\n• Payroll: 1 run approved\n• Leave: 5 applied · 4 approved · 3 waiting"
-            + "\n• Claims: 6 submitted · 9 waiting\n• Attendance: 112 people clocked in · 2 waiting approval",
+            + "\n• Claims: 6 submitted · 9 waiting\n• Attendance: 112 people clocked in · 2 waiting approval this month",
             text);
         Assert.DoesNotContain("Idle Co", text);
         Assert.DoesNotContain("Sleepy Co", text);
@@ -241,15 +252,36 @@ public class TeamChatTests
 
         Assert.Equal(new DateTime(2026, 11, 11, 10, 0, 0, DateTimeKind.Utc), repo.From);   // 6pm Wed MYT
         Assert.Equal(new DateTime(2026, 11, 12, 10, 0, 0, DateTimeKind.Utc), repo.To);     // 6pm Thu MYT
+        Assert.Equal(new DateTime(2026, 10, 31, 16, 0, 0, DateTimeKind.Utc), repo.MonthStart); // 1 Nov 00:00 MYT
+    }
+
+    // A backlog left for months is kept apart from what came in lately, so
+    // "2317 waiting" isn't read as one day's clocks.
+    [Theory]
+    [InlineData(452, 1898, "• Attendance: 16 people clocked in · 452 waiting approval this month · 1898 older")]
+    [InlineData(452, 0, "• Attendance: 16 people clocked in · 452 waiting approval this month")]
+    [InlineData(0, 1898, "• Attendance: 16 people clocked in · 1898 waiting approval from before this month")]
+    [InlineData(0, 0, "• Attendance: 16 people clocked in")]
+    public void PendingAttendance_IsSplitIntoThisMonthAndOlder(int thisMonth, int older, string line)
+    {
+        var globe = Quiet("Globe") with
+        {
+            PeopleClockedIn = 16, AttendanceWaitingThisMonth = thisMonth, AttendanceWaitingOlder = older,
+        };
+
+        var text = Assert.Single(TeamChatDailySummaryService.SummaryMessages(new DateOnly(2026, 11, 18), [globe]));
+
+        // Once in the all-companies total, once for the company itself.
+        Assert.Equal(2, text.Split('\n').Count(l => l == line));
     }
 
     private sealed class WindowRecorder : ITeamChatActivityRepository
     {
-        public DateTime From, To;
+        public DateTime From, To, MonthStart;
 
-        public Task<IReadOnlyList<CompanyActivity>> GetAsync(DateTime fromUtc, DateTime toUtc)
+        public Task<IReadOnlyList<CompanyActivity>> GetAsync(DateTime fromUtc, DateTime toUtc, DateTime monthStartUtc)
         {
-            (From, To) = (fromUtc, toUtc);
+            (From, To, MonthStart) = (fromUtc, toUtc, monthStartUtc);
             return Task.FromResult<IReadOnlyList<CompanyActivity>>([]);
         }
 

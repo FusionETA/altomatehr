@@ -43,6 +43,10 @@ public interface ITeamChatAlerts
     // againToday: its second (or later) block today, so the longer one.
     Task IpBlockedAsync(string ip, TimeSpan duration, bool againToday, IReadOnlyList<string> emailsTried);
 
+    // Support lifted a lock or block early. `who` is the account (name and
+    // email) or the IP.
+    Task LoginUnblockedAsync(bool forAccount, string who, string? organizationId);
+
     // portal: "KWSP", "PERKESO", "LHDN" and so on.
     Task PortalPasswordViewedAsync(string organizationId, string portal);
 

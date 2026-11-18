@@ -20,6 +20,8 @@ public class TeamChatActivityTests
     private static readonly DateTime From = new(2026, 11, 10, 16, 0, 0, DateTimeKind.Utc);
     private static readonly DateTime To = From.AddDays(1);
     private static readonly DateTime Day = new(2026, 11, 11, 0, 0, 0, DateTimeKind.Utc);
+    // 1 Nov 2026 00:00 in Malaysia.
+    private static readonly DateTime MonthStart = new(2026, 10, 31, 16, 0, 0, DateTimeKind.Utc);
 
     [Fact]
     public async Task TheDay_IsCountedPerCompany()
@@ -81,21 +83,37 @@ public class TeamChatActivityTests
             // Clocked in during the window but filed on the next day's date
             // (an evening shift) still counts — it's by the clock-in time.
             new AttendanceRecord { OrganizationId = "org-a", EmployeeId = "u4", Date = Day.AddDays(1), TimeIn = To.AddMinutes(-30) });
+        // Pending attendance, split by when it was submitted: two this month
+        // (one right on the boundary), one from October. Decided ones aren't
+        // waiting at all.
+        AttendanceApprovalRequest Request(DateTime submitted, AttendanceApprovalStatus status = AttendanceApprovalStatus.PENDING) => new()
+        {
+            OrganizationId = "org-a", EmployeeId = "u1", AttendanceRecordId = "r1", Kind = AttendanceApprovalKind.CLOCK_IN,
+            EventAt = submitted, SubmittedAt = submitted, CreatedAt = submitted, UpdatedAt = submitted, ApprovalStatus = status,
+        };
+        db.AttendanceApprovalRequests.AddRange(
+            Request(From.AddHours(2)),
+            Request(MonthStart),
+            Request(MonthStart.AddMinutes(-1)),
+            Request(From.AddHours(2), AttendanceApprovalStatus.APPROVED),
+            Request(MonthStart.AddDays(-10), AttendanceApprovalStatus.REJECTED));
         await db.SaveChangesAsync();
 
-        var rows = await new TeamChatActivityRepository(db).GetAsync(From, To);
+        var rows = await new TeamChatActivityRepository(db).GetAsync(From, To, MonthStart);
 
         Assert.Equal(["Alpha", "Beta"], rows.Select(r => r.Company));
         var alpha = rows[0];
         Assert.Equal((3, 2), (alpha.SignIns, alpha.PeopleSignedIn));
         Assert.Equal((1, 1, 2), (alpha.LeaveApplied, alpha.LeaveApproved, alpha.LeaveWaiting));
         Assert.Equal(3, alpha.PeopleClockedIn);
+        Assert.Equal((2, 1), (alpha.AttendanceWaitingThisMonth, alpha.AttendanceWaitingOlder));
         Assert.Equal(0, alpha.RunsApproved);
 
         var beta = rows[1];
         Assert.Equal(1, beta.RunsApproved);
         Assert.Equal((1, 1), (beta.ClaimsSubmitted, beta.ClaimsWaiting));
         Assert.Equal(0, beta.SignIns);
+        Assert.Equal((0, 0), (beta.AttendanceWaitingThisMonth, beta.AttendanceWaitingOlder));
     }
 
     // As AuthService writes it: no session yet, so no actor — the user is the target.

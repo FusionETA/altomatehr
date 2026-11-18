@@ -28,6 +28,26 @@
       "port": 5001
     },
     {
+      "name": "backend-local-demo-superadmin",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "ConnectionStrings__Default=Server=localhost;Port=3306;Database=altomatehr_local;User=root;Password=;AllowPublicKeyRetrieval=True;SslMode=None",
+        "Seed__DemoData=true",
+        "EngineMailer__ApiKey=",
+        "Gemini__ApiKey=",
+        "Xero__ClientId=",
+        "Xero__ClientSecret=",
+        "Bitrix__WebhookUrl=",
+        "SUPERADMIN_EMAILS=admin@altomate.com",
+        "dotnet",
+        "run",
+        "--launch-profile",
+        "http"
+      ],
+      "cwd": "backend",
+      "port": 5001
+    },
+    {
       "name": "frontend",
       "runtimeExecutable": "npm",
       "runtimeArgs": [

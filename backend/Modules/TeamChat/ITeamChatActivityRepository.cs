@@ -1,7 +1,9 @@
 namespace AltomateHR.Api.Modules.TeamChat;
 
 // One company's day, for the 18:00 summary in the daily chat. The "Waiting"
-// counts are as of now, not of the day.
+// counts are as of now, not of the day. Attendance's is split by when the clock
+// was submitted — this Malaysian month, or before it — because a backlog left
+// for months otherwise reads as one day's work.
 public sealed record CompanyActivity(
     string OrganizationId,
     string Company,
@@ -15,7 +17,8 @@ public sealed record CompanyActivity(
     int ClaimsSubmitted,
     int ClaimsWaiting,
     int PeopleClockedIn,
-    int AttendanceWaiting)
+    int AttendanceWaitingThisMonth,
+    int AttendanceWaitingOlder)
 {
     public bool IsQuiet =>
         SignIns == 0 && RunsApproved == 0 && RunsSentForApproval == 0 && LeaveApplied == 0
@@ -27,8 +30,9 @@ public sealed record CompanyActivity(
 public interface ITeamChatActivityRepository
 {
     // Active (not deactivated) companies only, whether or not anything happened,
-    // for what happened in [fromUtc, toUtc).
-    Task<IReadOnlyList<CompanyActivity>> GetAsync(DateTime fromUtc, DateTime toUtc);
+    // for what happened in [fromUtc, toUtc). Pending attendance submitted on or
+    // after `monthStartUtc` counts as this month's, anything before as older.
+    Task<IReadOnlyList<CompanyActivity>> GetAsync(DateTime fromUtc, DateTime toUtc, DateTime monthStartUtc);
 
     // Marks the summary of the window ending `windowEndUtc` (on Malaysian date
     // `day`) as posted. False when it already was — by this server before a

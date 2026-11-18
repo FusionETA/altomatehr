@@ -147,3 +147,30 @@ export const setXeroOwnerChoice = (userId: string, body: { choice: XeroAppChoice
   apiPut<unknown>(`${XERO_APPS_PATH}/owners/${userId}`, body);
 export const setXeroCompanyOwner = (organizationId: string, ownerUserId: string) =>
   apiPut<unknown>(`${XERO_APPS_PATH}/companies/${organizationId}/owner`, { ownerUserId });
+
+// ---- Blocked sign-ins (superadmin) ----
+// Accounts locked after 5 wrong passwords, and networks blocked after 10.
+// Held in the server's memory, so this is what's in force right now.
+
+export type LoginBlock = {
+  kind: "ACCOUNT" | "IP";
+  // Handed back to unblock; opaque here.
+  key: string;
+  // ACCOUNT: the address typed, and the person when it's a real account
+  // (no name: no AltomateHR account has that email). IP: the address.
+  email: string | null;
+  name: string | null;
+  company: string | null;
+  ip: string | null;
+  untilUtc: string;
+  // IP: whose passwords were being tried.
+  emailsTried: string[];
+};
+
+export const LOGIN_BLOCKS_PATH = "/support/login-blocks";
+
+export const getLoginBlocks = () => apiGet<LoginBlock[]>(LOGIN_BLOCKS_PATH);
+
+// 404 when it had already run out — the caller just re-reads the list.
+export const unblockLogin = (block: Pick<LoginBlock, "kind" | "key">) =>
+  apiPost<void>(`${LOGIN_BLOCKS_PATH}/unblock`, { kind: block.kind, key: block.key });

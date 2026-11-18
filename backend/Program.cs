@@ -455,6 +455,7 @@ builder.Services.AddScoped<IAdminAttendanceService, AdminAttendanceService>();
 builder.Services.AddScoped<IAuditRepository, AuditRepository>();
 builder.Services.AddScoped<ISupportAuditRepository, SupportAuditRepository>();
 builder.Services.AddScoped<AltomateHR.Api.Modules.Support.ISupportService, AltomateHR.Api.Modules.Support.SupportService>();
+builder.Services.AddScoped<AltomateHR.Api.Modules.Support.ISupportLoginBlockService, AltomateHR.Api.Modules.Support.SupportLoginBlockService>();
 builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<IApprovalDigestService, ApprovalDigestService>();
 builder.Services.AddHostedService<ApprovalDigestBackgroundService>();

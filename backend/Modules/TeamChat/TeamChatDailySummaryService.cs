@@ -49,7 +49,9 @@ public class TeamChatDailySummaryService : ITeamChatDailySummaryService
         var endLocal = today.ToDateTime(new TimeOnly(CutOffHourMyt, 0), DateTimeKind.Unspecified);
         var fromUtc = TimeZoneInfo.ConvertTimeToUtc(endLocal.AddDays(-1), Myt);
         var toUtc = TimeZoneInfo.ConvertTimeToUtc(endLocal, Myt);
-        var companies = await _activity.GetAsync(fromUtc, toUtc);
+        var monthStartUtc = TimeZoneInfo.ConvertTimeToUtc(
+            new DateTime(today.Year, today.Month, 1, 0, 0, 0, DateTimeKind.Unspecified), Myt);
+        var companies = await _activity.GetAsync(fromUtc, toUtc, monthStartUtc);
         var messages = SummaryMessages(today, companies);
 
         // Claimed only once there's something to post, so a failed read
@@ -104,7 +106,8 @@ public class TeamChatDailySummaryService : ITeamChatDailySummaryService
             active.Sum(c => c.RunsApproved), active.Sum(c => c.RunsSentForApproval),
             active.Sum(c => c.LeaveApplied), active.Sum(c => c.LeaveApproved), active.Sum(c => c.LeaveWaiting),
             active.Sum(c => c.ClaimsSubmitted), active.Sum(c => c.ClaimsWaiting),
-            active.Sum(c => c.PeopleClockedIn), active.Sum(c => c.AttendanceWaiting));
+            active.Sum(c => c.PeopleClockedIn),
+            active.Sum(c => c.AttendanceWaitingThisMonth), active.Sum(c => c.AttendanceWaitingOlder));
         return CompanyBlock(all);
     }
 
@@ -120,9 +123,20 @@ public class TeamChatDailySummaryService : ITeamChatDailySummaryService
         if (c.ClaimsSubmitted > 0)
             lines.Add($"• Claims: {Join(Part(c.ClaimsSubmitted, "submitted", "submitted"), Part(c.ClaimsWaiting, "waiting", "waiting"))}");
         if (c.PeopleClockedIn > 0)
-            lines.Add($"• Attendance: {Join($"{Count(c.PeopleClockedIn, "person", "people")} clocked in", Part(c.AttendanceWaiting, "waiting approval", "waiting approval"))}");
+            lines.Add($"• Attendance: {Join($"{Count(c.PeopleClockedIn, "person", "people")} clocked in", AttendanceWaiting(c))}");
         return string.Join("\n", lines);
     }
+
+    // "452 waiting approval this month · 1898 older" — a months-old backlog
+    // kept apart from what came in lately, so the total doesn't read as today's.
+    private static string? AttendanceWaiting(CompanyActivity c) =>
+        (c.AttendanceWaitingThisMonth, c.AttendanceWaitingOlder) switch
+        {
+            (0, 0) => null,
+            (var month, 0) => $"{month} waiting approval this month",
+            (0, var older) => $"{older} waiting approval from before this month",
+            var (month, older) => $"{month} waiting approval this month · {older} older",
+        };
 
     private static string? Part(int n, string one, string many) => n == 0 ? null : $"{n} {(n == 1 ? one : many)}";
 
