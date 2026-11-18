@@ -196,7 +196,8 @@ builder.Services.AddRateLimiter(options =>
         }
 
         // The public payroll calculator answers in its widget's error shape.
-        if (context.HttpContext.Request.Path.StartsWithSegments("/public/v1/payroll-calculator"))
+        if (context.HttpContext.Request.Path.StartsWithSegments(
+                "/" + AltomateHR.Api.Modules.PayrollCalculator.PayrollCalculatorController.RoutePath))
         {
             context.HttpContext.Response.Headers.CacheControl = "no-store";
             await Results.Json(

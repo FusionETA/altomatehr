@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.RateLimiting;
 
 namespace AltomateHR.Api.Modules.PayrollCalculator;
 
-// POST /public/v1/payroll-calculator — the payroll calculator on altomate.io's
+// POST /payroll-calculator — the payroll calculator on altomate.io's
 // payroll outsourcing page. Public: no login, no cookies, called from a
 // marketing page. Hence its own CORS policy (altomate.io only), a per-IP rate
 // limit, and Cache-Control: no-store. Nothing is stored; request bodies are not
@@ -16,7 +16,7 @@ namespace AltomateHR.Api.Modules.PayrollCalculator;
 // No [ApiController]: its automatic 400 is ASP.NET's ProblemDetails, which the
 // widget can't place under a field. The body is read raw and validated by the
 // service, so every problem comes back as { error: { field, code, message } }.
-[Route("public/v1/payroll-calculator")]
+[Route(RoutePath)]
 [AllowAnonymous]
 [EnableCors(PolicyName)]
 [EnableRateLimiting(PolicyName)]
@@ -24,6 +24,10 @@ public class PayrollCalculatorController : ControllerBase
 {
     // One name for both the CORS policy and the rate-limit policy (Program.cs).
     public const string PolicyName = "payroll-calculator";
+
+    // No version segment: the widget is the only caller. A breaking change to
+    // the request or response has to be released together with web's widget.
+    public const string RoutePath = "payroll-calculator";
 
     private readonly IPayrollCalculatorService _calculator;
     private readonly ILogger<PayrollCalculatorController> _logger;
