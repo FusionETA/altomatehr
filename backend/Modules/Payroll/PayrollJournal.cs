@@ -39,8 +39,9 @@ public static class PayrollJournal
         string? TrackingCategoryName = null,
         string? TrackingOption = null,
         // The mapping slot this debit came from (`PayrollXeroAccounts`, plus
-        // "overtime"), so the AI split can find the lines it replaces. Null on
-        // credits and reimbursements, which the split never touches.
+        // "overtime"), so the AI split can find the lines it replaces. Also set
+        // on deduction credits (`deduction`), which the split may move. Null on
+        // the payables and reimbursements, which it never touches.
         string? Source = null,
         // Set only on split lines: up to two tracking tags, which replace the
         // single project tag above.
@@ -79,10 +80,18 @@ public static class PayrollJournal
         public required string EmployeeName { get; init; }
         public string ProjectName { get; init; } = NoProject;
 
-        // Who and where, for the AI split's department and named-employee
-        // rules. The standard journal never reads them.
+        // Who and where, for the AI split's people rules. The standard
+        // journal never reads them. Read live, like the run's other
+        // identifiers: a split follows who is where NOW.
         public string? EmployeeId { get; init; }
         public string? Department { get; init; }
+        // Every active project they are on, through its teams.
+        public IReadOnlyList<string> Projects { get; init; } = [];
+        public string? JobTitle { get; init; }
+        // `EmploymentStatus` as written (PERMANENT, CONTRACT…).
+        public string? EmploymentType { get; init; }
+        public string? Role { get; init; }
+        public string? Policy { get; init; }
 
         // Prorated, NOT basic. The engine builds gross on the prorated figure,
         // so debiting basic would leave the journal off by the proration for
@@ -103,6 +112,11 @@ public static class PayrollJournal
         // of its own, since net pay no longer carries it.
         public decimal PcbBorneByEmployer { get; init; }
         public decimal Cp38 { get; init; }
+        // Additional PCB the employee asked for: withheld from pay and
+        // remitted with PCB, but held apart from `Pcb` (see Payslip.VoluntaryPcb).
+        public decimal VoluntaryPcb { get; init; }
+        // Every zakat row, INCLUDING zakat the employee paid themselves and
+        // declared on TP1 — which offsets PCB but was never withheld.
         public decimal Zakat { get; init; }
         public decimal Hrdf { get; init; }
 
@@ -267,13 +281,13 @@ public static class PayrollJournal
 
             foreach (var item in row.Deductions)
             {
-                if (IsUnpaidLeave(item)) continue;
+                if (!PostsAsDeduction(item)) continue;
 
                 var code = DeductionCode(input, item.Category, unmappedDeductions);
                 if (code is null) continue;
 
                 lines.Add(Line_(input, code, -Money.Round2(item.Amount),
-                    Describe(item, row.EmployeeName, "DEDUCTION"), row.ProjectName));
+                    Describe(item, row.EmployeeName, "DEDUCTION"), row.ProjectName, PayrollXeroAccounts.Deduction));
             }
         }
     }
@@ -306,7 +320,7 @@ public static class PayrollJournal
 
             foreach (var item in row.Deductions)
             {
-                if (IsUnpaidLeave(item)) continue;
+                if (!PostsAsDeduction(item)) continue;
 
                 deductions.TryGetValue((row.ProjectName, item.Category), out var running);
                 deductions[(row.ProjectName, item.Category)] = running + item.Amount;
@@ -350,7 +364,7 @@ public static class PayrollJournal
             if (code is null) continue;
 
             lines.Add(Line_(input, code, -Money.Round2(amount),
-                $"{CategoryLabel(category, "DEDUCTION")} - {project}", project));
+                $"{CategoryLabel(category, "DEDUCTION")} - {project}", project, PayrollXeroAccounts.Deduction));
         }
     }
 
@@ -479,11 +493,14 @@ public static class PayrollJournal
                 input.Rows.Sum(r => r.EisEmployee + r.EisEmployer),
                 "ACCRUAL - EIS CONTRIBUTION"),
             (PayrollXeroAccounts.AccrualPcb,
-                // CP38 and zakat are withheld from the employee alongside PCB
-                // and remitted with it, so they belong in the same payable —
-                // without them the net-pay credit has no matching liability
-                // and the journal is out by exactly their total.
-                input.Rows.Sum(r => r.Pcb + r.Cp38 + r.Zakat),
+                // CP38, zakat withheld and Additional PCB are taken from the
+                // employee alongside PCB and remitted with it, so they belong
+                // in the same payable — without them the net-pay credit has no
+                // matching liability and the journal is out by exactly their
+                // total. Their deduction rows are therefore NOT credited again
+                // (`PostsAsDeduction`). Zakat the employee paid themselves was
+                // never withheld, so it is left out.
+                input.Rows.Sum(r => r.Pcb + r.Cp38 + WithheldZakat(r) + r.VoluntaryPcb),
                 "ACCRUAL - PCB DEDUCTION (Employee only)"),
             (PayrollXeroAccounts.AccrualHrdf,
                 input.Rows.Sum(r => r.Hrdf),
@@ -675,6 +692,28 @@ public static class PayrollJournal
 
     private static bool IsUnpaidLeave(JournalLineItem item) =>
         string.Equals(item.Category, "deduct_unpaid_leave", StringComparison.Ordinal);
+
+    // Whether a deduction row is credited to a deductions account. Not:
+    //   · unpaid leave — netted out of the salary debit instead
+    //   · TP1 reliefs, self-paid zakat, the departure levy (CashNeutral) —
+    //     they lower PCB, but nothing came off the pay, so there is nothing
+    //     to credit; crediting them unbalanced the journal by their total
+    //   · zakat via salary, CP38 and Additional PCB — withheld and remitted
+    //     with PCB, so they are inside the PCB payable already
+    internal static bool PostsAsDeduction(JournalLineItem item)
+    {
+        if (IsUnpaidLeave(item)) return false;
+
+        var meta = PayrollAdjustmentCategories.Find(item.Category);
+        return meta is null
+            || !(meta.CashNeutral || meta.OffsetsPcb || meta.AddsToCp38Field || meta.AddsToStandardPcb);
+    }
+
+    // `Zakat` less what the employee paid themselves (declared on TP1).
+    internal static decimal WithheldZakat(EmployeeRow row) =>
+        row.Zakat - row.Deductions
+            .Where(d => PayrollAdjustmentCategories.Find(d.Category) is { OffsetsPcb: true, CashNeutral: true })
+            .Sum(d => d.Amount);
 
     private static string Describe(JournalLineItem item, string employeeName, string fallback)
     {
