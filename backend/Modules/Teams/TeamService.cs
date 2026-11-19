@@ -382,32 +382,6 @@ public class TeamService : ITeamService
 
 
 
-    public async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> GetActiveProjectNamesByMemberAsync()
-    {
-        var result = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
-        if (_projects is null) return result;
-
-        var activeProjects = (await _projects.GetAllAsync())
-            .Where(p => !p.IsArchived)
-            .ToDictionary(p => p.Id, p => p.Name, StringComparer.Ordinal);
-        var projectByTeam = (await _teams.GetAllAsync())
-            .Where(t => activeProjects.ContainsKey(t.ProjectId))
-            .ToDictionary(t => t.Id, t => activeProjects[t.ProjectId], StringComparer.Ordinal);
-
-        foreach (var member in (await _memberships.GetAllAsync()).GroupBy(m => m.EmployeeId, StringComparer.Ordinal))
-        {
-            var names = member
-                .Select(m => projectByTeam.GetValueOrDefault(m.TeamId))
-                .OfType<string>()
-                .Distinct(StringComparer.Ordinal)
-                .OrderBy(n => n, StringComparer.Ordinal)
-                .ToList();
-            if (names.Count > 0) result[member.Key] = names;
-        }
-
-        return result;
-    }
-
     public async Task<IReadOnlyList<string>> GetMemberEmployeeIdsAsync(string teamId) =>
         (await _memberships.GetByTeamAsync(teamId)).Select(m => m.EmployeeId).ToList();
 

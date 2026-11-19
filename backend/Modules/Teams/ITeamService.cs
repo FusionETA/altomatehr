@@ -34,13 +34,6 @@ public interface ITeamService
     // they're on no project — not that they're on all of them.
     Task<IReadOnlyList<string>> GetProjectIdsForMemberAsync(string employeeId);
 
-    // Every member's ACTIVE projects by name, keyed by user id, in one pass
-    // (the payroll journal split groups a whole run by project). People on no
-    // active project are absent.
-    Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> GetActiveProjectNamesByMemberAsync() =>
-        Task.FromResult<IReadOnlyDictionary<string, IReadOnlyList<string>>>(
-            new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal));
-
     // Per-layer approver picker data for one employee's team membership: the
     // candidate pool, what's currently in effect, and whether it's a custom
     // override or the team's implicit default. Null → not a member of this team.

@@ -3,9 +3,10 @@ using AltomateHR.Api.Modules.Accounts;
 using AltomateHR.Api.Modules.Audit;
 using AltomateHR.Api.Modules.Claims;
 using AltomateHR.Api.Modules.Employees;
+using AltomateHR.Api.Modules.Projects;
+using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Modules.Payroll.Entities;
 using AltomateHR.Api.Modules.Policies;
-using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Modules.Xero;
 using AltomateHR.Api.Modules.Xero.Dtos;
 
@@ -40,10 +41,11 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
     private readonly ILogger<PayrollXeroSyncService> _log;
 
     // Who is where, for the AI split's people rules (project, job title,
-    // role, policy). Optional so a test that never splits needn't build them;
-    // without one, that detail reads as blank and its rules match nobody.
+    // employment type, role, policy).
+    private readonly ITeamRepository? _teams;
+    private readonly ITeamMembershipRepository? _memberships;
+    private readonly IProjectRepository? _projects;
     private readonly IDirectoryService? _directory;
-    private readonly ITeamService? _teams;
     private readonly IPolicyService? _policies;
 
     public PayrollXeroSyncService(
@@ -56,14 +58,20 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
         IAuditService audit,
         IEmployeeProfileRepository profiles,
         ILogger<PayrollXeroSyncService> log,
+        // Optional so tests that never split by them needn't build them;
+        // without one, that detail reads as blank and its rules match nobody.
+        ITeamRepository? teams = null,
+        ITeamMembershipRepository? memberships = null,
+        IProjectRepository? projects = null,
         IDirectoryService? directory = null,
-        ITeamService? teams = null,
         IPolicyService? policies = null)
     {
         _directory = directory;
-        _teams = teams;
         _policies = policies;
         _profiles = profiles;
+        _teams = teams;
+        _memberships = memberships;
+        _projects = projects;
         _runs = runs;
         _payslips = payslips;
         _settings = settings;
@@ -245,18 +253,27 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
                 .Select(v => v?.Trim())
                 .Where(v => !string.IsNullOrEmpty(v))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase)!;
+        var projectsWithTeams = await ProjectsWithTeamsAsync();
 
         return new PayrollJournalSplit.Context
         {
             ActiveAccounts = active,
             TrackingCategories = tracking,
             Departments = Values(p => [p.Department]),
-            Projects = Values(p => p.Projects),
+            // Live projects with a team, members or not, so a rule can name a
+            // project before anyone is in it.
+            Projects = projectsWithTeams,
             JobTitles = Values(p => [p.JobTitle]),
             EmploymentTypes = Values(p => [p.EmploymentType]),
             Roles = Values(p => [p.Role]),
             Policies = Values(p => [p.Policy]),
             Employees = employees,
+            EmployeeProjects = payslips
+                .GroupBy(p => p.EmployeeProfileId, StringComparer.Ordinal)
+                .ToDictionary(
+                    g => g.Key,
+                    g => people.GetValueOrDefault(g.Key)?.Projects ?? (IReadOnlyList<string>)[],
+                    StringComparer.Ordinal),
         };
     }
 
@@ -276,9 +293,7 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
             : (await _directory.GetMembershipsForCurrentOrgAsync())
                 .GroupBy(m => m.UserId, StringComparer.Ordinal)
                 .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
-        var projects = _teams is null
-            ? new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
-            : await _teams.GetActiveProjectNamesByMemberAsync();
+        var projects = await ProjectsByUserAsync();
         var policies = _policies is null
             ? new Dictionary<string, Policies.Entities.EmployeePolicy>(StringComparer.Ordinal)
             : await _policies.GetEffectivePoliciesForEmployeesAsync(userIds);
@@ -294,6 +309,47 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
                 membership?.Role,
                 policies.GetValueOrDefault(p.UserId)?.Name);
         }, StringComparer.Ordinal);
+    }
+
+    // Live projects that have at least one team, members or not.
+    private async Task<HashSet<string>> ProjectsWithTeamsAsync()
+    {
+        if (_teams is null || _projects is null) return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var teamProjects = (await _teams.GetAllAsync()).Select(t => t.ProjectId).ToHashSet(StringComparer.Ordinal);
+        return (await _projects.GetAllAsync())
+            .Where(p => !p.IsArchived && !string.IsNullOrWhiteSpace(p.Name) && teamProjects.Contains(p.Id))
+            .Select(p => p.Name.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    // User id → the names of the projects their teams belong to. Live
+    // projects only; a team under an archived project doesn't count.
+    private async Task<Dictionary<string, IReadOnlyList<string>>> ProjectsByUserAsync()
+    {
+        var result = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        if (_teams is null || _memberships is null || _projects is null) return result;
+
+        var projectNames = (await _projects.GetAllAsync())
+            .Where(p => !p.IsArchived && !string.IsNullOrWhiteSpace(p.Name))
+            .ToDictionary(p => p.Id, p => p.Name.Trim(), StringComparer.Ordinal);
+        var projectByTeam = (await _teams.GetAllAsync())
+            .Where(t => projectNames.ContainsKey(t.ProjectId))
+            .ToDictionary(t => t.Id, t => projectNames[t.ProjectId], StringComparer.Ordinal);
+
+        foreach (var group in (await _memberships.GetAllAsync()).GroupBy(m => m.EmployeeId, StringComparer.Ordinal))
+        {
+            var names = group
+                .Select(m => projectByTeam.GetValueOrDefault(m.TeamId))
+                .Where(n => n is not null)
+                .Select(n => n!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (names.Count > 0) result[group.Key] = names;
+        }
+
+        return result;
     }
 
     public async Task<PayrollXeroSyncResult> SyncAsync(string runId)
@@ -360,7 +416,7 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
             var mapping = loaded.Value.Input.Mapping;
             run.XeroSplitSnapshotJson = mapping.JournalMode == XeroJournalMode.AI_SPLIT
                 ? JsonSerializer.Serialize(
-                    new { mapping.SplitPrompt, mapping.SplitRules, PostedAt = run.XeroSyncedAt },
+                    new { mapping.SplitPrompt, mapping.SplitAnswers, mapping.SplitRules, PostedAt = run.XeroSyncedAt },
                     PayrollSnapshotJson.Options)
                 : null;
             await _runs.UpdateAsync(run);

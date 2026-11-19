@@ -952,13 +952,14 @@
         <p><strong>Scope:</strong> <code>payroll:write</code>. <strong>Module gate:</strong> Payroll. Also needs the admin's &ldquo;change settings&rdquo; access, which a key always has.</p>
 
         <h3>The saved split (inside <code>xeroMappingJson</code>)</h3>
-        <p>All three fields are optional and sit beside <code>accounts</code>. Without them the journal posts exactly as mapped (<code>STANDARD</code>).</p>
+        <p>All four fields are optional and sit beside <code>accounts</code>. Without them the journal posts exactly as mapped (<code>STANDARD</code>).</p>
         <div class="table-wrap">
           <table>
             <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
               <tr><td><code>journalMode</code></td><td>string</td><td><code>STANDARD</code> (default) or <code>AI_SPLIT</code>. With <code>AI_SPLIT</code>, posting builds the usual journal and then re-divides the debit lines named in <code>splitRules</code>. Posting applies the saved rules by code and never calls AI.</td></tr>
               <tr><td><code>splitPrompt</code></td><td>string | null</td><td>The admin's words the rules came from. Kept for reference only.</td></tr>
+              <tr><td><code>splitAnswers</code></td><td>string[]</td><td>The admin's answers to the AI's questions, kept apart from <code>splitPrompt</code> so the prompt stays short. Part of the instruction the rules came from; reference only, like the prompt. Defaults to an empty list.</td></tr>
               <tr><td><code>splitRules</code></td><td>rule[]</td><td>Up to 50 rules, see below.</td></tr>
             </tbody>
           </table>
@@ -969,8 +970,8 @@
             <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
             <tbody>
               <tr><td><code>source</code></td><td>string</td><td>The debit it divides: <code>salary</code>, <code>overtime</code>, <code>allowance</code>, <code>epfEmployer</code>, <code>socsoEmployer</code>, <code>eisEmployer</code>, <code>hrdfEmployer</code> or <code>taxBorneByEmployer</code>. Credits (deductions, accruals, net pay) are never split.</td></tr>
-              <tr><td><code>basis</code></td><td>string</td><td>How the rule takes its share: <code>DEPARTMENT</code> (actual amounts of employees in the departments in <code>match</code>), <code>EMPLOYEE</code> (actual amounts of the employees in <code>match</code>), <code>FIXED</code> (<code>value</code> in MYR), <code>PERCENT</code> (<code>value</code> percent of what the department and employee rules left), <code>REMAINDER</code> (whatever is left, rounding cents included).</td></tr>
-              <tr><td><code>match</code></td><td>string[]</td><td>Department names (<code>DEPARTMENT</code>) or <code>employeeProfileId</code>s (<code>EMPLOYEE</code>); empty otherwise.</td></tr>
+              <tr><td><code>basis</code></td><td>string</td><td>How the rule takes its share: <code>DEPARTMENT</code> (actual amounts of employees in the departments in <code>match</code>), <code>PROJECT</code> (actual amounts of employees in a team under the projects in <code>match</code>), <code>EMPLOYEE</code> (actual amounts of the employees in <code>match</code>), <code>FIXED</code> (<code>value</code> in MYR), <code>PERCENT</code> (<code>value</code> percent of what the department and employee rules left), <code>REMAINDER</code> (whatever is left, rounding cents included).</td></tr>
+              <tr><td><code>match</code></td><td>string[]</td><td>Department names (<code>DEPARTMENT</code>), project names (<code>PROJECT</code>) or <code>employeeProfileId</code>s (<code>EMPLOYEE</code>); empty otherwise.</td></tr>
               <tr><td><code>value</code></td><td>number | null</td><td>MYR for <code>FIXED</code>, a percentage for <code>PERCENT</code> (<code>40</code> is 40%). Ignored (set to null) for other bases.</td></tr>
               <tr><td><code>accountCode</code></td><td>string</td><td>The Xero account code the share posts to. Must exist and be active.</td></tr>
               <tr><td><code>tracking</code></td><td>{ category, option }[]</td><td>Up to two tracking tags, by name as Xero shows them.</td></tr>
@@ -986,6 +987,8 @@
             <tbody>
               <tr><td><code>prompt</code></td><td>string</td><td>Yes</td><td>5&ndash;4000 characters. The AI sees account, tracking, department and staff names, never amounts.</td></tr>
               <tr><td><code>runId</code></td><td>string | null</td><td>No</td><td>Max 40. The payroll run to try the rules on. Omit for the latest run that has payslips.</td></tr>
+              <tr><td><code>conversation</code></td><td>turn[]</td><td>No</td><td>Max 40 turns, oldest first: the AI's earlier questions and the admin's answers. Omit for a fresh prompt. A turn is <code>{ role, text }</code> where <code>role</code> is <code>admin</code> or <code>ai</code> and <code>text</code> is required, max 8000 characters.</td></tr>
+              <tr><td><code>currentRules</code></td><td>rule[]</td><td>No</td><td>Max 50. The rules the AI produced last, so a follow-up refines them instead of starting again.</td></tr>
             </tbody>
           </table>
         </div>
@@ -999,9 +1002,9 @@
               <tr><td><code>error</code></td><td>null</td><td>Always null on a 200.</td></tr>
               <tr><td><code>rules</code></td><td>rule[]</td><td>The rules the AI produced (see above).</td></tr>
               <tr><td><code>summary</code></td><td>string | null</td><td>The AI's one-paragraph reading of the prompt.</td></tr>
-              <tr><td><code>questions</code></td><td>string[]</td><td>Anything it was unsure about, or a name in the prompt it could not find (that rule is left out).</td></tr>
+              <tr><td><code>questions</code></td><td>question[]</td><td>Anything it was unsure about, or a name in the prompt it could not find (that rule is left out). Each is <code>{ text, options }</code>: <code>text</code> is a string and <code>options</code> a string[] of likely answers taken from the company's data (may be empty). To answer, send the question and your answer as <code>ai</code> and <code>admin</code> turns in <code>conversation</code>. <strong>Breaking change:</strong> this used to be a list of plain strings.</td></tr>
               <tr><td><code>provider</code></td><td>string | null</td><td><code>claude</code> or <code>gemini</code>.</td></tr>
-              <tr><td><code>preview</code></td><td>object</td><td>The rules tried on a run: <code>ok</code>, <code>runId</code>, <code>runLabel</code> (both null when there is no run yet), <code>replaced</code> (the standard lines the split replaces), <code>lines</code> (the whole journal with the split applied), <code>checks</code>, <code>replacedTotal</code>, <code>totalDebits</code>, <code>totalCredits</code>. Lines are <code>{ accountCode, description, amount, trackingOption, source }</code>, as in the <a href="payroll-runs.html#xero-preview">Xero preview</a>. A check is <code>{ label, passed, detail }</code>, covering that accounts and tracking options exist in Xero, that named departments and employees exist, that shares add up, and that each split total equals the line it replaces.</td></tr>
+              <tr><td><code>preview</code></td><td>object</td><td>The rules tried on a run: <code>ok</code>, <code>runId</code>, <code>runLabel</code> (both null when there is no run yet), <code>replaced</code> (the standard lines the split replaces), <code>lines</code> (the whole journal with the split applied), <code>checks</code>, <code>replacedTotal</code>, <code>totalDebits</code>, <code>totalCredits</code>. Lines are <code>{ accountCode, description, amount, trackingOption, source }</code>, as in the <a href="payroll-runs.html#xero-preview">Xero preview</a>. A check is <code>{ label, passed, detail, warning }</code>; <code>warning</code> is an optional boolean, true when the check passed (posting is not blocked) but deserves a look, for example staff in teams under more than one project, whose whole pay goes to the first project rule that matches. It covers that accounts and tracking options exist in Xero, that named departments, projects and employees exist, that shares add up, and that each split total equals the line it replaces.</td></tr>
             </tbody>
           </table>
         </div>
@@ -1017,6 +1020,8 @@
         <ul>
           <li><strong>Not saved.</strong> The result is a draft for review. Save it with <code>PUT /payroll/settings</code>, which <a href="#payroll-settings">replaces the whole row</a>, so read the current settings first and put <code>journalMode: "AI_SPLIT"</code>, <code>splitPrompt</code> and the rules (as <code>splitRules</code>) into <code>xeroMappingJson</code> yourself.</li>
           <li><strong>AI is not deterministic.</strong> The same prompt can give different rules. Read <code>rules</code> and <code>checks</code> before saving; <code>ok: false</code> means posting would be refused.</li>
+          <li><strong>Follow-ups.</strong> Send the earlier turns in <code>conversation</code> and the last rules in <code>currentRules</code>; the saved <code>splitAnswers</code> are not sent for you, so keep the admin's answers yourself and save them in <code>xeroMappingJson</code>.</li>
+          <li><strong>Projects come from teams.</strong> A <code>PROJECT</code> rule takes an employee's whole pay when they are in a team under a named project. Only live projects with at least one team can be matched.</li>
           <li><strong>Metered.</strong> Each call makes an AI request. Use <a href="#xero-split-check">check</a> to re-try rules you already have.</li>
         </ul>
 <pre><code>curl -X POST https://&lt;api-host&gt;/payroll/settings/xero/split/generate \

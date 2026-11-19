@@ -47,7 +47,8 @@ public class PayrollJournalSplitService : IPayrollJournalSplitService
         AiTextResult answer;
         try
         {
-            answer = await _ai.GenerateJsonAsync(SystemPrompt, UserText(dto.Prompt, org), ct);
+            answer = await _ai.GenerateJsonAsync(
+                SystemPrompt, UserText(dto.Prompt, dto.Conversation, dto.CurrentRules, org), ct);
         }
         catch (AiConfigurationException ex)
         {
@@ -71,11 +72,11 @@ public class PayrollJournalSplitService : IPayrollJournalSplitService
                 "The AI's answer couldn't be read as split rules. Try rewording the prompt.");
         }
 
-        var rules = Normalise(reply.Rules ?? []);
+        var rules = Normalise(reply.Rules);
         var preview = await _sync.PreviewSplitAsync(dto.RunId, rules);
 
         return new XeroSplitGenerateResult(
-            preview.Ok, null, rules, reply.Summary, reply.Questions ?? [], answer.Provider, preview);
+            preview.Ok, null, rules, reply.Summary, reply.Questions, answer.Provider, preview);
     }
 
     public async Task<XeroSplitGenerateResult> CheckAsync(CheckXeroSplitDto dto)
@@ -132,6 +133,8 @@ public class PayrollJournalSplitService : IPayrollJournalSplitService
             title) before a broad one.
           - When the admin says who wins for someone in two groups, order the rules that way.
           - "Everyone else" is a REMAINDER rule.
+          - "HQ projects", "staff on project X" and similar mean a PROJECT rule when X is a listed
+            project; prefer it over naming the staff one by one.
 
         Rules:
           - Use only accounts, tracking categories/options, values and employee ids that appear
@@ -145,12 +148,23 @@ public class PayrollJournalSplitService : IPayrollJournalSplitService
             category is X and whose option matches the line's label/value.
           - If the admin refers to the saved rules ("last month's rule", "same as before"),
             start from savedRules.
+          - When something is unclear or missing, ask. Each question is short and specific, and
+            "options" lists the likely answers you can see in the context (account codes with
+            names, employee names, department names), at most 6, each a complete answer the
+            admin could click. Use [] when no option fits.
+          - There may be a conversation after the instructions: your earlier questions and the
+            admin's answers. Treat the answers as part of the instructions, keep the rules that
+            were already right, and only ask what is still unclear. Never repeat a question that
+            has been answered.
 
         Reply with one JSON object and nothing else:
-        {"rules":[...], "summary":"one or two sentences restating the split", "questions":["..."]}
+        {"rules":[...], "summary":"one or two sentences restating the split",
+         "questions":[{"question":"...","options":["...","..."]}]}
         """;
 
-    private static string UserText(string prompt, PayrollXeroSplitOrgContext org)
+    private static string UserText(
+        string prompt, IReadOnlyList<XeroSplitTurnDto> conversation,
+        IReadOnlyList<PayrollJournalSplitRule> currentRules, PayrollXeroSplitOrgContext org)
     {
         static IEnumerable<string> Sorted(IEnumerable<string> values) =>
             values.OrderBy(v => v, StringComparer.OrdinalIgnoreCase);
@@ -180,18 +194,39 @@ public class PayrollJournalSplitService : IPayrollJournalSplitService
             deductionTypes = Types(PayrollXeroAccounts.Deduction),
             employees = org.Context.Employees
                 .Where(e => !string.IsNullOrWhiteSpace(e.Value))
-                .Select(e => new { id = e.Key, name = e.Value }),
+                .Select(e => new
+                {
+                    id = e.Key,
+                    name = e.Value,
+                    projects = org.Context.EmployeeProjects.GetValueOrDefault(e.Key) ?? [],
+                }),
             savedRules = org.SavedRules,
         };
 
-        return "Context:\n" + JsonSerializer.Serialize(context, Json)
+        var text = "Context:\n" + JsonSerializer.Serialize(context, Json)
             + "\n\nThe admin's instructions:\n" + prompt.Trim();
+
+        if (conversation.Count > 0)
+        {
+            text += "\n\nConversation since then (oldest first):\n" + string.Join("\n\n",
+                conversation.Select(t => (t.Role == "ai" ? "You (AI):\n" : "Admin:\n") + t.Text.Trim()));
+        }
+
+        if (currentRules.Count > 0)
+        {
+            text += "\n\nThe rules you produced last (refine these):\n"
+                + JsonSerializer.Serialize(currentRules, Json);
+        }
+
+        return text;
     }
 
     // ─── Reading the reply ──────────────────────────────────────────────
 
     private sealed record Reply(
-        List<PayrollJournalSplitRule>? Rules, string? Summary, List<string>? Questions);
+        List<PayrollJournalSplitRule> Rules, string? Summary, List<XeroSplitQuestion> Questions);
+
+    private sealed record RawReply(List<PayrollJournalSplitRule>? Rules, string? Summary);
 
     private static Reply Parse(string raw)
     {
@@ -206,8 +241,51 @@ public class PayrollJournalSplitService : IPayrollJournalSplitService
         var end = text.LastIndexOf('}');
         if (start < 0 || end <= start) throw new JsonException("No JSON object in the reply.");
 
-        return JsonSerializer.Deserialize<Reply>(text[start..(end + 1)], Json)
-            ?? throw new JsonException("Empty reply.");
+        var json = text[start..(end + 1)];
+        var reply = JsonSerializer.Deserialize<RawReply>(json, Json) ?? throw new JsonException("Empty reply.");
+
+        return new Reply(reply.Rules ?? [], reply.Summary, Questions(json));
+    }
+
+    // Each question as { question, options }; a plain string (the older
+    // shape, or a model that ignored the schema) is a question with no options.
+    private static List<XeroSplitQuestion> Questions(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        // Case-insensitive, like the rest of the reply.
+        var questions = doc.RootElement.EnumerateObject()
+            .FirstOrDefault(p => string.Equals(p.Name, "questions", StringComparison.OrdinalIgnoreCase))
+            .Value;
+        if (questions.ValueKind != JsonValueKind.Array) return [];
+
+        var list = new List<XeroSplitQuestion>();
+        foreach (var q in questions.EnumerateArray())
+        {
+            if (q.ValueKind == JsonValueKind.String)
+            {
+                if (!string.IsNullOrWhiteSpace(q.GetString())) list.Add(new XeroSplitQuestion(q.GetString()!.Trim(), []));
+                continue;
+            }
+
+            if (q.ValueKind != JsonValueKind.Object) continue;
+
+            var question = (q.TryGetProperty("question", out var t) || q.TryGetProperty("text", out t))
+                && t.ValueKind == JsonValueKind.String ? t.GetString()?.Trim() : null;
+            if (string.IsNullOrWhiteSpace(question)) continue;
+
+            var options = q.TryGetProperty("options", out var o) && o.ValueKind == JsonValueKind.Array
+                ? o.EnumerateArray()
+                    .Where(x => x.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(x.GetString()))
+                    .Select(x => x.GetString()!.Trim())
+                    .Distinct(StringComparer.Ordinal)
+                    .Take(6)
+                    .ToList()
+                : [];
+
+            list.Add(new XeroSplitQuestion(question, options));
+        }
+
+        return list;
     }
 
     // Trim what came back, and drop what can never be valid (a blank

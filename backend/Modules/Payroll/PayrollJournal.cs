@@ -85,7 +85,7 @@ public static class PayrollJournal
         // identifiers: a split follows who is where NOW.
         public string? EmployeeId { get; init; }
         public string? Department { get; init; }
-        // Every active project they are on, through its teams.
+        // The live projects of the teams this person is in, for PROJECT rules.
         public IReadOnlyList<string> Projects { get; init; } = [];
         public string? JobTitle { get; init; }
         // `EmploymentStatus` as written (PERMANENT, CONTRACT…).

@@ -12,7 +12,32 @@ public sealed class GenerateXeroSplitDto
     // The run to try the rules on. Null = the latest run with payslips.
     [MaxLength(40)]
     public string? RunId { get; set; }
+
+    // The back-and-forth after the first prompt, oldest first: the AI's
+    // questions and the admin's answers. Empty for a fresh prompt. The client
+    // sends only the newest turns, well inside this limit.
+    [MaxLength(40)]
+    public List<XeroSplitTurnDto> Conversation { get; set; } = [];
+
+    // The rules the AI produced last, so a follow-up refines them rather than
+    // starting again. Kept out of the turns so they stay short.
+    [MaxLength(50)]
+    public List<PayrollJournalSplitRule> CurrentRules { get; set; } = [];
 }
+
+public sealed class XeroSplitTurnDto
+{
+    // "admin" or "ai".
+    [Required, RegularExpression("^(admin|ai)$")]
+    public string Role { get; set; } = "admin";
+
+    [Required, MaxLength(8000)]
+    public string Text { get; set; } = string.Empty;
+}
+
+// Something the AI was unsure about, with the likely answers it can see in
+// the company's data (accounts, staff…) — shown as one-click choices.
+public sealed record XeroSplitQuestion(string Text, IReadOnlyList<string> Options);
 
 // Re-check rules already in hand (saved, or edited) without calling AI.
 public sealed class CheckXeroSplitDto
@@ -31,7 +56,7 @@ public sealed record XeroSplitGenerateResult(
     // The AI's one-paragraph reading of the prompt, and anything it was
     // unsure about — shown so the admin can correct the prompt.
     string? Summary,
-    IReadOnlyList<string> Questions,
+    IReadOnlyList<XeroSplitQuestion> Questions,
     // "claude" or "gemini".
     string? Provider,
     PayrollXeroSplitPreview? Preview)

@@ -75,6 +75,11 @@ public sealed record PayrollXeroMapping
 
     public string? SplitPrompt { get; init; }
 
+    // The admin's answers to the AI's questions, kept apart from the prompt so
+    // the prompt stays editable and within its length. Part of the instruction
+    // the rules came from, so they are snapshotted with it.
+    public IReadOnlyList<string> SplitAnswers { get; init; } = [];
+
     public IReadOnlyList<PayrollJournalSplitRule> SplitRules { get; init; } = [];
 }
 
@@ -88,7 +93,8 @@ public enum XeroJournalMode
 //
 // People rules — the actual amounts of the people they match:
 //   DEPARTMENT      — department (free text on the payroll profile)
-//   PROJECT         — any active project they are on (through its teams)
+//   PROJECT         — any live project they are on (through its teams); someone
+//                     on two named projects goes to the first rule, and is flagged
 //   JOB_TITLE       — job title in this company
 //   EMPLOYMENT_TYPE — employment type on the profile (PERMANENT, CONTRACT…)
 //   ROLE            — Employee or Supervisor
@@ -108,11 +114,11 @@ public enum XeroJournalMode
 public enum SplitBasis
 {
     DEPARTMENT,
+    PROJECT,
     EMPLOYEE,
     FIXED,
     PERCENT,
     REMAINDER,
-    PROJECT,
     JOB_TITLE,
     EMPLOYMENT_TYPE,
     ROLE,
