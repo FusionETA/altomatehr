@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: bb201f65
+  user-guide-covered-up-to: a8a07fb2
 -->
 <html lang="en">
 <head>
@@ -801,13 +801,20 @@
       <li>Under <strong>Tell the engine how to split</strong>, describe the split in words, or pick one of the
         suggestions to start from. Mention account names the way they appear in Xero.</li>
       <li>Press <span class="btn-name">Generate split</span>. The page shows the rules it understood, the split
-        journal and a list of checks. If the AI wasn't sure about something, it says so here; reword your
-        description and generate again.</li>
+        journal and a list of checks. If the AI wasn't sure about something, it says so here; it lists
+        questions, each with suggested answers you can click. Click one, or type your own in
+        <strong>Answer the AI</strong>, then press <span class="btn-name">Send answer</span>. The rules are refined
+        and <strong>Your answers so far</strong> shows what you've told it. <span class="btn-name">Start over</span>
+        clears those answers. Changing the description, or picking a suggestion again, also starts over.</li>
       <li>Read the rules, the split journal and the checks. Posting only works when every check passes.</li>
       <li>Switch on <strong>Use the AI split when posting</strong>. The switch can't be turned on until you have
         generated rules and every check passes.</li>
       <li>Press <span class="btn-name">Save changes</span> in the bar at the bottom (it reads <span class="btn-name">Save payroll settings</span> when nothing has changed yet).</li>
     </ol>
+    <p><strong>Splitting by project:</strong> rules can also split by project. A person's projects come from the
+      teams they belong to, and their whole pay follows that project. If someone is in teams under two projects,
+      they go to the first rule that matches and show as <em>flagged</em> in the checks. Flagged people don't block
+      posting, but have a look at them before you switch the AI split on.</p>
     <p><strong>What happens when you post:</strong> posting applies the saved rules and doesn't ask the AI again,
       so the same run always posts the same way. If a check fails at that point, posting is blocked until you fix the
       rules. Each posted run keeps the rules it was posted with, so changing the rules later doesn't alter runs that are
