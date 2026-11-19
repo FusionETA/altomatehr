@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import {
   getXeroTrackingCategories,
@@ -33,7 +33,9 @@ export function XeroSyncSection({
   onChange,
 }: {
   mapping: PayrollXeroMapping;
-  onChange: (next: PayrollXeroMapping) => void;
+  // A state setter, so a slow AI call can update the mapping as it is THEN,
+  // not as it was when the call started.
+  onChange: Dispatch<SetStateAction<PayrollXeroMapping>>;
 }) {
   const [view, setView] = useState<XeroView>("standard");
   const aiOn = mapping.journalMode === "AI_SPLIT";

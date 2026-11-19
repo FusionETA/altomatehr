@@ -166,6 +166,23 @@ public class PayrollJournalSplitTests
     }
 
     [Fact]
+    public void Fixed_shares_are_refused_when_department_rules_already_took_everything()
+    {
+        // Without the guard this "balanced" with a −2,000 remainder line.
+        var input = Input(Row("e1", "Sales", 6000m), Row("e2", "Operations", 4000m));
+
+        var result = Split(input,
+            Rule(SplitBasis.DEPARTMENT, "6110", match: ["Sales"]),
+            Rule(SplitBasis.DEPARTMENT, "6120", match: ["Operations"]),
+            Rule(SplitBasis.FIXED, "6130", 2000m),
+            Rule(SplitBasis.REMAINDER, "6130"));
+
+        Assert.False(result.Ok);
+        Assert.Contains("nothing to share", result.Error);
+        Assert.Empty(result.Lines);
+    }
+
+    [Fact]
     public void An_employee_is_taken_by_the_first_rule_that_names_them()
     {
         var input = Input(Row("e1", "Sales", 4000m), Row("e2", "Sales", 3000m));

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { Check, CircleAlert, Loader2, Sparkles, X } from "lucide-react";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { Switch } from "@/shared/components/ui/switch";
@@ -63,7 +63,7 @@ export function XeroAiSplitSection({
   onChange,
 }: {
   mapping: PayrollXeroMapping;
-  onChange: (next: PayrollXeroMapping) => void;
+  onChange: Dispatch<SetStateAction<PayrollXeroMapping>>;
 }) {
   const accountsQuery = useCachedQuery("/accounts?includeLiabilities=true", () =>
     getAccountsWithLiabilities().catch(() => [] as ChartOfAccount[]),
@@ -107,14 +107,16 @@ export function XeroAiSplitSection({
     try {
       const next = await generateXeroSplit(prompt);
       setResult(next);
-      onChange({
-        ...mapping,
+      // Applied to the mapping as it is NOW: the AI can take a while, and
+      // the admin may have changed the standard accounts meanwhile.
+      onChange((current) => ({
+        ...current,
         splitPrompt: prompt.trim(),
         splitRules: next.rules,
         // Rules that fail a check can't post. Rather than leave the switch on
         // over them, turn it off; the admin turns it back on once they pass.
-        journalMode: next.ok ? mapping.journalMode : "STANDARD",
-      });
+        journalMode: next.ok ? current.journalMode : "STANDARD",
+      }));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -124,7 +126,7 @@ export function XeroAiSplitSection({
 
   const clearRules = () => {
     setResult(null);
-    onChange({ ...mapping, splitRules: [], journalMode: "STANDARD" });
+    onChange((current) => ({ ...current, splitRules: [], journalMode: "STANDARD" }));
   };
 
   const splitSources = new Set(rules.map((r) => r.source));
@@ -151,7 +153,7 @@ export function XeroAiSplitSection({
             checked={aiOn}
             disabled={!aiOn && (!passed || rules.length === 0)}
             onCheckedChange={(on) =>
-              onChange({ ...mapping, journalMode: on ? "AI_SPLIT" : "STANDARD" })
+              onChange((current) => ({ ...current, journalMode: on ? "AI_SPLIT" : "STANDARD" }))
             }
           />
         </div>

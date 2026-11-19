@@ -287,7 +287,18 @@ public static class PayrollJournalSplit
         var leftover = Money.Round2(pool - allocated);
         var remainder = rules.FirstOrDefault(r => r.Basis == SplitBasis.REMAINDER);
 
-        if (pool > 0m && allocated > pool)
+        // Fixed amounts and percentages share what the employee rules left.
+        // With nothing left (or less than nothing), any share would be paid for
+        // by a negative remainder line, which balances but books cost that
+        // doesn't exist. Refused whatever the pool's sign.
+        if (shares.Count > 0 && pool <= 0m)
+        {
+            problems.Add($"{label}: department and employee rules take all of it "
+                + $"({total:#,0.00}), so fixed amounts and percentages have nothing to share");
+            return null;
+        }
+
+        if (allocated > pool && shares.Count > 0)
         {
             problems.Add($"{label}: fixed amounts and percentages take {allocated:#,0.00} "
                 + $"but only {pool:#,0.00} is left to share");
