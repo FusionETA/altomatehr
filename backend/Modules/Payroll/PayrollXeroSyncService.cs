@@ -232,14 +232,14 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
         foreach (var p in payslips) employees[p.EmployeeProfileId] = p.SnapshotName;
 
         var projectsByUser = await ProjectsByUserAsync();
+        var projectsWithTeams = await ProjectsWithTeamsAsync();
 
         return new PayrollJournalSplit.Context
         {
             ActiveAccounts = active,
             TrackingCategories = tracking,
             Departments = departments!,
-            Projects = projectsByUser.Values.SelectMany(p => p)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase),
+            Projects = projectsWithTeams,
             Employees = employees,
             EmployeeProjects = payslips
                 .GroupBy(p => p.EmployeeProfileId, StringComparer.Ordinal)
@@ -248,6 +248,18 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
                     g => projectsByUser.GetValueOrDefault(g.First().UserId) ?? (IReadOnlyList<string>)[],
                     StringComparer.Ordinal),
         };
+    }
+
+    // Live projects that have at least one team, members or not.
+    private async Task<HashSet<string>> ProjectsWithTeamsAsync()
+    {
+        if (_teams is null || _projects is null) return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var teamProjects = (await _teams.GetAllAsync()).Select(t => t.ProjectId).ToHashSet(StringComparer.Ordinal);
+        return (await _projects.GetAllAsync())
+            .Where(p => !p.IsArchived && !string.IsNullOrWhiteSpace(p.Name) && teamProjects.Contains(p.Id))
+            .Select(p => p.Name.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
     // User id → the names of the projects their teams belong to. Live
@@ -343,7 +355,7 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
             var mapping = loaded.Value.Input.Mapping;
             run.XeroSplitSnapshotJson = mapping.JournalMode == XeroJournalMode.AI_SPLIT
                 ? JsonSerializer.Serialize(
-                    new { mapping.SplitPrompt, mapping.SplitRules, PostedAt = run.XeroSyncedAt },
+                    new { mapping.SplitPrompt, mapping.SplitAnswers, mapping.SplitRules, PostedAt = run.XeroSyncedAt },
                     PayrollSnapshotJson.Options)
                 : null;
             await _runs.UpdateAsync(run);

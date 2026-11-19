@@ -75,6 +75,11 @@ public sealed record PayrollXeroMapping
 
     public string? SplitPrompt { get; init; }
 
+    // The admin's answers to the AI's questions, kept apart from the prompt so
+    // the prompt stays editable and within its length. Part of the instruction
+    // the rules came from, so they are snapshotted with it.
+    public IReadOnlyList<string> SplitAnswers { get; init; } = [];
+
     public IReadOnlyList<PayrollJournalSplitRule> SplitRules { get; init; } = [];
 }
 

@@ -223,6 +223,25 @@ public class PayrollJournalSplitTests
     }
 
     [Fact]
+    public void No_flag_when_an_earlier_rule_took_them_or_only_one_of_their_projects_is_named()
+    {
+        var input = Input(
+            Row("e1", "Sales", 4000m, projects: ["HQ", "Site A"]),   // taken by the department rule
+            Row("e2", "", 3000m, projects: ["HQ", "Site B"]));       // only HQ has a rule
+
+        var result = Split(input,
+            Rule(SplitBasis.DEPARTMENT, "6110", match: ["Sales"]),
+            Rule(SplitBasis.PROJECT, "6120", match: ["HQ"]),
+            Rule(SplitBasis.PROJECT, "6130", match: ["Site A"]),
+            Rule(SplitBasis.REMAINDER, "6130"));
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal(4000m, Debited(result, "6110"));
+        Assert.Equal(3000m, Debited(result, "6120"));
+        Assert.DoesNotContain(result.Checks, c => c.Warning);
+    }
+
+    [Fact]
     public void An_unknown_project_is_refused()
     {
         var result = Split(Input(Row("e1", "", 1000m, projects: ["HQ"])),

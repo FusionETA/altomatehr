@@ -206,18 +206,38 @@ public static class PayrollJournalSplit
         // People a PROJECT rule took who are in teams under more than one
         // project: their whole pay went to the first rule that matched. Not a
         // failure — flagged so an admin can see who, and change the rules.
-        var multiProject = rows
-            .Where(r => r.Projects.Count > 1
-                && rules.Any(rule => rule.Basis == SplitBasis.PROJECT && Matches(rule, r)))
-            .Select(r => $"{r.EmployeeName} ({string.Join(", ", r.Projects)})")
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
+        var multiProject = new List<string>();
+        foreach (var group in rules.GroupBy(r => r.Source, StringComparer.Ordinal))
+        {
+            var projectRules = group.Where(r => r.Basis == SplitBasis.PROJECT).ToList();
+            if (projectRules.Count == 0) continue;
+
+            foreach (var row in rows)
+            {
+                // Only when a PROJECT rule is what took them (not an earlier
+                // department or employee rule) and the rules name two or more
+                // of their projects — otherwise there was no choice to make.
+                var first = group.FirstOrDefault(r => IsEmployeeRule(r.Basis) && Matches(r, row));
+                if (first?.Basis != SplitBasis.PROJECT) continue;
+
+                var named = row.Projects
+                    .Where(p => projectRules.Any(r => r.Match.Any(m =>
+                        string.Equals(m.Trim(), p.Trim(), StringComparison.OrdinalIgnoreCase))))
+                    .ToList();
+                if (named.Count < 2) continue;
+
+                multiProject.Add($"{row.EmployeeName} ({string.Join(", ", named)}) → "
+                    + $"{(string.IsNullOrWhiteSpace(first.Label) ? string.Join(", ", first.Match) : first.Label.Trim())}");
+            }
+        }
+
+        multiProject = [.. multiProject.Distinct(StringComparer.Ordinal)];
         if (multiProject.Count > 0)
         {
             checks.Add(new Check(
                 "Staff in more than one project",
                 true,
-                $"Their whole pay goes to the first project rule that matches: {string.Join("; ", multiProject)}.",
+                $"Their whole pay goes to the first project rule that matches them: {string.Join("; ", multiProject)}.",
                 Warning: true));
         }
 

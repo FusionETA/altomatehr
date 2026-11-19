@@ -47,7 +47,8 @@ public class PayrollJournalSplitService : IPayrollJournalSplitService
         AiTextResult answer;
         try
         {
-            answer = await _ai.GenerateJsonAsync(SystemPrompt, UserText(dto.Prompt, dto.Conversation, org), ct);
+            answer = await _ai.GenerateJsonAsync(
+                SystemPrompt, UserText(dto.Prompt, dto.Conversation, dto.CurrentRules, org), ct);
         }
         catch (AiConfigurationException ex)
         {
@@ -141,7 +142,8 @@ public class PayrollJournalSplitService : IPayrollJournalSplitService
         """;
 
     private static string UserText(
-        string prompt, IReadOnlyList<XeroSplitTurnDto> conversation, PayrollXeroSplitOrgContext org)
+        string prompt, IReadOnlyList<XeroSplitTurnDto> conversation,
+        IReadOnlyList<PayrollJournalSplitRule> currentRules, PayrollXeroSplitOrgContext org)
     {
         var context = new
         {
@@ -174,6 +176,12 @@ public class PayrollJournalSplitService : IPayrollJournalSplitService
         {
             text += "\n\nConversation since then (oldest first):\n" + string.Join("\n\n",
                 conversation.Select(t => (t.Role == "ai" ? "You (AI):\n" : "Admin:\n") + t.Text.Trim()));
+        }
+
+        if (currentRules.Count > 0)
+        {
+            text += "\n\nThe rules you produced last (refine these):\n"
+                + JsonSerializer.Serialize(currentRules, Json);
         }
 
         return text;
@@ -210,11 +218,11 @@ public class PayrollJournalSplitService : IPayrollJournalSplitService
     private static List<XeroSplitQuestion> Questions(string json)
     {
         using var doc = JsonDocument.Parse(json);
-        if (!doc.RootElement.TryGetProperty("questions", out var questions)
-            || questions.ValueKind != JsonValueKind.Array)
-        {
-            return [];
-        }
+        // Case-insensitive, like the rest of the reply.
+        var questions = doc.RootElement.EnumerateObject()
+            .FirstOrDefault(p => string.Equals(p.Name, "questions", StringComparison.OrdinalIgnoreCase))
+            .Value;
+        if (questions.ValueKind != JsonValueKind.Array) return [];
 
         var list = new List<XeroSplitQuestion>();
         foreach (var q in questions.EnumerateArray())

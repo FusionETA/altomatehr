@@ -56,6 +56,11 @@ const SUGGESTIONS: { label: string; text: string }[] = [
   },
 ];
 
+// How much of the back-and-forth is sent each time (server allows 40 turns),
+// and how many answers are kept with the saved prompt.
+const MAX_TURNS = 20;
+const MAX_ANSWERS = 20;
+
 const money = (n: number) =>
   n.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -76,9 +81,11 @@ export function XeroAiSplitSection({
   const [busy, setBusy] = useState<"generate" | "check" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // The back-and-forth after the prompt: each AI reply (its questions and the
-  // rules it had) and each answer. Sent with every follow-up so the AI keeps
-  // what it already got right and only asks what is still open.
+  // Every answer given since the prompt last changed — saved alongside the
+  // prompt (not inside it), so the prompt stays editable and within limits.
+  const [answers, setAnswers] = useState<string[]>(mapping.splitAnswers ?? []);
+  // This session's back-and-forth (the AI's questions, the admin's answers),
+  // sent with each follow-up so the AI refines instead of starting over.
   const [conversation, setConversation] = useState<XeroSplitTurn[]>([]);
   const [answer, setAnswer] = useState("");
 
@@ -118,36 +125,51 @@ export function XeroAiSplitSection({
   const salaryAccountId = mapping.accounts.salary ?? null;
   const salaryAccount = accounts.find((a) => a.id === salaryAccountId);
 
-  // Generate starts a fresh conversation; an answer continues the current one.
+  // A changed prompt (typed, or a suggestion picked) is a new request: the
+  // old questions, answers and conversation no longer apply.
+  const changePrompt = (text: string) => {
+    setPrompt(text);
+    setConversation([]);
+    setAnswers([]);
+    setAnswer("");
+    setResult((current) => (current ? { ...current, questions: [] } : current));
+  };
+
+  // Generate starts a fresh conversation (carrying any answers already given
+  // to this prompt); an answer continues the current one.
   const generate = async (reply?: string) => {
-    const sent: XeroSplitTurn[] = reply
-      ? [...conversation, { role: "admin", text: reply.trim() }]
-      : [];
+    const text = reply?.trim();
+    const sent: XeroSplitTurn[] = text
+      ? [...conversation, { role: "admin", text }]
+      : answers.length > 0
+        ? [{ role: "admin", text: "Answers I gave to your earlier questions:\n" + answers.map((a) => `- ${a}`).join("\n") }]
+        : [];
+    // Only the newest turns travel — enough for the AI to follow, and well
+    // inside the server's limit however long the back-and-forth gets.
+    const trimmed = sent.slice(-MAX_TURNS);
+    // Refine what the AI produced last, unless this is a brand-new prompt.
+    const current = text || answers.length > 0 ? rules : [];
 
     setBusy("generate");
     setError(null);
     try {
-      const next = await generateXeroSplit(prompt, sent);
+      const next = await generateXeroSplit(prompt, trimmed, current);
+      const nextAnswers = text ? [...answers, text].slice(-MAX_ANSWERS) : answers;
       setResult(next);
-      setConversation([...sent, { role: "ai", text: aiTurn(next) }]);
+      setConversation([...trimmed, { role: "ai", text: aiTurn(next) }]);
+      setAnswers(nextAnswers);
       setAnswer("");
-
-      // What is saved as the prompt is the prompt plus every answer, so the
-      // saved settings (and each posted run's snapshot) say what was asked.
-      const answers = sent.filter((t) => t.role === "admin").map((t) => `- ${t.text}`);
-      const savedPrompt = answers.length
-        ? `${prompt.trim()}\n\nAnswers to the AI's questions:\n${answers.join("\n")}`
-        : prompt.trim();
 
       // Applied to the mapping as it is NOW: the AI can take a while, and
       // the admin may have changed the standard accounts meanwhile.
-      onChange((current) => ({
-        ...current,
-        splitPrompt: savedPrompt,
+      onChange((latest) => ({
+        ...latest,
+        splitPrompt: prompt.trim(),
+        splitAnswers: nextAnswers,
         splitRules: next.rules,
         // Rules that fail a check can't post. Rather than leave the switch on
         // over them, turn it off; the admin turns it back on once they pass.
-        journalMode: next.ok ? current.journalMode : "STANDARD",
+        journalMode: next.ok ? latest.journalMode : "STANDARD",
       }));
     } catch (e) {
       setError((e as Error).message);
@@ -158,17 +180,19 @@ export function XeroAiSplitSection({
 
   const startOver = () => {
     setConversation([]);
+    setAnswers([]);
     setAnswer("");
     setResult(null);
   };
 
-  const answersSoFar = conversation.filter((t) => t.role === "admin");
+  const answersSoFar = answers;
   const questions = result?.questions ?? [];
 
   const clearRules = () => {
     setResult(null);
     setConversation([]);
-    onChange((current) => ({ ...current, splitRules: [], journalMode: "STANDARD" }));
+    setAnswers([]);
+    onChange((latest) => ({ ...latest, splitRules: [], splitAnswers: [], journalMode: "STANDARD" }));
   };
 
   const splitSources = new Set(rules.map((r) => r.source));
@@ -260,11 +284,8 @@ export function XeroAiSplitSection({
           rows={4}
           maxLength={4000}
           value={prompt}
-          onChange={(e) => {
-            setPrompt(e.target.value);
-            // A changed prompt is a new request: the old questions no longer apply.
-            if (conversation.length > 0) setConversation([]);
-          }}
+          onChange={(e) => changePrompt(e.target.value)}
+          disabled={busy !== null}
           placeholder="e.g. Split 6100 Salaries & Wages: 40% to 6110 Salaries – Sales, 35% to 6120 Salaries – Operations, remainder to 6130 Salaries – Admin. Tag each line with the Department tracking option of the same name."
           className={`${TEXTAREA} mt-3`}
         />
@@ -275,7 +296,8 @@ export function XeroAiSplitSection({
               <button
                 key={s.label}
                 type="button"
-                onClick={() => setPrompt(s.text)}
+                onClick={() => changePrompt(s.text)}
+                disabled={busy !== null}
                 className="rounded-full border border-border/60 bg-muted/50 px-3 py-1 text-xs text-foreground transition hover:bg-muted"
               >
                 {s.label}
@@ -325,9 +347,9 @@ export function XeroAiSplitSection({
               </button>
             </div>
             <ul className="mt-1 list-disc space-y-0.5 pl-5 text-foreground">
-              {answersSoFar.map((t, i) => (
+              {answersSoFar.map((text, i) => (
                 <li key={i} className="whitespace-pre-line">
-                  {t.text}
+                  {text}
                 </li>
               ))}
             </ul>
@@ -534,7 +556,7 @@ export function XeroAiSplitSection({
 }
 
 // The AI's reply as it is sent back on the next turn: what it understood,
-// what it asked, and the rules it had — so it can refine rather than restart.
+// and what it asked. Its rules travel separately as currentRules.
 function aiTurn(result: XeroSplitResult): string {
   const parts: string[] = [];
   if (result.summary) parts.push(`Summary: ${result.summary}`);
@@ -543,8 +565,9 @@ function aiTurn(result: XeroSplitResult): string {
       "Questions I asked:\n" + result.questions.map((q, i) => `${i + 1}. ${q.text}`).join("\n"),
     );
   }
-  parts.push(`Rules so far: ${JSON.stringify(result.rules)}`);
-  return parts.join("\n\n");
+  // The rules travel separately (currentRules), so turns stay short.
+  if (parts.length === 0) parts.push(`Produced ${result.rules.length} rule(s).`);
+  return parts.join("\n\n").slice(0, 7000);
 }
 
 function RulesTable({

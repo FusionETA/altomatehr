@@ -1470,6 +1470,8 @@ export type PayrollXeroMapping = {
   // Posting applies the saved rules by code — no AI call.
   journalMode: XeroJournalMode;
   splitPrompt: string | null;
+  // The admin's answers to the AI's questions, kept apart from the prompt.
+  splitAnswers: string[];
   splitRules: XeroSplitRule[];
 };
 
@@ -1543,14 +1545,17 @@ export type XeroSplitTurn = { role: "admin" | "ai"; text: string };
 
 // Turn the admin's words into rules (AI) and try them on the latest run.
 // `conversation` carries the questions and answers since the first prompt.
+// `currentRules` are the rules the AI produced last, for it to refine.
 export const generateXeroSplit = (
   prompt: string,
   conversation: XeroSplitTurn[] = [],
+  currentRules: XeroSplitRule[] = [],
   runId?: string | null,
 ) =>
   apiPost<XeroSplitResult>("/payroll/settings/xero/split/generate", {
     prompt,
     conversation,
+    currentRules,
     runId: runId ?? null,
   });
 
@@ -1569,6 +1574,7 @@ export const emptyXeroMapping = (): PayrollXeroMapping => ({
   deductionAccounts: {},
   journalMode: "STANDARD",
   splitPrompt: null,
+  splitAnswers: [],
   splitRules: [],
 });
 

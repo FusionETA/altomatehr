@@ -14,10 +14,15 @@ public sealed class GenerateXeroSplitDto
     public string? RunId { get; set; }
 
     // The back-and-forth after the first prompt, oldest first: the AI's
-    // questions (with the rules it had so far) and the admin's answers. Empty
-    // for a fresh prompt. The last turn is the admin's newest answer.
-    [MaxLength(20)]
+    // questions and the admin's answers. Empty for a fresh prompt. The client
+    // sends only the newest turns, well inside this limit.
+    [MaxLength(40)]
     public List<XeroSplitTurnDto> Conversation { get; set; } = [];
+
+    // The rules the AI produced last, so a follow-up refines them rather than
+    // starting again. Kept out of the turns so they stay short.
+    [MaxLength(50)]
+    public List<PayrollJournalSplitRule> CurrentRules { get; set; } = [];
 }
 
 public sealed class XeroSplitTurnDto
@@ -26,7 +31,7 @@ public sealed class XeroSplitTurnDto
     [Required, RegularExpression("^(admin|ai)$")]
     public string Role { get; set; } = "admin";
 
-    [Required, MaxLength(20000)]
+    [Required, MaxLength(8000)]
     public string Text { get; set; } = string.Empty;
 }
 
