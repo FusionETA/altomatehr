@@ -419,6 +419,7 @@ builder.Services.AddScoped<IEmployeePayrollService, EmployeePayrollService>();
 builder.Services.AddScoped<IEmployeeLoanRepository, EmployeeLoanRepository>();
 builder.Services.AddScoped<IEmployeeLoanService, EmployeeLoanService>();
 builder.Services.AddScoped<IPayrollXeroSyncService, PayrollXeroSyncService>();
+builder.Services.AddScoped<IPayrollJournalSplitService, PayrollJournalSplitService>();
 builder.Services.AddScoped<IPayrollSettingsRepository, PayrollSettingsRepository>();
 builder.Services.AddScoped<IPayrollSettingsService, PayrollSettingsService>();
 // Public payroll calculator (altomate.io) — prices a hypothetical employee with
@@ -502,6 +503,8 @@ builder.Services.AddHttpClient<IXeroClient, XeroClient>();
 builder.Services.AddScoped<IReceiptOcrService, ReceiptOcrService>();
 builder.Services.AddScoped<IMileageScanService, MileageScanService>();
 builder.Services.AddHttpClient<IGeminiClient, GeminiClient>();
+// Claude first, Gemini as the fallback (Modules/Ai/AiTextClient.cs).
+builder.Services.AddScoped<IAiTextClient, AiTextClient>();
 builder.Services.AddHttpClient<IPublicHolidaySource, PublicHolidaySource>();
 
 // Email: fall back to a logging stub when EngineMailer isn't configured, the same

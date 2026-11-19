@@ -18,12 +18,15 @@ public class PayrollController : ControllerBase
 {
     private readonly IPayrollSettingsService _settings;
     private readonly IPayrollCompanyInfoService _companyInfo;
+    private readonly IPayrollJournalSplitService _split;
 
     public PayrollController(
-        IPayrollSettingsService settings, IPayrollCompanyInfoService companyInfo)
+        IPayrollSettingsService settings, IPayrollCompanyInfoService companyInfo,
+        IPayrollJournalSplitService split)
     {
         _settings = settings;
         _companyInfo = companyInfo;
+        _split = split;
     }
 
     // The bank register the bank-file generators match employees against.
@@ -89,6 +92,25 @@ public class PayrollController : ControllerBase
     [HttpPut("settings")]
     public async Task<IActionResult> SaveSettings(SavePayrollSettingsDto dto) =>
         Ok(await _settings.SaveAsync(dto));
+
+    // Xero sync → AI split. Generate turns the admin's words into rules with
+    // AI and tries them on a real run; Check re-tries rules already in hand
+    // without AI. Neither saves anything — the rules are saved with the rest
+    // of the settings. Same gate as saving the settings.
+    [RequireScope("payroll:write")]
+    [RequireSettings]
+    [HttpPost("settings/xero/split/generate")]
+    public async Task<IActionResult> GenerateXeroSplit(GenerateXeroSplitDto dto, CancellationToken ct)
+    {
+        var result = await _split.GenerateAsync(dto, ct);
+        return result.Error is null ? Ok(result) : Conflict(new { error = result.Error });
+    }
+
+    [RequireScope("payroll:write")]
+    [RequireSettings]
+    [HttpPost("settings/xero/split/check")]
+    public async Task<IActionResult> CheckXeroSplit(CheckXeroSplitDto dto) =>
+        Ok(await _split.CheckAsync(dto));
 
     [RequireScope("payroll:read")]
     [HttpGet("company-info")]

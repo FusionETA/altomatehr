@@ -151,6 +151,11 @@ public class PayrollRun : ITenantScoped
 
     public DateTime? XeroSyncedAt { get; set; }
 
+    // When the journal posted with the AI split: the prompt and rules it used
+    // ({ splitPrompt, splitRules, postedAt }). The org's rules can change
+    // later; this is what THIS month was split by. Null for a standard post.
+    public string? XeroSplitSnapshotJson { get; set; }
+
     // ---- LHDN remittance receipts ----
 
     // The receipt LHDN issued for this month's MTD (CP39) payment and for its

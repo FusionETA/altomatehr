@@ -3004,6 +3004,9 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(80)
                         .HasColumnType("varchar(80)");
 
+                    b.Property<string>("XeroSplitSnapshotJson")
+                        .HasColumnType("longtext");
+
                     b.Property<string>("XeroSyncError")
                         .HasColumnType("longtext");
 

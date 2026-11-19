@@ -1,4 +1,5 @@
 using AltomateHR.Api.Modules.Claims.Entities;
+using AltomateHR.Api.Modules.Payroll.Entities;
 
 namespace AltomateHR.Api.Modules.Payroll;
 
@@ -21,13 +22,50 @@ public interface IPayrollXeroSyncService
     // when Xero is not connected or is unreachable — configuring the rest of
     // the mapping should not be blocked by a dropdown that cannot load.
     Task<IReadOnlyList<PayrollXeroTrackingCategory>> GetTrackingCategoriesAsync();
+
+    // The AI split tried on a real run (the given one, else the latest with
+    // payslips): the lines it replaces, the lines it would post, and every
+    // check. With no run yet, only the checks that need none.
+    Task<PayrollXeroSplitPreview> PreviewSplitAsync(string? runId, IReadOnlyList<PayrollJournalSplitRule> rules);
+
+    // What a split prompt may name: the org's active accounts, tracking
+    // categories, departments and staff.
+    Task<PayrollXeroSplitOrgContext> GetSplitOrgContextAsync();
 }
+
+public sealed record PayrollXeroSplitPreview(
+    bool Ok,
+    string? RunId,
+    string? RunLabel,
+    // The standard lines the split replaces.
+    IReadOnlyList<PayrollXeroPreviewLine> Replaced,
+    // The whole journal with the split applied.
+    IReadOnlyList<PayrollXeroPreviewLine> Lines,
+    IReadOnlyList<PayrollJournalSplit.Check> Checks)
+{
+    public decimal ReplacedTotal => Replaced.Sum(l => l.Amount);
+    public decimal TotalDebits => Lines.Where(l => l.Amount > 0m).Sum(l => l.Amount);
+    public decimal TotalCredits => Lines.Where(l => l.Amount < 0m).Sum(l => -l.Amount);
+}
+
+public sealed record PayrollXeroSplitAccount(string Code, string Name, string Type);
+
+public sealed record PayrollXeroSplitOrgContext(
+    PayrollJournalSplit.Context Context,
+    // The rules saved now, for prompts like "same as before, but…".
+    IReadOnlyList<PayrollJournalSplitRule> SavedRules,
+    // Split source → the account code the standard mapping posts it to.
+    IReadOnlyDictionary<string, string?> StandardAccounts,
+    IReadOnlyList<PayrollXeroSplitAccount> Accounts);
 
 public sealed record PayrollXeroTrackingCategory(
     string TrackingCategoryId, string Name, IReadOnlyList<string> Options);
 
 public sealed record PayrollXeroPreviewLine(
-    string AccountCode, string Description, decimal Amount, string? TrackingOption);
+    string AccountCode, string Description, decimal Amount, string? TrackingOption,
+    // The debit slot the line came from (null on credits) — lets the page
+    // pick out the split lines.
+    string? Source = null);
 
 public sealed record PayrollXeroPreview(
     bool Ok,
@@ -38,7 +76,11 @@ public sealed record PayrollXeroPreview(
     // Non-null once the run has posted — the page shows the journal rather
     // than offering the button again.
     string? XeroManualJournalId,
-    XeroSyncStatus Status)
+    XeroSyncStatus Status,
+    // AI_SPLIT when the lines above are the split ones; then Checks says
+    // what was checked, and why it cannot post when Ok is false.
+    XeroJournalMode JournalMode = XeroJournalMode.STANDARD,
+    IReadOnlyList<PayrollJournalSplit.Check>? Checks = null)
 {
     // Shown beside the lines so an admin can see the journal balances before
     // committing, rather than discovering it from a Xero rejection.

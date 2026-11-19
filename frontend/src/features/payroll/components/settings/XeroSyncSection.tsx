@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import {
   getXeroTrackingCategories,
@@ -11,6 +12,7 @@ import { getAccountsWithLiabilities, type ChartOfAccount } from "@/features/sett
 import { CARD, HINT, LABEL, WARN_PANEL } from "../../lib/ui";
 import { SkeletonPanel } from "@/shared/components/Skeleton";
 import { PayrollSelect } from "../PayrollSelect";
+import { XeroAiSplitSection } from "./XeroAiSplitSection";
 
 // How an approved run lands in Xero as one manual journal.
 //
@@ -21,7 +23,62 @@ import { PayrollSelect } from "../PayrollSelect";
 // Nothing here is required to run payroll. It only matters once the org
 // turns on "post the journal when a run is approved", and the sync refuses
 // rather than guessing when an account a given run needs is unmapped.
+// Two views of one mapping: the standard accounts (the base — all salary to
+// one account) and the AI split (advanced), which re-divides that journal's
+// debits. The whole Xero sync tab is only shown once Xero is connected.
+type XeroView = "standard" | "ai";
+
 export function XeroSyncSection({
+  mapping,
+  onChange,
+}: {
+  mapping: PayrollXeroMapping;
+  onChange: (next: PayrollXeroMapping) => void;
+}) {
+  const [view, setView] = useState<XeroView>("standard");
+  const aiOn = mapping.journalMode === "AI_SPLIT";
+
+  return (
+    <div className="space-y-5">
+      <div role="tablist" aria-label="Xero sync views" className="flex flex-wrap gap-2">
+        {(
+          [
+            { id: "standard", label: "Standard mapping" },
+            { id: "ai", label: aiOn ? "AI split (advanced) · On" : "AI split (advanced)" },
+          ] as const
+        ).map((tab) => {
+          const active = tab.id === view;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setView(tab.id)}
+              className={[
+                "rounded-full border px-4 py-1.5 text-xs font-semibold transition active:scale-[0.98]",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ring-offset-background",
+                active
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border/60 bg-card text-muted-foreground hover:text-foreground",
+              ].join(" ")}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {view === "ai" ? (
+        <XeroAiSplitSection mapping={mapping} onChange={onChange} />
+      ) : (
+        <StandardMapping mapping={mapping} onChange={onChange} />
+      )}
+    </div>
+  );
+}
+
+function StandardMapping({
   mapping,
   onChange,
 }: {

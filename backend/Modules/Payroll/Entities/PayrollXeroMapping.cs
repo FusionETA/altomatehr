@@ -64,6 +64,98 @@ public sealed record PayrollXeroMapping
 
     public IReadOnlyDictionary<string, string?> DeductionAccounts { get; init; }
         = new Dictionary<string, string?>();
+
+    // ---- AI split (advanced) ----
+    //
+    // STANDARD posts exactly as the accounts above say. AI_SPLIT posts the
+    // same journal, then re-divides the debit lines named in SplitRules.
+    // The rules were turned out of SplitPrompt by AI once, when the admin
+    // pressed Generate; posting applies them by code and never calls AI.
+    public XeroJournalMode JournalMode { get; init; } = XeroJournalMode.STANDARD;
+
+    public string? SplitPrompt { get; init; }
+
+    public IReadOnlyList<PayrollJournalSplitRule> SplitRules { get; init; } = [];
+}
+
+public enum XeroJournalMode
+{
+    STANDARD,
+    AI_SPLIT,
+}
+
+// How one rule takes its share of a source's total.
+//
+//   DEPARTMENT — the actual amounts of every employee in the named departments
+//   EMPLOYEE   — the actual amounts of the named employees (EmployeeProfile ids)
+//   FIXED      — a fixed RM amount (Value)
+//   PERCENT    — Value % of what the DEPARTMENT/EMPLOYEE rules left over
+//   REMAINDER  — whatever is left after all of the above, rounding cents included
+//
+// Employee rules are applied first, in order; an employee is taken by the
+// first rule that matches them. FIXED and PERCENT then share what is left.
+public enum SplitBasis
+{
+    DEPARTMENT,
+    EMPLOYEE,
+    FIXED,
+    PERCENT,
+    REMAINDER,
+}
+
+public sealed record PayrollJournalSplitRule
+{
+    // Which debit it re-divides: a `PayrollJournalSplitSources` key.
+    public string Source { get; init; } = PayrollXeroAccounts.Salary;
+
+    public SplitBasis Basis { get; init; } = SplitBasis.REMAINDER;
+
+    // Department names (DEPARTMENT) or EmployeeProfile ids (EMPLOYEE).
+    public IReadOnlyList<string> Match { get; init; } = [];
+
+    // RM for FIXED, a percentage (40 = 40%) for PERCENT.
+    public decimal? Value { get; init; }
+
+    // The Xero account CODE the share posts to.
+    public string AccountCode { get; init; } = string.Empty;
+
+    // Up to two tracking tags, by category and option NAME (as Xero shows them).
+    public IReadOnlyList<PayrollJournalSplitTag> Tracking { get; init; } = [];
+
+    // Short words for the journal description, e.g. "Sales".
+    public string? Label { get; init; }
+}
+
+public sealed record PayrollJournalSplitTag(string Category, string Option);
+
+// The debits a rule can split. Credits — deductions, accruals, net pay — are
+// never split: they are what the company owes, not what the month cost.
+public static class PayrollJournalSplitSources
+{
+    public const string Overtime = "overtime";
+
+    public static readonly IReadOnlyList<string> All =
+    [
+        PayrollXeroAccounts.Salary,
+        Overtime,
+        PayrollXeroAccounts.Allowance,
+        PayrollXeroAccounts.EpfEmployer,
+        PayrollXeroAccounts.SocsoEmployer,
+        PayrollXeroAccounts.EisEmployer,
+        PayrollXeroAccounts.HrdfEmployer,
+        PayrollXeroAccounts.TaxBorneByEmployer,
+    ];
+
+    public static string Label(string source) => source switch
+    {
+        Overtime => "Overtime",
+        PayrollXeroAccounts.Allowance => "Allowances",
+        PayrollXeroAccounts.EpfEmployer => "EPF — employer",
+        PayrollXeroAccounts.SocsoEmployer => "SOCSO — employer",
+        PayrollXeroAccounts.EisEmployer => "EIS — employer",
+        PayrollXeroAccounts.HrdfEmployer => "HRD Corp levy",
+        _ => PayrollXeroAccounts.Label(source),
+    };
 }
 
 // The slot names used as keys in `PayrollXeroMapping.Accounts`. Constants

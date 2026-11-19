@@ -572,6 +572,8 @@ export type XeroPreviewLine = {
   // Positive debits, negative credits — Xero's own convention.
   amount: number;
   trackingOption: string | null;
+  // The debit slot the line came from; null on credits.
+  source?: string | null;
 };
 
 export type XeroPreview = {
@@ -587,6 +589,10 @@ export type XeroPreview = {
   balance: number;
   totalDebits: number;
   totalCredits: number;
+  // AI_SPLIT when the lines are the split ones; checks then say what was
+  // checked (and why it can't post when ok is false).
+  journalMode?: XeroJournalMode;
+  checks?: XeroSplitCheck[] | null;
 };
 
 export const getXeroPreview = (id: string) =>
@@ -1459,7 +1465,75 @@ export type PayrollXeroMapping = {
   allowanceAccounts: Record<string, string | null>;
   deductionMode: XeroLineGroupingMode;
   deductionAccounts: Record<string, string | null>;
+  // AI split (advanced). STANDARD posts as mapped above; AI_SPLIT re-divides
+  // the debit lines by splitRules, which AI wrote from splitPrompt once.
+  // Posting applies the saved rules by code — no AI call.
+  journalMode: XeroJournalMode;
+  splitPrompt: string | null;
+  splitRules: XeroSplitRule[];
 };
+
+export type XeroJournalMode = "STANDARD" | "AI_SPLIT";
+
+export type XeroSplitBasis = "DEPARTMENT" | "EMPLOYEE" | "FIXED" | "PERCENT" | "REMAINDER";
+
+export type XeroSplitRule = {
+  // salary | overtime | allowance | epfEmployer | socsoEmployer | eisEmployer
+  // | hrdfEmployer | taxBorneByEmployer
+  source: string;
+  basis: XeroSplitBasis;
+  // Department names (DEPARTMENT) or employee profile ids (EMPLOYEE).
+  match: string[];
+  // RM for FIXED, a percentage for PERCENT.
+  value: number | null;
+  accountCode: string;
+  tracking: { category: string; option: string }[];
+  label: string | null;
+};
+
+export const XERO_SPLIT_SOURCE_LABELS: Record<string, string> = {
+  salary: "Salary",
+  overtime: "Overtime",
+  allowance: "Allowances",
+  epfEmployer: "EPF — employer",
+  socsoEmployer: "SOCSO — employer",
+  eisEmployer: "EIS — employer",
+  hrdfEmployer: "HRD Corp levy",
+  taxBorneByEmployer: "PCB borne by employer",
+};
+
+export type XeroSplitCheck = { label: string; passed: boolean; detail: string | null };
+
+export type XeroSplitPreview = {
+  ok: boolean;
+  runId: string | null;
+  runLabel: string | null;
+  replaced: XeroPreviewLine[];
+  lines: XeroPreviewLine[];
+  checks: XeroSplitCheck[];
+  replacedTotal: number;
+  totalDebits: number;
+  totalCredits: number;
+};
+
+export type XeroSplitResult = {
+  ok: boolean;
+  error: string | null;
+  rules: XeroSplitRule[];
+  summary: string | null;
+  questions: string[];
+  // "claude" or "gemini" — which AI answered.
+  provider: string | null;
+  preview: XeroSplitPreview | null;
+};
+
+// Turn the admin's words into rules (AI) and try them on the latest run.
+export const generateXeroSplit = (prompt: string, runId?: string | null) =>
+  apiPost<XeroSplitResult>("/payroll/settings/xero/split/generate", { prompt, runId: runId ?? null });
+
+// Re-try rules already in hand. No AI.
+export const checkXeroSplit = (rules: XeroSplitRule[], runId?: string | null) =>
+  apiPost<XeroSplitResult>("/payroll/settings/xero/split/check", { rules, runId: runId ?? null });
 
 export const emptyXeroMapping = (): PayrollXeroMapping => ({
   v: 1,
@@ -1470,6 +1544,9 @@ export const emptyXeroMapping = (): PayrollXeroMapping => ({
   allowanceAccounts: {},
   deductionMode: "UNIFIED",
   deductionAccounts: {},
+  journalMode: "STANDARD",
+  splitPrompt: null,
+  splitRules: [],
 });
 
 // The slot names are JSON keys on the stored blob, so they are spelled here

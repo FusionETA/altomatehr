@@ -37,7 +37,27 @@ public static class PayrollJournal
         decimal Amount,
         string Description,
         string? TrackingCategoryName = null,
-        string? TrackingOption = null);
+        string? TrackingOption = null,
+        // The mapping slot this debit came from (`PayrollXeroAccounts`, plus
+        // "overtime"), so the AI split can find the lines it replaces. Null on
+        // credits and reimbursements, which the split never touches.
+        string? Source = null,
+        // Set only on split lines: up to two tracking tags, which replace the
+        // single project tag above.
+        IReadOnlyList<TrackingTag>? Tags = null)
+    {
+        // Every tracking tag the line carries, whichever way it was set.
+        public IReadOnlyList<TrackingTag> AllTags =>
+            Tags ?? (TrackingCategoryName is not null && TrackingOption is not null
+                ? [new TrackingTag(TrackingCategoryName, TrackingOption)]
+                : []);
+    }
+
+    public sealed record TrackingTag(string Category, string Option);
+
+    // The source key overtime lines carry. Not a mapping slot of its own —
+    // overtime posts through the allowance mapping — but split on its own.
+    public const string OvertimeSource = PayrollJournalSplitSources.Overtime;
 
     public sealed record Result(
         bool Ok,
@@ -58,6 +78,11 @@ public static class PayrollJournal
     {
         public required string EmployeeName { get; init; }
         public string ProjectName { get; init; } = NoProject;
+
+        // Who and where, for the AI split's department and named-employee
+        // rules. The standard journal never reads them.
+        public string? EmployeeId { get; init; }
+        public string? Department { get; init; }
 
         // Prorated, NOT basic. The engine builds gross on the prorated figure,
         // so debiting basic would leave the journal off by the proration for
@@ -208,12 +233,12 @@ public static class PayrollJournal
             if (salary > 0m)
             {
                 lines.Add(Line_(input, salaryCode, salary,
-                    $"SALARY - {row.EmployeeName}", row.ProjectName));
+                    $"SALARY - {row.EmployeeName}", row.ProjectName, PayrollXeroAccounts.Salary));
             }
             else if (salary < 0m)
             {
                 lines.Add(Line_(input, salaryCode, salary,
-                    $"UNPAID LEAVE - {row.EmployeeName}", row.ProjectName));
+                    $"UNPAID LEAVE - {row.EmployeeName}", row.ProjectName, PayrollXeroAccounts.Salary));
             }
 
             // The engine writes overtime as its own column, not as a line
@@ -225,7 +250,7 @@ public static class PayrollJournal
                 if (code is not null)
                 {
                     lines.Add(Line_(input, code, Money.Round2(row.OtPay),
-                        $"OVERTIME - {row.EmployeeName}", row.ProjectName));
+                        $"OVERTIME - {row.EmployeeName}", row.ProjectName, OvertimeSource));
                 }
             }
 
@@ -237,7 +262,7 @@ public static class PayrollJournal
                 if (code is null) continue;
 
                 lines.Add(Line_(input, code, Money.Round2(item.Amount),
-                    Describe(item, row.EmployeeName, "ALLOWANCE"), row.ProjectName));
+                    Describe(item, row.EmployeeName, "ALLOWANCE"), row.ProjectName, PayrollXeroAccounts.Allowance));
             }
 
             foreach (var item in row.Deductions)
@@ -292,7 +317,8 @@ public static class PayrollJournal
         {
             if (Money.Round2(amount) == 0m) continue;
             lines.Add(Line_(input, salaryCode, Money.Round2(amount),
-                amount > 0m ? $"SALARY - {project}" : $"UNPAID LEAVE - {project}", project));
+                amount > 0m ? $"SALARY - {project}" : $"UNPAID LEAVE - {project}", project,
+                PayrollXeroAccounts.Salary));
         }
 
         foreach (var (project, amount) in overtime.OrderBy(p => p.Key, StringComparer.Ordinal))
@@ -302,7 +328,7 @@ public static class PayrollJournal
             var code = AllowanceCode(input, "wages_overtime", unmappedAllowances);
             if (code is null) continue;
 
-            lines.Add(Line_(input, code, Money.Round2(amount), $"OVERTIME - {project}", project));
+            lines.Add(Line_(input, code, Money.Round2(amount), $"OVERTIME - {project}", project, OvertimeSource));
         }
 
         foreach (var ((project, category), amount) in Ordered(allowances))
@@ -313,7 +339,7 @@ public static class PayrollJournal
             if (code is null) continue;
 
             lines.Add(Line_(input, code, Money.Round2(amount),
-                $"{CategoryLabel(category, "ALLOWANCE")} - {project}", project));
+                $"{CategoryLabel(category, "ALLOWANCE")} - {project}", project, PayrollXeroAccounts.Allowance));
         }
 
         foreach (var ((project, category), amount) in Ordered(deductions))
@@ -351,13 +377,13 @@ public static class PayrollJournal
         foreach (var (project, b) in buckets.OrderBy(p => p.Key, StringComparer.Ordinal))
         {
             Contribution(input, lines, missing, PayrollXeroAccounts.EpfEmployer, b.Epf,
-                $"EPF CONTRIBUTION - EMPLOYER - {project}", project);
+                $"EPF CONTRIBUTION - EMPLOYER - {project}", project, PayrollXeroAccounts.EpfEmployer);
             Contribution(input, lines, missing, PayrollXeroAccounts.SocsoEmployer, b.Socso,
-                $"SOCSO CONTRIBUTION - EMPLOYER - {project}", project);
+                $"SOCSO CONTRIBUTION - EMPLOYER - {project}", project, PayrollXeroAccounts.SocsoEmployer);
             Contribution(input, lines, missing, PayrollXeroAccounts.EisEmployer, b.Eis,
-                $"EIS CONTRIBUTION - EMPLOYER - {project}", project);
+                $"EIS CONTRIBUTION - EMPLOYER - {project}", project, PayrollXeroAccounts.EisEmployer);
             Contribution(input, lines, missing, PayrollXeroAccounts.HrdfEmployer, b.Hrdf,
-                $"HRDF - EMPLOYER - {project}", project);
+                $"HRDF - EMPLOYER - {project}", project, PayrollXeroAccounts.HrdfEmployer);
 
             // PCB the company pays for staff: its own account if one is set,
             // otherwise salary — it's part of what they're paid.
@@ -367,7 +393,7 @@ public static class PayrollJournal
                     ? PayrollXeroAccounts.TaxBorneByEmployer
                     : PayrollXeroAccounts.Salary;
                 Contribution(input, lines, missing, slot, b.Pcb,
-                    $"PCB BORNE BY EMPLOYER - {project}", project);
+                    $"PCB BORNE BY EMPLOYER - {project}", project, PayrollXeroAccounts.TaxBorneByEmployer);
             }
         }
     }
@@ -378,7 +404,7 @@ public static class PayrollJournal
     // the admin could fix.
     private static void Contribution(
         Input input, List<Line> lines, List<string> missing,
-        string slot, decimal amount, string description, string project)
+        string slot, decimal amount, string description, string project, string source)
     {
         if (amount <= 0m) return;
 
@@ -389,7 +415,7 @@ public static class PayrollJournal
             return;
         }
 
-        lines.Add(Line_(input, code, Money.Round2(amount), description, project));
+        lines.Add(Line_(input, code, Money.Round2(amount), description, project, source));
     }
 
     // ─── Reimbursements ─────────────────────────────────────────────────
@@ -621,10 +647,12 @@ public static class PayrollJournal
     // ─── Small helpers ──────────────────────────────────────────────────
 
     private static Line Line_(
-        Input input, string code, decimal amount, string description, string project) =>
+        Input input, string code, decimal amount, string description, string project,
+        string? source = null) =>
         new(code, amount, description,
             Tracks(input, project) ? input.TrackingCategoryName : null,
-            Tracks(input, project) ? project : null);
+            Tracks(input, project) ? project : null,
+            source);
 
     // No category configured, or no matching option on it, means no tracking.
     // Xero rejects the whole journal for an option it does not recognise, so
@@ -634,7 +662,7 @@ public static class PayrollJournal
 
     // Unpaid leave shrinks the salary debit instead of being credited. It was
     // never earned, so crediting it as a deduction would double-count.
-    private static decimal UnpaidLeave(EmployeeRow row) =>
+    internal static decimal UnpaidLeave(EmployeeRow row) =>
         row.Deductions.Where(IsUnpaidLeave).Sum(d => d.Amount);
 
     // A benefit in kind is recorded on the payslip as an allowance so it
@@ -642,7 +670,7 @@ public static class PayrollJournal
     // enters gross or net, and its real cost is booked elsewhere (the lease,
     // the rent). Debiting it here would add a debit with no matching credit
     // and unbalance the journal by exactly its value.
-    private static bool IsNonCash(JournalLineItem item) =>
+    internal static bool IsNonCash(JournalLineItem item) =>
         PayrollAdjustmentCategories.Find(item.Category)?.NonCash == true;
 
     private static bool IsUnpaidLeave(JournalLineItem item) =>

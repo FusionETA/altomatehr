@@ -43,6 +43,7 @@ public class PayrollXeroSyncServiceTests : IDisposable
             _claims,
             _xero,
             _audit,
+            new AltomateHR.Api.Modules.Employees.EmployeeProfileRepository(_db),
             NullLogger<PayrollXeroSyncService>.Instance);
     }
 
