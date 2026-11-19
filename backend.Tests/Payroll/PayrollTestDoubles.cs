@@ -236,6 +236,12 @@ internal sealed class StubPayrollXeroSync : IPayrollXeroSyncService
         ApprovedRunIds.Add(runId);
         return Task.CompletedTask;
     }
+
+    public Task<PayrollXeroSplitPreview> PreviewSplitAsync(
+        string? runId, IReadOnlyList<AltomateHR.Api.Modules.Payroll.Entities.PayrollJournalSplitRule> rules) =>
+        throw new NotSupportedException();
+
+    public Task<PayrollXeroSplitOrgContext> GetSplitOrgContextAsync() => throw new NotSupportedException();
 }
 
 // Only the two reads payroll actually uses. Everything else throws, so a

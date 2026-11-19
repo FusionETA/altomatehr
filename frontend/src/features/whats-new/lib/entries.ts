@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: bc8db79
+// whats-new-covered-up-to: bb201f65
 
 // A line is for everyone, or — wrapped in admins(…) — for admins and owners
 // only. Employees and supervisors never see an admins line, so it doesn't
@@ -28,6 +28,18 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-11-19",
+    title: "AI split for the Xero payroll journal",
+    new: [
+      admins("In Payroll settings → Xero sync, there's a new AI split (advanced) tab for Xero-connected companies. Describe how the journal's debit lines should split across accounts."),
+      admins("Describe the split in plain words: by percent, fixed RM, the remainder, department or named staff. AI turns it into rules once."),
+      admins("Each line can carry up to two Xero tracking tags."),
+      admins("The rules are checked, and posting is blocked if any check fails. The amounts still come from the payroll run, not the AI."),
+      admins("The AI split is off by default. Switch it on once the checks pass, and every run posts with the saved rules."),
+      admins("Each posted run keeps a copy of the split it used, and changes to the split are logged in the Activity log."),
+    ],
+  },
   {
     date: "2026-11-18",
     new: [

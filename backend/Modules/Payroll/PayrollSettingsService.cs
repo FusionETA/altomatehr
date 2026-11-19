@@ -59,7 +59,9 @@ public class PayrollSettingsService : IPayrollSettingsService
 
         settings ??= new PayrollSettings { CreatedAt = now };
 
+        var splitBefore = SplitSummary(settings.XeroMappingJson);
         Apply(settings, dto);
+        var splitAfter = SplitSummary(settings.XeroMappingJson);
         settings.ConfiguredAt ??= now;
         settings.UpdatedAt = now;
 
@@ -89,6 +91,22 @@ public class PayrollSettingsService : IPayrollSettingsService
 
         // EPF rates, the working-days rule and HRDF all change what a draft
         // computes.
+        // The AI split changes what posts to the ledger, so a change to it is
+        // its own entry: what the prompt and rules became, and the mode.
+        if (splitBefore != splitAfter)
+        {
+            await _audit.WriteAsync(new AuditEvent(
+                AuditActions.PayrollSettingsUpdate,
+                splitAfter.Mode == XeroJournalMode.AI_SPLIT
+                    ? "Updated the Xero AI split (on)"
+                    : splitBefore.Mode == XeroJournalMode.AI_SPLIT
+                        ? "Turned the Xero AI split off"
+                        : "Updated the Xero AI split (off)",
+                TargetType: "PayrollSettings",
+                TargetId: settings.Id,
+                Metadata: new { JournalMode = splitAfter.Mode.ToString(), splitAfter.Prompt, splitAfter.RulesJson }));
+        }
+
         if (_drafts is not null) await _drafts.MarkAllDraftsAsync();
 
         var saved = ToDto(settings, isConfigured: true);
@@ -125,6 +143,27 @@ public class PayrollSettingsService : IPayrollSettingsService
             TargetType: "PayrollSettings",
             TargetId: settings.Id,
             Metadata: new { settings.PayrollStartYear, settings.PayrollStartMonth }));
+    }
+
+    private sealed record Split(XeroJournalMode Mode, string? Prompt, string RulesJson);
+
+    private static Split SplitSummary(string? mappingJson)
+    {
+        if (string.IsNullOrWhiteSpace(mappingJson)) return new Split(XeroJournalMode.STANDARD, null, "[]");
+
+        try
+        {
+            var mapping = System.Text.Json.JsonSerializer.Deserialize<PayrollXeroMapping>(
+                mappingJson, PayrollSnapshotJson.Options) ?? new PayrollXeroMapping();
+            return new Split(
+                mapping.JournalMode,
+                mapping.SplitPrompt,
+                System.Text.Json.JsonSerializer.Serialize(mapping.SplitRules, PayrollSnapshotJson.Options));
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return new Split(XeroJournalMode.STANDARD, null, "[]");
+        }
     }
 
     private static void Apply(PayrollSettings settings, SavePayrollSettingsDto dto)
