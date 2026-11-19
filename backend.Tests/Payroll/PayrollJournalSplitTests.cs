@@ -17,7 +17,8 @@ public class PayrollJournalSplitTests
     };
 
     private static PayrollJournal.EmployeeRow Row(
-        string id, string department, decimal pay, decimal otPay = 0m, decimal epfEmployer = 0m)
+        string id, string department, decimal pay, decimal otPay = 0m, decimal epfEmployer = 0m,
+        IReadOnlyList<string>? projects = null)
     {
         // Net derived from its parts, so the standard journal balances.
         return new PayrollJournal.EmployeeRow
@@ -25,6 +26,7 @@ public class PayrollJournalSplitTests
             EmployeeName = $"Person {id}",
             EmployeeId = id,
             Department = department,
+            Projects = projects ?? [],
             ProratedPay = pay,
             OtPay = otPay,
             EpfEmployer = epfEmployer,
@@ -58,6 +60,7 @@ public class PayrollJournalSplitTests
             ["Events"] = new HashSet<string>(["Expo"], StringComparer.Ordinal),
         },
         Departments = new HashSet<string>(["Sales", "Operations", "Admin"], StringComparer.OrdinalIgnoreCase),
+        Projects = new HashSet<string>(["HQ", "Site A"], StringComparer.OrdinalIgnoreCase),
         Employees = new Dictionary<string, string> { ["e1"] = "Person e1", ["e2"] = "Person e2", ["e3"] = "Person e3" },
     };
 
@@ -180,6 +183,54 @@ public class PayrollJournalSplitTests
         Assert.False(result.Ok);
         Assert.Contains("nothing to share", result.Error);
         Assert.Empty(result.Lines);
+    }
+
+    [Fact]
+    public void Project_rules_take_the_pay_of_staff_in_that_projects_teams()
+    {
+        var input = Input(
+            Row("e1", "", 4000m, projects: ["HQ"]),
+            Row("e2", "", 3000m, projects: ["Site A"]),
+            Row("e3", "", 2500m));   // in no project
+
+        var result = Split(input,
+            Rule(SplitBasis.PROJECT, "6110", match: ["hq"]),
+            Rule(SplitBasis.REMAINDER, "6130"));
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal(4000m, Debited(result, "6110"));
+        Assert.Equal(5500m, Debited(result, "6130"));
+        Assert.DoesNotContain(result.Checks, c => c.Warning);
+        Assert.Equal(0m, result.Balance);
+    }
+
+    [Fact]
+    public void Someone_in_two_projects_goes_to_the_first_rule_and_is_flagged_not_blocked()
+    {
+        var input = Input(Row("e1", "", 4000m, projects: ["HQ", "Site A"]), Row("e2", "", 1000m));
+
+        var result = Split(input,
+            Rule(SplitBasis.PROJECT, "6110", match: ["HQ"]),
+            Rule(SplitBasis.PROJECT, "6120", match: ["Site A"]),
+            Rule(SplitBasis.REMAINDER, "6130"));
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal(4000m, Debited(result, "6110"));
+        Assert.Equal(0m, Debited(result, "6120"));
+        var flag = Assert.Single(result.Checks, c => c.Warning);
+        Assert.True(flag.Passed);
+        Assert.Contains("Person e1 (HQ, Site A)", flag.Detail);
+    }
+
+    [Fact]
+    public void An_unknown_project_is_refused()
+    {
+        var result = Split(Input(Row("e1", "", 1000m, projects: ["HQ"])),
+            Rule(SplitBasis.PROJECT, "6110", match: ["Head Office"]),
+            Rule(SplitBasis.REMAINDER, "6130"));
+
+        Assert.False(result.Ok);
+        Assert.Contains("Head Office", result.Error);
     }
 
     [Fact]

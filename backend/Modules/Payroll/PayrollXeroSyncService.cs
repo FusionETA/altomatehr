@@ -3,6 +3,8 @@ using AltomateHR.Api.Modules.Accounts;
 using AltomateHR.Api.Modules.Audit;
 using AltomateHR.Api.Modules.Claims;
 using AltomateHR.Api.Modules.Employees;
+using AltomateHR.Api.Modules.Projects;
+using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Modules.Payroll.Entities;
 using AltomateHR.Api.Modules.Xero;
 using AltomateHR.Api.Modules.Xero.Dtos;
@@ -35,6 +37,9 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
     private readonly IXeroService _xero;
     private readonly IAuditService _audit;
     private readonly IEmployeeProfileRepository _profiles;
+    private readonly ITeamRepository? _teams;
+    private readonly ITeamMembershipRepository? _memberships;
+    private readonly IProjectRepository? _projects;
     private readonly ILogger<PayrollXeroSyncService> _log;
 
     public PayrollXeroSyncService(
@@ -46,9 +51,16 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
         IXeroService xero,
         IAuditService audit,
         IEmployeeProfileRepository profiles,
-        ILogger<PayrollXeroSyncService> log)
+        ILogger<PayrollXeroSyncService> log,
+        // Optional so tests that never split by project needn't build them.
+        ITeamRepository? teams = null,
+        ITeamMembershipRepository? memberships = null,
+        IProjectRepository? projects = null)
     {
         _profiles = profiles;
+        _teams = teams;
+        _memberships = memberships;
+        _projects = projects;
         _runs = runs;
         _payslips = payslips;
         _settings = settings;
@@ -219,13 +231,52 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
         var employees = profiles.ToDictionary(p => p.Id, _ => string.Empty, StringComparer.Ordinal);
         foreach (var p in payslips) employees[p.EmployeeProfileId] = p.SnapshotName;
 
+        var projectsByUser = await ProjectsByUserAsync();
+
         return new PayrollJournalSplit.Context
         {
             ActiveAccounts = active,
             TrackingCategories = tracking,
             Departments = departments!,
+            Projects = projectsByUser.Values.SelectMany(p => p)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase),
             Employees = employees,
+            EmployeeProjects = payslips
+                .GroupBy(p => p.EmployeeProfileId, StringComparer.Ordinal)
+                .ToDictionary(
+                    g => g.Key,
+                    g => projectsByUser.GetValueOrDefault(g.First().UserId) ?? (IReadOnlyList<string>)[],
+                    StringComparer.Ordinal),
         };
+    }
+
+    // User id → the names of the projects their teams belong to. Live
+    // projects only; a team under an archived project doesn't count.
+    private async Task<Dictionary<string, IReadOnlyList<string>>> ProjectsByUserAsync()
+    {
+        var result = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        if (_teams is null || _memberships is null || _projects is null) return result;
+
+        var projectNames = (await _projects.GetAllAsync())
+            .Where(p => !p.IsArchived && !string.IsNullOrWhiteSpace(p.Name))
+            .ToDictionary(p => p.Id, p => p.Name.Trim(), StringComparer.Ordinal);
+        var projectByTeam = (await _teams.GetAllAsync())
+            .Where(t => projectNames.ContainsKey(t.ProjectId))
+            .ToDictionary(t => t.Id, t => projectNames[t.ProjectId], StringComparer.Ordinal);
+
+        foreach (var group in (await _memberships.GetAllAsync()).GroupBy(m => m.EmployeeId, StringComparer.Ordinal))
+        {
+            var names = group
+                .Select(m => projectByTeam.GetValueOrDefault(m.TeamId))
+                .Where(n => n is not null)
+                .Select(n => n!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (names.Count > 0) result[group.Key] = names;
+        }
+
+        return result;
     }
 
     public async Task<PayrollXeroSyncResult> SyncAsync(string runId)
@@ -440,6 +491,7 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
         // which department now, like the run's other live identifiers.
         var departmentByProfile = (await _profiles.GetAllForCurrentOrgAsync())
             .ToDictionary(p => p.Id, p => p.Department, StringComparer.Ordinal);
+        var projectsByUser = await ProjectsByUserAsync();
 
         var rows = payslips.Select(p =>
         {
@@ -450,6 +502,7 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
                 EmployeeName = p.SnapshotName,
                 EmployeeId = p.EmployeeProfileId,
                 Department = departmentByProfile.GetValueOrDefault(p.EmployeeProfileId),
+                Projects = projectsByUser.GetValueOrDefault(p.UserId) ?? [],
                 // No project dimension on a payslip yet — every line lands
                 // under "(No project)" until one exists. Kept as a real value
                 // rather than null so the tracking lookup has something to

@@ -1475,14 +1475,15 @@ export type PayrollXeroMapping = {
 
 export type XeroJournalMode = "STANDARD" | "AI_SPLIT";
 
-export type XeroSplitBasis = "DEPARTMENT" | "EMPLOYEE" | "FIXED" | "PERCENT" | "REMAINDER";
+export type XeroSplitBasis = "DEPARTMENT" | "PROJECT" | "EMPLOYEE" | "FIXED" | "PERCENT" | "REMAINDER";
 
 export type XeroSplitRule = {
   // salary | overtime | allowance | epfEmployer | socsoEmployer | eisEmployer
   // | hrdfEmployer | taxBorneByEmployer
   source: string;
   basis: XeroSplitBasis;
-  // Department names (DEPARTMENT) or employee profile ids (EMPLOYEE).
+  // Department names (DEPARTMENT), project names (PROJECT) or employee
+  // profile ids (EMPLOYEE).
   match: string[];
   // RM for FIXED, a percentage for PERCENT.
   value: number | null;
@@ -1502,7 +1503,14 @@ export const XERO_SPLIT_SOURCE_LABELS: Record<string, string> = {
   taxBorneByEmployer: "PCB borne by employer",
 };
 
-export type XeroSplitCheck = { label: string; passed: boolean; detail: string | null };
+// warning: passed (posting isn't blocked) but worth a look — e.g. someone in
+// teams under two projects, whose whole pay went to the first project rule.
+export type XeroSplitCheck = {
+  label: string;
+  passed: boolean;
+  detail: string | null;
+  warning?: boolean;
+};
 
 export type XeroSplitPreview = {
   ok: boolean;
@@ -1521,15 +1529,30 @@ export type XeroSplitResult = {
   error: string | null;
   rules: XeroSplitRule[];
   summary: string | null;
-  questions: string[];
+  // What the AI was unsure about, each with likely answers to click.
+  questions: XeroSplitQuestion[];
   // "claude" or "gemini" — which AI answered.
   provider: string | null;
   preview: XeroSplitPreview | null;
 };
 
+export type XeroSplitQuestion = { text: string; options: string[] };
+
+// One turn after the first prompt: the AI's questions or the admin's answer.
+export type XeroSplitTurn = { role: "admin" | "ai"; text: string };
+
 // Turn the admin's words into rules (AI) and try them on the latest run.
-export const generateXeroSplit = (prompt: string, runId?: string | null) =>
-  apiPost<XeroSplitResult>("/payroll/settings/xero/split/generate", { prompt, runId: runId ?? null });
+// `conversation` carries the questions and answers since the first prompt.
+export const generateXeroSplit = (
+  prompt: string,
+  conversation: XeroSplitTurn[] = [],
+  runId?: string | null,
+) =>
+  apiPost<XeroSplitResult>("/payroll/settings/xero/split/generate", {
+    prompt,
+    conversation,
+    runId: runId ?? null,
+  });
 
 // Re-try rules already in hand. No AI.
 export const checkXeroSplit = (rules: XeroSplitRule[], runId?: string | null) =>
