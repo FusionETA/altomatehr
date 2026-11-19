@@ -213,6 +213,12 @@ export function XeroAiSplitSection({
   };
 
   const splitSources = new Set(rules.map((r) => r.source));
+  const replacedDebits = (preview?.replaced ?? [])
+    .filter((l) => l.amount > 0)
+    .reduce((sum, l) => sum + l.amount, 0);
+  const replacedCredits = -(preview?.replaced ?? [])
+    .filter((l) => l.amount < 0)
+    .reduce((sum, l) => sum + l.amount, 0);
   const splitLines = (preview?.lines ?? []).filter((l) => l.source && splitSources.has(l.source));
   const splitTotal = splitLines.reduce((sum, l) => sum + l.amount, 0);
   const checks = preview?.checks ?? [];
@@ -280,9 +286,16 @@ export function XeroAiSplitSection({
           {preview && preview.replaced.length > 0 ? (
             <div className="sm:text-right">
               <p className="text-xs text-muted-foreground">Amount to split</p>
+              {/* Costs and deductions apart: netting a loan repayment against
+                  salary gives a figure that matches no line in the journal. */}
               <p className="text-xl font-semibold tabular-nums text-primary">
-                RM {money(preview.replacedTotal)}
+                RM {money(replacedDebits)}
               </p>
+              {replacedCredits > 0 ? (
+                <p className="text-xs tabular-nums text-muted-foreground">
+                  + deductions RM {money(replacedCredits)}
+                </p>
+              ) : null}
             </div>
           ) : null}
         </div>

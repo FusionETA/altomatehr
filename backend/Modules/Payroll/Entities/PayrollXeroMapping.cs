@@ -158,11 +158,15 @@ public sealed record PayrollJournalSplitRule
 
     // The values a people rule matches: department / project / job title /
     // employment type / role / policy names, or EmployeeProfile ids (EMPLOYEE).
-    public IReadOnlyList<string> Match { get; init; } = [];
+    // Null-tolerant: a client other than the settings page may send `null`,
+    // and a null list here would throw when the rules are checked or posted.
+    public IReadOnlyList<string> Match { get => _match; init => _match = value ?? []; }
+    private readonly IReadOnlyList<string> _match = [];
 
     // Allowance and deduction rules only: the adjustment category codes
     // (e.g. "wages_commission") the rule takes. Empty = every type.
-    public IReadOnlyList<string> Categories { get; init; } = [];
+    public IReadOnlyList<string> Categories { get => _categories; init => _categories = value ?? []; }
+    private readonly IReadOnlyList<string> _categories = [];
 
     // RM for FIXED, a percentage (40 = 40%) for PERCENT.
     public decimal? Value { get; init; }
@@ -171,7 +175,8 @@ public sealed record PayrollJournalSplitRule
     public string AccountCode { get; init; } = string.Empty;
 
     // Up to two tracking tags, by category and option NAME (as Xero shows them).
-    public IReadOnlyList<PayrollJournalSplitTag> Tracking { get; init; } = [];
+    public IReadOnlyList<PayrollJournalSplitTag> Tracking { get => _tracking; init => _tracking = value ?? []; }
+    private readonly IReadOnlyList<PayrollJournalSplitTag> _tracking = [];
 
     // Short words for the journal description, e.g. "Sales".
     public string? Label { get; init; }

@@ -302,4 +302,61 @@ public class PayrollJournalSplitGroupsTests
         Assert.Equal("300/214", salary.AccountCode);
         Assert.StartsWith("Project", salary.Rule, StringComparison.Ordinal);
     }
+
+    // ─── Bug-check follow-ups ────────────────────────────────────────────
+
+    [Fact]
+    public void The_two_project_warning_is_decided_row_by_row_after_a_type_rule()
+    {
+        // Commission is picked out for everyone first; travel then goes by
+        // project, and Ali is on both projects the rules name.
+        var input = Input(Person("ali", 1_000m, projects: [Site, Hq],
+            allowances: [Item(WagesCommission, 100m), Item(AllowanceMeal, 50m)]));
+
+        var result = Split(input,
+            Rule(SplitBasis.EVERYONE, "520/099", PayrollXeroAccounts.Allowance, types: [WagesCommission]),
+            Rule(SplitBasis.PROJECT, "520/001", PayrollXeroAccounts.Allowance, match: [Hq], label: "Office"),
+            Rule(SplitBasis.PROJECT, "300/201", PayrollXeroAccounts.Allowance, match: [Site], label: "Site"),
+            Rule(SplitBasis.REMAINDER, "300/214", PayrollXeroAccounts.Allowance));
+
+        Assert.True(result.Ok, result.Error);
+        var flag = Assert.Single(result.Checks, c => c.Warning);
+        Assert.Contains("Person ali", flag.Detail);
+        Assert.Contains("→ Office", flag.Detail);
+    }
+
+    [Fact]
+    public void Null_lists_in_saved_rules_read_as_empty()
+    {
+        var json = """
+            [{"source":"salary","basis":"REMAINDER","match":null,"categories":null,"tracking":null,"accountCode":"300/214"}]
+            """;
+        var rules = System.Text.Json.JsonSerializer.Deserialize<List<PayrollJournalSplitRule>>(json,
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)
+            {
+                Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() },
+            })!;
+
+        var result = Split(Input(Person("a", 1_000m)), [.. rules]);
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Empty(rules[0].Categories);
+        Assert.Equal(1_000m, Posted(result, "300/214"));
+    }
+
+    [Fact]
+    public void A_refused_split_still_shows_whose_money_no_rule_took()
+    {
+        var input = Input(
+            Person("hq", 5_000m, projects: [Hq]),
+            Person("nobody", 700m));
+
+        var result = Split(input, Rule(SplitBasis.PROJECT, "520/021", match: [Hq]));
+
+        Assert.False(result.Ok);
+        var nobody = Assert.Single(result.Assignments!, a => a.EmployeeId == "nobody");
+        var placement = Assert.Single(nobody.Placements);
+        Assert.Equal("Not taken by any rule", placement.Rule);
+        Assert.Null(placement.AccountCode);
+    }
 }

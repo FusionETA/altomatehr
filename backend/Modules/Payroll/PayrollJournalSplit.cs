@@ -267,12 +267,18 @@ public static class PayrollJournalSplit
             var projectRules = group.Where(r => r.Basis == SplitBasis.PROJECT).ToList();
             if (projectRules.Count == 0) continue;
 
-            foreach (var row in rows)
+            // Amount by amount, as `SplitOne` takes them: for allowances and
+            // deductions a type rule may take one row and a project rule the
+            // next, so "the rule that took them" is decided per row.
+            foreach (var unit in UnitsFor(group.Key, rows))
             {
-                // Only when a PROJECT rule is what took them (not an earlier
-                // department or employee rule) and the rules name two or more
-                // of their projects — otherwise there was no choice to make.
-                var first = group.FirstOrDefault(r => SplitBases.TakesPeople(r.Basis) && Matches(r, row));
+                var row = rows[unit.Row];
+
+                // Only when a PROJECT rule is what took it (not an earlier
+                // people or type rule) and the rules name two or more of their
+                // projects — otherwise there was no choice to make.
+                var first = group.FirstOrDefault(r =>
+                    SplitBases.TakesPeople(r.Basis) && Matches(r, row) && TakesType(r, unit.Category));
                 if (first?.Basis != SplitBasis.PROJECT) continue;
 
                 var named = row.Projects
@@ -418,6 +424,23 @@ public static class PayrollJournalSplit
         var leftover = Money.Round2(pool - allocated);
         var remainder = rules.FirstOrDefault(r => r.Basis == SplitBasis.REMAINDER);
 
+        // Who went into the pool — recorded before any refusal below, so a
+        // split refused for money "not taken by any rule" still shows whose.
+        // The remainder's account when it alone takes the pool; no single
+        // account when fixed and percentage rules share it.
+        var hasShares = rules.Any(r => r.Basis is SplitBasis.FIXED or SplitBasis.PERCENT);
+        for (var i = 0; i < units.Count; i++)
+        {
+            if (taken.Contains(i) || units[i].Amount == 0m) continue;
+
+            var (rule, account) = hasShares
+                ? ("Shared by the fixed and percentage rules", (string?)null)
+                : remainder is not null
+                    ? (Describe(remainder), remainder.AccountCode.Trim())
+                    : ("Not taken by any rule", null);
+            placements.Add((units[i].Row, new Placement(source, units[i].Category, rule, account, units[i].Amount)));
+        }
+
         // Fixed amounts and percentages share what the people rules left.
         // With nothing left (or less than nothing), any share would be paid for
         // by a negative remainder line, which balances but books cost that
@@ -456,22 +479,6 @@ public static class PayrollJournalSplit
                 problems.Add($"{label}: RM {leftover:#,0.00} is not taken by any rule. Add a remainder line");
                 return null;
             }
-        }
-
-        // Who went into the pool: the remainder's account when it alone takes
-        // the pool; otherwise no single account (fixed and percent share it).
-        var poolRule = shares.Count == 0 || (remainder is not null
-            && !rules.Any(r => r.Basis is SplitBasis.FIXED or SplitBasis.PERCENT))
-            ? remainder
-            : null;
-        for (var i = 0; i < units.Count; i++)
-        {
-            if (taken.Contains(i) || units[i].Amount == 0m) continue;
-
-            placements.Add((units[i].Row, new Placement(
-                source, units[i].Category,
-                poolRule is not null ? Describe(poolRule) : "Shared by the fixed and percentage rules",
-                poolRule?.AccountCode.Trim(), units[i].Amount)));
         }
 
         lines.AddRange(shares);
