@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: bc8db79
+  user-guide-covered-up-to: bb201f65
 -->
 <html lang="en">
 <head>
@@ -790,6 +790,28 @@
     <p>With Xero connected: how expense lines are grouped, the tracking category for projects, and which Xero
       accounts each payroll line posts to (including the optional <em>PCB borne by employer</em> expense account; left
       blank, it posts to Salary).</p>
+    <p>The tab has two parts: <span class="btn-name">Standard mapping</span> (the screen described above) and
+      <span class="btn-name">AI split (advanced)</span>. The second one only appears while Xero is connected.</p>
+    <h3>AI split (advanced)</h3>
+    <p>Use this when the salary debit should be divided across several Xero accounts, for example by department,
+      by percentage or by fixed amounts, instead of going to one account.</p>
+    <ol class="steps">
+      <li>Open <strong>Payroll → Settings → Xero sync → AI split (advanced)</strong>. The page shows your default
+        manual journal and the latest payroll run that has payslips, so you can see the split on real figures.</li>
+      <li>Under <strong>Tell the engine how to split</strong>, describe the split in words, or pick one of the
+        suggestions to start from. Mention account names the way they appear in Xero.</li>
+      <li>Press <span class="btn-name">Generate split</span>. The page shows the rules it understood, the split
+        journal and a list of checks. If the AI wasn't sure about something, it says so here; reword your
+        description and generate again.</li>
+      <li>Read the rules, the split journal and the checks. Posting only works when every check passes.</li>
+      <li>Switch on <strong>Use the AI split when posting</strong>. The switch can't be turned on until you have
+        generated rules and every check passes.</li>
+      <li>Press <span class="btn-name">Save changes</span> in the bar at the bottom (it reads <span class="btn-name">Save payroll settings</span> when nothing has changed yet).</li>
+    </ol>
+    <p><strong>What happens when you post:</strong> posting applies the saved rules and doesn't ask the AI again,
+      so the same run always posts the same way. If a check fails at that point, posting is blocked until you fix the
+      rules. Each posted run keeps the rules it was posted with, so changing the rules later doesn't alter runs that are
+      already in Xero. Switch the option off to go back to the standard mapping.</p>
     <p>Changes are saved with the bar that appears at the bottom — <span class="btn-name">Save changes</span>.</p>
     
     <figure class="shot" data-place="Payroll settings">

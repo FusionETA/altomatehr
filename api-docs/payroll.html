@@ -895,7 +895,7 @@
               <tr><td><code>defaultEpfEmployeeRate</code>, <code>defaultEpfEmployerRate</code></td><td>decimal</td><td>Percent.</td></tr>
               <tr><td><code>hrdfEnabled</code>, <code>hrdfRate</code></td><td>boolean, decimal?</td><td></td></tr>
               <tr><td><code>autoApplySocsoEisRelief</code></td><td>boolean</td><td></td></tr>
-              <tr><td><code>syncClaimsToXeroOnSubmit</code>, <code>syncPayrollToXeroOnSubmit</code>, <code>xeroMappingJson</code></td><td></td><td><code>xeroMappingJson</code> is a JSON string whose <code>accounts</code> object is keyed by slot name. The optional <code>taxBorneByEmployer</code> slot ("PCB borne by employer") is the expense account for PCB the company pays for staff; unset, that amount posts to <code>salary</code>. See <a href="payroll-runs.html#xero-preview">Xero journal preview</a>.</td></tr>
+              <tr><td><code>syncClaimsToXeroOnSubmit</code>, <code>syncPayrollToXeroOnSubmit</code>, <code>xeroMappingJson</code></td><td></td><td><code>xeroMappingJson</code> is a JSON string whose <code>accounts</code> object is keyed by slot name. The optional <code>taxBorneByEmployer</code> slot ("PCB borne by employer") is the expense account for PCB the company pays for staff; unset, that amount posts to <code>salary</code>. See <a href="payroll-runs.html#xero-preview">Xero journal preview</a>. The same JSON also carries the optional AI-split settings: <code>journalMode</code>, <code>splitPrompt</code> and <code>splitRules</code> (see <a href="#xero-split">AI split of the Xero journal</a>).</td></tr>
               <tr><td><code>payrollBankName</code>, <code>payorAccountHolderName</code>, <code>payorOrganisationCode</code>, <code>ecpPayorAccountNo</code>, <code>ecpPayorBic</code></td><td>string?</td><td>The payor side of the bank file. <code>payorOrganisationCode</code> is used by the Maybank file only (CIMB no longer needs it). <code>ecpPayorAccountNo</code> is the debiting account for the Public Bank, Maybank and OCBC files. <code>payrollBankName</code> decides the bank-file layout; <code>"OCBC Bank (Malaysia) Berhad"</code> gives the OCBC Velocity GIRO TXT (see <a href="payroll-runs.html#doc-bank-file">bank file</a>).</td></tr>
               <tr><td><code>abPayEnabled</code></td><td>boolean</td><td>Read-only. <code>true</code> when the company is connected to ABPay (it has an active API key named &ldquo;ABPay&hellip;&rdquo;), which is what makes <a href="payroll-runs.html#doc-ab-pay-timesheet"><code>GET /payroll/runs/{id}/documents/ab-pay-timesheet</code></a> available. It follows the company's API keys; it is not a saved setting and <code>PUT /payroll/settings</code> ignores it.</td></tr>
               <tr><td><code>isConfigured</code></td><td>boolean</td><td><code>true</code> once the settings were saved (<code>PUT /payroll/settings</code>, i.e. Payroll &rarr; Settings &rarr; General) or set during onboarding. <code>false</code> = nobody has reviewed these yet, so they are the statutory defaults, even if a settings row already exists (for instance one created by <code>PUT /payroll/annual/start</code>).</td></tr>
@@ -922,7 +922,7 @@
               <tr><td><code>hrdfEnabled</code></td><td>boolean</td><td>No</td><td></td></tr>
               <tr><td><code>hrdfRate</code></td><td>decimal?</td><td>No</td><td>0–100. Cleared server-side when <code>hrdfEnabled</code> is false.</td></tr>
               <tr><td><code>autoApplySocsoEisRelief</code></td><td>boolean</td><td>No (default true)</td><td></td></tr>
-              <tr><td><code>syncClaimsToXeroOnSubmit</code>, <code>syncPayrollToXeroOnSubmit</code>, <code>xeroMappingJson</code></td><td></td><td>No</td><td></td></tr>
+              <tr><td><code>syncClaimsToXeroOnSubmit</code>, <code>syncPayrollToXeroOnSubmit</code>, <code>xeroMappingJson</code></td><td></td><td>No</td><td>The mapping JSON is stored as sent, so include <code>journalMode</code>, <code>splitPrompt</code> and <code>splitRules</code> in it to keep the AI split; leaving them out turns it off (see <a href="#xero-split">AI split</a>).</td></tr>
               <tr><td><code>payrollBankName</code></td><td>string?</td><td>No</td><td>Max 120.</td></tr>
               <tr><td><code>payorAccountHolderName</code></td><td>string?</td><td>No</td><td>Max 160.</td></tr>
               <tr><td><code>payorOrganisationCode</code></td><td>string?</td><td>No</td><td>Max 60.</td></tr>
@@ -935,6 +935,130 @@
 <pre><code>curl -X PUT https://&lt;api-host&gt;/payroll/settings \
   -H "Authorization: Bearer wp_live_xxx" -H "Content-Type: application/json" \
   -d '{"workingDaysRule":"TWENTY_SIX","defaultEpfEmployeeRate":11,"defaultEpfEmployerRate":13,"autoApplySocsoEisRelief":true}'</code></pre>
+      </section>
+
+      <section class="endpoint" id="xero-split">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/payroll/settings/xero/split/generate</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>
+          Turn a plain-language description of how to divide the payroll journal (for example
+          "split salary by department, each to its own account") into split rules using AI, and try
+          them on a real run. <strong>Nothing is saved.</strong> To keep the rules, send them back
+          inside <code>xeroMappingJson</code> with <a href="#payroll-settings">PUT /payroll/settings</a>.
+        </p>
+        <p><strong>Scope:</strong> <code>payroll:write</code>. <strong>Module gate:</strong> Payroll. Also needs the admin's &ldquo;change settings&rdquo; access, which a key always has.</p>
+
+        <h3>The saved split (inside <code>xeroMappingJson</code>)</h3>
+        <p>All three fields are optional and sit beside <code>accounts</code>. Without them the journal posts exactly as mapped (<code>STANDARD</code>).</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>journalMode</code></td><td>string</td><td><code>STANDARD</code> (default) or <code>AI_SPLIT</code>. With <code>AI_SPLIT</code>, posting builds the usual journal and then re-divides the debit lines named in <code>splitRules</code>. Posting applies the saved rules by code and never calls AI.</td></tr>
+              <tr><td><code>splitPrompt</code></td><td>string | null</td><td>The admin's words the rules came from. Kept for reference only.</td></tr>
+              <tr><td><code>splitRules</code></td><td>rule[]</td><td>Up to 50 rules, see below.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Rule object</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>source</code></td><td>string</td><td>The debit it divides: <code>salary</code>, <code>overtime</code>, <code>allowance</code>, <code>epfEmployer</code>, <code>socsoEmployer</code>, <code>eisEmployer</code>, <code>hrdfEmployer</code> or <code>taxBorneByEmployer</code>. Credits (deductions, accruals, net pay) are never split.</td></tr>
+              <tr><td><code>basis</code></td><td>string</td><td>How the rule takes its share: <code>DEPARTMENT</code> (actual amounts of employees in the departments in <code>match</code>), <code>EMPLOYEE</code> (actual amounts of the employees in <code>match</code>), <code>FIXED</code> (<code>value</code> in MYR), <code>PERCENT</code> (<code>value</code> percent of what the department and employee rules left), <code>REMAINDER</code> (whatever is left, rounding cents included).</td></tr>
+              <tr><td><code>match</code></td><td>string[]</td><td>Department names (<code>DEPARTMENT</code>) or <code>employeeProfileId</code>s (<code>EMPLOYEE</code>); empty otherwise.</td></tr>
+              <tr><td><code>value</code></td><td>number | null</td><td>MYR for <code>FIXED</code>, a percentage for <code>PERCENT</code> (<code>40</code> is 40%). Ignored (set to null) for other bases.</td></tr>
+              <tr><td><code>accountCode</code></td><td>string</td><td>The Xero account code the share posts to. Must exist and be active.</td></tr>
+              <tr><td><code>tracking</code></td><td>{ category, option }[]</td><td>Up to two tracking tags, by name as Xero shows them.</td></tr>
+              <tr><td><code>label</code></td><td>string | null</td><td>Short words added to the journal line description.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Limits</th></tr></thead>
+            <tbody>
+              <tr><td><code>prompt</code></td><td>string</td><td>Yes</td><td>5&ndash;4000 characters. The AI sees account, tracking, department and staff names, never amounts.</td></tr>
+              <tr><td><code>runId</code></td><td>string | null</td><td>No</td><td>Max 40. The payroll run to try the rules on. Omit for the latest run that has payslips.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Response <code>200</code></h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><code>ok</code></td><td>boolean</td><td>Whether every check passed. Check this, not the status: rules that fail checks still answer <code>200</code>.</td></tr>
+              <tr><td><code>error</code></td><td>null</td><td>Always null on a 200.</td></tr>
+              <tr><td><code>rules</code></td><td>rule[]</td><td>The rules the AI produced (see above).</td></tr>
+              <tr><td><code>summary</code></td><td>string | null</td><td>The AI's one-paragraph reading of the prompt.</td></tr>
+              <tr><td><code>questions</code></td><td>string[]</td><td>Anything it was unsure about, or a name in the prompt it could not find (that rule is left out).</td></tr>
+              <tr><td><code>provider</code></td><td>string | null</td><td><code>claude</code> or <code>gemini</code>.</td></tr>
+              <tr><td><code>preview</code></td><td>object</td><td>The rules tried on a run: <code>ok</code>, <code>runId</code>, <code>runLabel</code> (both null when there is no run yet), <code>replaced</code> (the standard lines the split replaces), <code>lines</code> (the whole journal with the split applied), <code>checks</code>, <code>replacedTotal</code>, <code>totalDebits</code>, <code>totalCredits</code>. Lines are <code>{ accountCode, description, amount, trackingOption, source }</code>, as in the <a href="payroll-runs.html#xero-preview">Xero preview</a>. A check is <code>{ label, passed, detail }</code>, covering that accounts and tracking options exist in Xero, that named departments and employees exist, that shares add up, and that each split total equals the line it replaces.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> <code>{ "errors": { "Prompt": ["…"] } }</code> &mdash; prompt missing or outside 5&ndash;4000 characters.</li>
+          <li><code>403</code> <code>{ "error": { "status": 403, "message": "…" } }</code> &mdash; missing <code>payroll:write</code> scope, or Payroll not in the plan.</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> &mdash; Xero is not connected, AI is not configured, the AI service failed, or its answer could not be read as rules (reword the prompt and retry).</li>
+        </ul>
+
+        <h3>Things that bite</h3>
+        <ul>
+          <li><strong>Not saved.</strong> The result is a draft for review. Save it with <code>PUT /payroll/settings</code>, which <a href="#payroll-settings">replaces the whole row</a>, so read the current settings first and put <code>journalMode: "AI_SPLIT"</code>, <code>splitPrompt</code> and the rules (as <code>splitRules</code>) into <code>xeroMappingJson</code> yourself.</li>
+          <li><strong>AI is not deterministic.</strong> The same prompt can give different rules. Read <code>rules</code> and <code>checks</code> before saving; <code>ok: false</code> means posting would be refused.</li>
+          <li><strong>Metered.</strong> Each call makes an AI request. Use <a href="#xero-split-check">check</a> to re-try rules you already have.</li>
+        </ul>
+<pre><code>curl -X POST https://&lt;api-host&gt;/payroll/settings/xero/split/generate \
+  -H "Authorization: Bearer wp_live_xxx" -H "Content-Type: application/json" \
+  -d '{"prompt":"Split salary by department: Sales to account 6100, the rest to 6000","runId":"run_123"}'</code></pre>
+      </section>
+
+      <section class="endpoint" id="xero-split-check">
+        <div class="endpoint-head">
+          <span class="method post">POST</span>
+          <span class="path">/payroll/settings/xero/split/check</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>
+          Try split rules you already have (saved ones, or ones you edited) against a real run, without
+          AI. Nothing is saved. <strong>Module gate:</strong> Payroll.
+        </p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Limits</th></tr></thead>
+            <tbody>
+              <tr><td><code>rules</code></td><td>rule[]</td><td>No</td><td>Max 50, see <a href="#xero-split">rule object</a>. Blank <code>match</code> entries and empty tags are dropped. An empty list fails the &ldquo;There are rules to apply&rdquo; check.</td></tr>
+              <tr><td><code>runId</code></td><td>string | null</td><td>No</td><td>Max 40. Omit for the latest run with payslips. A run id that is not found falls back to checks that need no run.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>
+          The same body as <a href="#xero-split">generate</a>, with the cleaned <code>rules</code>,
+          <code>summary</code> null, <code>questions</code> empty and <code>provider</code> null.
+          With no run to try them on, <code>preview</code> has empty <code>lines</code> and <code>replaced</code>
+          and only the checks that need no run.
+        </p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> <code>{ "errors": { "Rules": ["…"] } }</code> &mdash; more than 50 rules or a field too long.</li>
+          <li><code>403</code> <code>{ "error": { "status": 403, "message": "…" } }</code> &mdash; missing <code>payroll:write</code> scope or module.</li>
+        </ul>
+<pre><code>curl -X POST https://&lt;api-host&gt;/payroll/settings/xero/split/check \
+  -H "Authorization: Bearer wp_live_xxx" -H "Content-Type: application/json" \
+  -d '{"runId":"run_123","rules":[{"source":"salary","basis":"DEPARTMENT","match":["Sales"],"accountCode":"6100","tracking":[],"label":"Sales"},{"source":"salary","basis":"REMAINDER","match":[],"accountCode":"6000","tracking":[]}]}'</code></pre>
       </section>
 
       <section class="endpoint">
