@@ -91,17 +91,26 @@ public enum XeroJournalMode
 
 // How one rule takes its share of a source's total.
 //
-//   DEPARTMENT — the actual amounts of every employee in the named departments
-//   PROJECT    — the actual amounts of every employee in a team under the named
-//                projects (whole pay follows the project; someone in teams under
-//                two projects is taken by the first rule that matches, and flagged)
-//   EMPLOYEE   — the actual amounts of the named employees (EmployeeProfile ids)
-//   FIXED      — a fixed RM amount (Value)
-//   PERCENT    — Value % of what the DEPARTMENT/EMPLOYEE rules left over
-//   REMAINDER  — whatever is left after all of the above, rounding cents included
+// People rules — the actual amounts of the people they match:
+//   DEPARTMENT      — department (free text on the payroll profile)
+//   PROJECT         — any live project they are on (through its teams); someone
+//                     on two named projects goes to the first rule, and is flagged
+//   JOB_TITLE       — job title in this company
+//   EMPLOYMENT_TYPE — employment type on the profile (PERMANENT, CONTRACT…)
+//   ROLE            — Employee or Supervisor
+//   POLICY          — the attendance/leave policy that applies to them
+//   EMPLOYEE        — named people (EmployeeProfile ids)
+//   EVERYONE        — everyone not already taken (to pick out a TYPE for all)
+// Share rules — what the people rules left:
+//   FIXED           — a fixed RM amount (Value)
+//   PERCENT         — Value % of what the people rules left over
+//   REMAINDER       — whatever is left after all of the above, rounding cents included
 //
-// Employee rules are applied first, in order; an employee is taken by the
-// first rule that matches them. FIXED and PERCENT then share what is left.
+// People rules are applied first, in order; each amount is taken by the first
+// rule that matches it. FIXED and PERCENT then share what is left.
+//
+// The AI only CHOOSES a basis and values from what exists in the org; the
+// matching itself is code, so the same run posts the same journal every time.
 public enum SplitBasis
 {
     DEPARTMENT,
@@ -110,18 +119,54 @@ public enum SplitBasis
     FIXED,
     PERCENT,
     REMAINDER,
+    JOB_TITLE,
+    EMPLOYMENT_TYPE,
+    ROLE,
+    POLICY,
+    EVERYONE,
+}
+
+public static class SplitBases
+{
+    // The bases that take people's actual amounts, rather than a share.
+    public static bool TakesPeople(SplitBasis basis) =>
+        basis is not (SplitBasis.FIXED or SplitBasis.PERCENT or SplitBasis.REMAINDER);
+
+    // The people bases that match on a list of values (all but EVERYONE).
+    public static bool MatchesValues(SplitBasis basis) =>
+        TakesPeople(basis) && basis != SplitBasis.EVERYONE;
+
+    public static string Label(SplitBasis basis) => basis switch
+    {
+        SplitBasis.DEPARTMENT => "department",
+        SplitBasis.PROJECT => "project",
+        SplitBasis.JOB_TITLE => "job title",
+        SplitBasis.EMPLOYMENT_TYPE => "employment type",
+        SplitBasis.ROLE => "role",
+        SplitBasis.POLICY => "policy",
+        SplitBasis.EMPLOYEE => "employee",
+        _ => basis.ToString().ToLowerInvariant(),
+    };
 }
 
 public sealed record PayrollJournalSplitRule
 {
-    // Which debit it re-divides: a `PayrollJournalSplitSources` key.
+    // Which line it re-divides: a `PayrollJournalSplitSources` key.
     public string Source { get; init; } = PayrollXeroAccounts.Salary;
 
     public SplitBasis Basis { get; init; } = SplitBasis.REMAINDER;
 
-    // Department names (DEPARTMENT), project names (PROJECT) or EmployeeProfile
-    // ids (EMPLOYEE).
-    public IReadOnlyList<string> Match { get; init; } = [];
+    // The values a people rule matches: department / project / job title /
+    // employment type / role / policy names, or EmployeeProfile ids (EMPLOYEE).
+    // Null-tolerant: a client other than the settings page may send `null`,
+    // and a null list here would throw when the rules are checked or posted.
+    public IReadOnlyList<string> Match { get => _match; init => _match = value ?? []; }
+    private readonly IReadOnlyList<string> _match = [];
+
+    // Allowance and deduction rules only: the adjustment category codes
+    // (e.g. "wages_commission") the rule takes. Empty = every type.
+    public IReadOnlyList<string> Categories { get => _categories; init => _categories = value ?? []; }
+    private readonly IReadOnlyList<string> _categories = [];
 
     // RM for FIXED, a percentage (40 = 40%) for PERCENT.
     public decimal? Value { get; init; }
@@ -130,7 +175,8 @@ public sealed record PayrollJournalSplitRule
     public string AccountCode { get; init; } = string.Empty;
 
     // Up to two tracking tags, by category and option NAME (as Xero shows them).
-    public IReadOnlyList<PayrollJournalSplitTag> Tracking { get; init; } = [];
+    public IReadOnlyList<PayrollJournalSplitTag> Tracking { get => _tracking; init => _tracking = value ?? []; }
+    private readonly IReadOnlyList<PayrollJournalSplitTag> _tracking = [];
 
     // Short words for the journal description, e.g. "Sales".
     public string? Label { get; init; }
@@ -138,8 +184,11 @@ public sealed record PayrollJournalSplitRule
 
 public sealed record PayrollJournalSplitTag(string Category, string Option);
 
-// The debits a rule can split. Credits — deductions, accruals, net pay — are
-// never split: they are what the company owes, not what the month cost.
+// The lines a rule can split: the month's costs, plus the deductions taken
+// from pay (a credit — a loan repayment, say, belongs in the staff-loan
+// account of whoever's group it is). The payables — EPF, SOCSO, EIS, PCB,
+// HRDF, net pay — are never split: each must equal what is paid to KWSP,
+// PERKESO, LHDN, HRD Corp and the bank.
 public static class PayrollJournalSplitSources
 {
     public const string Overtime = "overtime";
@@ -154,7 +203,15 @@ public static class PayrollJournalSplitSources
         PayrollXeroAccounts.EisEmployer,
         PayrollXeroAccounts.HrdfEmployer,
         PayrollXeroAccounts.TaxBorneByEmployer,
+        PayrollXeroAccounts.Deduction,
     ];
+
+    // The sources whose rules may pick out adjustment types.
+    public static bool HasTypes(string source) =>
+        source is PayrollXeroAccounts.Allowance or PayrollXeroAccounts.Deduction;
+
+    // Deductions are credits: their lines carry negative amounts.
+    public static bool IsCredit(string source) => source == PayrollXeroAccounts.Deduction;
 
     public static string Label(string source) => source switch
     {

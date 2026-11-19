@@ -6,6 +6,7 @@ using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Projects;
 using AltomateHR.Api.Modules.Teams;
 using AltomateHR.Api.Modules.Payroll.Entities;
+using AltomateHR.Api.Modules.Policies;
 using AltomateHR.Api.Modules.Xero;
 using AltomateHR.Api.Modules.Xero.Dtos;
 
@@ -37,10 +38,15 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
     private readonly IXeroService _xero;
     private readonly IAuditService _audit;
     private readonly IEmployeeProfileRepository _profiles;
+    private readonly ILogger<PayrollXeroSyncService> _log;
+
+    // Who is where, for the AI split's people rules (project, job title,
+    // employment type, role, policy).
     private readonly ITeamRepository? _teams;
     private readonly ITeamMembershipRepository? _memberships;
     private readonly IProjectRepository? _projects;
-    private readonly ILogger<PayrollXeroSyncService> _log;
+    private readonly IDirectoryService? _directory;
+    private readonly IPolicyService? _policies;
 
     public PayrollXeroSyncService(
         IPayrollRunRepository runs,
@@ -52,11 +58,16 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
         IAuditService audit,
         IEmployeeProfileRepository profiles,
         ILogger<PayrollXeroSyncService> log,
-        // Optional so tests that never split by project needn't build them.
+        // Optional so tests that never split by them needn't build them;
+        // without one, that detail reads as blank and its rules match nobody.
         ITeamRepository? teams = null,
         ITeamMembershipRepository? memberships = null,
-        IProjectRepository? projects = null)
+        IProjectRepository? projects = null,
+        IDirectoryService? directory = null,
+        IPolicyService? policies = null)
     {
+        _directory = directory;
+        _policies = policies;
         _profiles = profiles;
         _teams = teams;
         _memberships = memberships;
@@ -103,7 +114,8 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
     private sealed record Journal(
         bool Ok, string? Error, string Narration, DateTime Date,
         IReadOnlyList<PayrollJournal.Line> Lines,
-        IReadOnlyList<PayrollJournalSplit.Check>? Checks);
+        IReadOnlyList<PayrollJournalSplit.Check>? Checks,
+        IReadOnlyList<PayrollJournalSplit.Assignment>? Assignments = null);
 
     private static Journal BuildJournal(PayrollJournal.Input input, PayrollJournalSplit.Context context) =>
         BuildJournal(input, context, input.Mapping.JournalMode == XeroJournalMode.AI_SPLIT
@@ -121,7 +133,8 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
         }
 
         var split = PayrollJournalSplit.Apply(standard, input.Rows, rules, context);
-        return new Journal(split.Ok, split.Error, standard.Narration, standard.Date, split.Lines, split.Checks);
+        return new Journal(
+            split.Ok, split.Error, standard.Narration, standard.Date, split.Lines, split.Checks, split.Assignments);
     }
 
     // The settings page's try-out: these rules (saved or just generated)
@@ -138,7 +151,7 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
             var context = await SplitContextAsync([]);
             var checks = PayrollJournalSplit.CheckRules(rules, context);
             return new PayrollXeroSplitPreview(
-                checks.All(c => c.Passed), null, null, [], [], checks);
+                checks.All(c => c.Passed), null, null, [], [], checks, []);
         }
 
         var (run, input, ctx) = loaded.Value;
@@ -155,7 +168,13 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
             PayrollPeriodLabel.ForRun(run),
             [.. replaced.Select(PreviewLine)],
             [.. journal.Lines.Select(PreviewLine)],
-            journal.Checks ?? []);
+            journal.Checks ?? [],
+            [.. (journal.Assignments ?? []).Select(a => new PayrollXeroSplitAssignment(
+                a.EmployeeName,
+                [.. a.Placements.Select(pl => new PayrollXeroSplitPlacement(
+                    PayrollJournalSplitSources.Label(pl.Source),
+                    pl.Category is null ? null : PayrollAdjustmentCategories.Find(pl.Category)?.Label ?? pl.Category,
+                    pl.Rule, pl.AccountCode, pl.Amount))]))]);
     }
 
     // What a split prompt may refer to: accounts, tracking, departments and
@@ -222,32 +241,74 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
             tracking.TryAdd(c.Name, c.Options.ToHashSet(StringComparer.Ordinal));
         }
 
-        var profiles = await _profiles.GetAllForCurrentOrgAsync();
-        var departments = profiles
-            .Select(p => p.Department?.Trim())
-            .Where(d => !string.IsNullOrEmpty(d))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase)!;
+        var people = await PeopleAsync();
 
-        var employees = profiles.ToDictionary(p => p.Id, _ => string.Empty, StringComparer.Ordinal);
+        var employees = people.Keys.ToDictionary(id => id, _ => string.Empty, StringComparer.Ordinal);
         foreach (var p in payslips) employees[p.EmployeeProfileId] = p.SnapshotName;
 
-        var projectsByUser = await ProjectsByUserAsync();
+        // The values that exist now, for the AI to choose from and the checks
+        // to hold the rules to.
+        IReadOnlySet<string> Values(Func<Person, IEnumerable<string?>> pick) =>
+            people.Values.SelectMany(pick)
+                .Select(v => v?.Trim())
+                .Where(v => !string.IsNullOrEmpty(v))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase)!;
         var projectsWithTeams = await ProjectsWithTeamsAsync();
 
         return new PayrollJournalSplit.Context
         {
             ActiveAccounts = active,
             TrackingCategories = tracking,
-            Departments = departments!,
+            Departments = Values(p => [p.Department]),
+            // Live projects with a team, members or not, so a rule can name a
+            // project before anyone is in it.
             Projects = projectsWithTeams,
+            JobTitles = Values(p => [p.JobTitle]),
+            EmploymentTypes = Values(p => [p.EmploymentType]),
+            Roles = Values(p => [p.Role]),
+            Policies = Values(p => [p.Policy]),
             Employees = employees,
             EmployeeProjects = payslips
                 .GroupBy(p => p.EmployeeProfileId, StringComparer.Ordinal)
                 .ToDictionary(
                     g => g.Key,
-                    g => projectsByUser.GetValueOrDefault(g.First().UserId) ?? (IReadOnlyList<string>)[],
+                    g => people.GetValueOrDefault(g.Key)?.Projects ?? (IReadOnlyList<string>)[],
                     StringComparer.Ordinal),
         };
+    }
+
+    // What a people rule can match on, per payroll profile — read live, like
+    // the run's other identifiers, so a split follows who is where now.
+    private sealed record Person(
+        string? Department, IReadOnlyList<string> Projects, string? JobTitle,
+        string? EmploymentType, string? Role, string? Policy);
+
+    private async Task<Dictionary<string, Person>> PeopleAsync()
+    {
+        var profiles = await _profiles.GetAllForCurrentOrgAsync();
+        var userIds = profiles.Select(p => p.UserId).Distinct(StringComparer.Ordinal).ToList();
+
+        var memberships = _directory is null
+            ? new Dictionary<string, Employees.Entities.OrganizationMembership>(StringComparer.Ordinal)
+            : (await _directory.GetMembershipsForCurrentOrgAsync())
+                .GroupBy(m => m.UserId, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+        var projects = await ProjectsByUserAsync();
+        var policies = _policies is null
+            ? new Dictionary<string, Policies.Entities.EmployeePolicy>(StringComparer.Ordinal)
+            : await _policies.GetEffectivePoliciesForEmployeesAsync(userIds);
+
+        return profiles.ToDictionary(p => p.Id, p =>
+        {
+            var membership = memberships.GetValueOrDefault(p.UserId);
+            return new Person(
+                p.Department,
+                projects.GetValueOrDefault(p.UserId) ?? [],
+                membership?.JobTitle,
+                p.EmploymentStatus?.ToString(),
+                membership?.Role,
+                policies.GetValueOrDefault(p.UserId)?.Name);
+        }, StringComparer.Ordinal);
     }
 
     // Live projects that have at least one team, members or not.
@@ -499,22 +560,25 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
 
         var (trackingName, trackingOptions) = await TrackingAsync(mapping);
 
-        // Departments are read live: a split by department follows who is in
-        // which department now, like the run's other live identifiers.
-        var departmentByProfile = (await _profiles.GetAllForCurrentOrgAsync())
-            .ToDictionary(p => p.Id, p => p.Department, StringComparer.Ordinal);
-        var projectsByUser = await ProjectsByUserAsync();
+        // Who is where is read live: a split by project or department follows
+        // who is in which now, like the run's other live identifiers.
+        var people = await PeopleAsync();
 
         var rows = payslips.Select(p =>
         {
             var items = lineItems.TryGetValue(p.Id, out var list) ? list : [];
+            var person = people.GetValueOrDefault(p.EmployeeProfileId);
 
             return new PayrollJournal.EmployeeRow
             {
                 EmployeeName = p.SnapshotName,
                 EmployeeId = p.EmployeeProfileId,
-                Department = departmentByProfile.GetValueOrDefault(p.EmployeeProfileId),
-                Projects = projectsByUser.GetValueOrDefault(p.UserId) ?? [],
+                Department = person?.Department,
+                Projects = person?.Projects ?? [],
+                JobTitle = person?.JobTitle,
+                EmploymentType = person?.EmploymentType,
+                Role = person?.Role,
+                Policy = person?.Policy,
                 // No project dimension on a payslip yet — every line lands
                 // under "(No project)" until one exists. Kept as a real value
                 // rather than null so the tracking lookup has something to
@@ -533,6 +597,7 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
                 Pcb = p.Pcb,
                 PcbBorneByEmployer = p.PcbBorneByEmployer,
                 Cp38 = p.Cp38,
+                VoluntaryPcb = p.VoluntaryPcb,
                 Zakat = p.Zakat,
                 Hrdf = p.Hrdf,
                 Allowances =

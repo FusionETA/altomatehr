@@ -18,6 +18,7 @@ import {
   type PayrollRun,
 } from "../api";
 import { SkeletonRows } from "@/shared/components/Skeleton";
+import { saveFile } from "@/shared/lib/api-client";
 import { CheckBox } from "./PayrollCheckbox";
 import { ModalPortal } from "./ModalPortal";
 import { PayrollSelect } from "./PayrollSelect";
@@ -683,7 +684,9 @@ function MonthRow({ runs }: { runs: PayrollRun[] }) {
     setBusy(format);
     setError(null);
     try {
-      await downloadMonthSummary(year, month, format);
+      // apiGetFile only fetches; without saveFile the button spun and
+      // nothing was saved (the same slip PayslipsView once had).
+      saveFile(await downloadMonthSummary(year, month, format));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not download the summary.");
     } finally {

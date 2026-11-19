@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: a8a07fb2
+// whats-new-covered-up-to: 347bb7b
 
 // A line is for everyone, or — wrapped in admins(…) — for admins and owners
 // only. Employees and supervisors never see an admins line, so it doesn't
@@ -32,14 +32,16 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     date: "2026-11-19",
     title: "AI split for the Xero payroll journal",
     new: [
-      admins("In Payroll settings → Xero sync, there's a new AI split (advanced) tab for Xero-connected companies. Describe how the journal's debit lines should split across accounts."),
-      admins("Describe the split in plain words: by percent, fixed RM, the remainder, department, project or named staff. The AI turns it into rules, and each line can carry up to two tracking tags."),
+      admins("In Payroll settings → Xero sync, the new AI split (advanced) tab splits journal lines by percent, fixed RM, the remainder, or who people are: department, project, job title, employment type, role, policy, named staff or everyone. Describe it in plain words and the AI turns it into rules."),
+      admins("Allowances and deductions can be split by type too, such as commission for HQ staff to its own account. EPF, SOCSO, EIS, PCB, HRDF and net pay are never split."),
       admins("If the AI is unsure, it asks specific questions with one-click answers taken from your accounts, staff and projects. Reply in the \"Answer the AI\" box and it refines the rules instead of starting over."),
-      admins("You can split by project. A person's projects come from the teams they're in, and their whole pay follows the project."),
-      admins("Someone in teams under two projects goes to the first matching rule, and the checks flag it. Posting isn't blocked."),
-      admins("The rules are checked, and posting is blocked if any check fails. The amounts still come from the payroll run, not the AI."),
-      admins("The AI split is off by default. Switch it on once the checks pass, and every run posts with the saved rules."),
-      admins("Each posted run keeps a copy of the split it used, and changes to the split are logged in the Activity log."),
+      admins("A person's projects come from the teams they're in, and their whole pay follows the project. Someone in teams under two projects goes to the first matching rule, and the checks flag it."),
+      admins("The rules are checked, and posting is blocked if any check fails. The AI split is off by default; switch it on once the checks pass."),
+      admins("A new \"Who went where\" section on the AI split screen lists each person on the run, the rule and account that took each amount, and a count per rule. Each posted run keeps a copy of its split, and changes are logged in the Activity log."),
+    ],
+    fixed: [
+      admins("Posting to Xero no longer refuses a payslip with zakat, CP38, Additional PCB or TP1 reliefs. Zakat via salary, CP38 and Additional PCB now post to PCB payable once; TP1 reliefs and self-paid zakat post nothing."),
+      admins("On a payroll month, the all-runs Summary and Excel buttons now save the file. Before, they spun and nothing downloaded."),
     ],
   },
   {

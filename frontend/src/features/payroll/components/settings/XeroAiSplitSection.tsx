@@ -8,6 +8,7 @@ import {
   generateXeroSplit,
   XERO_SPLIT_SOURCE_LABELS,
   type PayrollXeroMapping,
+  type XeroSplitAssignment,
   type XeroSplitResult,
   type XeroSplitRule,
   type XeroSplitTurn,
@@ -18,6 +19,8 @@ import {
   CARD,
   ERROR_PANEL,
   HINT,
+  INPUT_SM,
+  LINK_BUTTON,
   NOTE_PANEL,
   TD,
   TD_NUM,
@@ -34,10 +37,24 @@ import {
 // applies them by code — the same run always splits the same way. Every
 // check below is code too; the AI never produces an amount.
 //
-// The standard mapping stays the base: the split re-divides its debit lines
-// (salary into one account by default) and leaves every credit alone.
+// The standard mapping stays the base: the split re-divides its lines (salary
+// into one account by default) by who people are — department, project, job
+// title, employment type, role, policy — and, for allowances and deductions,
+// by type. The payables (EPF/SOCSO/EIS/PCB/HRDF, net pay) are never split.
 
 const SUGGESTIONS: { label: string; text: string }[] = [
+  {
+    label: "By project, directors apart",
+    text: "Split salary, overtime, allowances and employer EPF, SOCSO and EIS. Job title DIRECTOR first: salary to <account>, allowances to <account>, EPF/SOCSO/EIS to <accounts>. Then members of project <HQ project>: salary to <account>, overtime to <account>, allowances to <account>, EPF/SOCSO/EIS to <accounts>. Everyone else is the remainder: <accounts>.",
+  },
+  {
+    label: "Commission to its own account",
+    text: "Split allowances: commission for everyone to <account>; all other allowances stay on <allowance account>.",
+  },
+  {
+    label: "Loan repayments by group",
+    text: "Split deductions: loan repayments to <staff loan account>; every other deduction stays on <deductions account>.",
+  },
   {
     label: "Split salary by department",
     text: "Split salary by each employee's department: Sales staff to <sales account>, Operations staff to <operations account>, everyone else to <admin account>. Tag each line with the Department tracking option of the same name.",
@@ -196,6 +213,12 @@ export function XeroAiSplitSection({
   };
 
   const splitSources = new Set(rules.map((r) => r.source));
+  const replacedDebits = (preview?.replaced ?? [])
+    .filter((l) => l.amount > 0)
+    .reduce((sum, l) => sum + l.amount, 0);
+  const replacedCredits = -(preview?.replaced ?? [])
+    .filter((l) => l.amount < 0)
+    .reduce((sum, l) => sum + l.amount, 0);
   const splitLines = (preview?.lines ?? []).filter((l) => l.source && splitSources.has(l.source));
   const splitTotal = splitLines.reduce((sum, l) => sum + l.amount, 0);
   const checks = preview?.checks ?? [];
@@ -211,7 +234,7 @@ export function XeroAiSplitSection({
             <h3 className="text-[15px] font-semibold text-foreground">Use the AI split when posting</h3>
             <p className={HINT}>
               Off: runs post exactly as the standard mapping says. On: the same journal, with the
-              debit lines below re-divided by the saved rules. Posting applies the saved rules — it
+              lines below re-divided by the saved rules. Posting applies the saved rules — it
               never calls AI — and is blocked if any check fails.
             </p>
           </div>
@@ -263,9 +286,16 @@ export function XeroAiSplitSection({
           {preview && preview.replaced.length > 0 ? (
             <div className="sm:text-right">
               <p className="text-xs text-muted-foreground">Amount to split</p>
+              {/* Costs and deductions apart: netting a loan repayment against
+                  salary gives a figure that matches no line in the journal. */}
               <p className="text-xl font-semibold tabular-nums text-primary">
-                RM {money(preview.replacedTotal)}
+                RM {money(replacedDebits)}
               </p>
+              {replacedCredits > 0 ? (
+                <p className="text-xs tabular-nums text-muted-foreground">
+                  + deductions RM {money(replacedCredits)}
+                </p>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -320,8 +350,9 @@ export function XeroAiSplitSection({
         </div>
         <p className={HINT}>
           AI reads this once and writes rules; nothing is saved until you save the settings.
-          It only uses accounts, tracking options, departments and staff that exist in this
-          company.
+          It can group people by department, project, job title, employment type, role, policy
+          or name, and pick out allowance and deduction types — using only accounts, tracking
+          options and values that exist in this company.
         </p>
         {error ? <div className={`${ERROR_PANEL} mt-3`}>{error}</div> : null}
         {result?.summary ? (
@@ -447,7 +478,7 @@ export function XeroAiSplitSection({
                       <th className={TH}>Account</th>
                       <th className={TH}>Description</th>
                       <th className={TH}>Tracking</th>
-                      <th className={TH_NUM}>Debit</th>
+                      <th className={TH_NUM}>Amount</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/60">
@@ -549,6 +580,10 @@ export function XeroAiSplitSection({
               </div>
             ) : null}
           </section>
+
+          {preview && preview.assignments.length > 0 ? (
+            <WhoWentWhere assignments={preview.assignments} accountName={accountName} />
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -578,20 +613,24 @@ function RulesTable({
   accountName: (code: string) => string | undefined;
 }) {
   const share = (r: XeroSplitRule) => {
-    switch (r.basis) {
-      case "PERCENT":
-        return `${r.value ?? 0}%`;
-      case "FIXED":
-        return `RM ${money(r.value ?? 0)}`;
-      case "REMAINDER":
-        return "Remainder";
-      case "DEPARTMENT":
-        return `Dept: ${r.match.join(", ")}`;
-      case "PROJECT":
-        return `Project: ${r.match.join(", ")}`;
-      default:
-        return `${r.match.length} named staff`;
-    }
+    const who = (() => {
+      switch (r.basis) {
+        case "PERCENT":
+          return `${r.value ?? 0}%`;
+        case "FIXED":
+          return `RM ${money(r.value ?? 0)}`;
+        case "REMAINDER":
+          return "Remainder";
+        case "EVERYONE":
+          return "Everyone";
+        case "EMPLOYEE":
+          return `${r.match.length} named staff`;
+        default:
+          return `${BASIS_LABELS[r.basis]}: ${r.match.join(", ")}`;
+      }
+    })();
+    const types = r.categories ?? [];
+    return types.length > 0 ? `${who} · ${types.map(typeLabel).join(", ")}` : who;
   };
 
   return (
@@ -627,5 +666,134 @@ function RulesTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+const BASIS_LABELS: Record<XeroSplitRule["basis"], string> = {
+  DEPARTMENT: "Dept",
+  PROJECT: "Project",
+  JOB_TITLE: "Job title",
+  EMPLOYMENT_TYPE: "Employment type",
+  ROLE: "Role",
+  POLICY: "Policy",
+  EMPLOYEE: "Named staff",
+  EVERYONE: "Everyone",
+  FIXED: "Fixed",
+  PERCENT: "Percent",
+  REMAINDER: "Remainder",
+};
+
+// "wages_commission" → "Commission", for a rule's types. The server's labels
+// arrive with the who-went-where list; a rule shows its codes readably.
+function typeLabel(code: string) {
+  const words = code.replace(/^(wages|allowance|deduct|bik)_/, "").replace(/_/g, " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+const PEOPLE_SHOWN = 15;
+
+// Who went where: every person on the run, and which rule took each of their
+// amounts — so an admin can check someone on two projects, or a director,
+// landed where they meant before anything posts.
+function WhoWentWhere({
+  assignments,
+  accountName,
+}: {
+  assignments: XeroSplitAssignment[];
+  accountName: (code: string) => string | undefined;
+}) {
+  const [search, setSearch] = useState("");
+  const [showAll, setShowAll] = useState(false);
+
+  // How many people each rule took, across every line it splits.
+  const byRule = useMemo(() => {
+    const people = new Map<string, Set<string>>();
+    for (const a of assignments) {
+      for (const p of a.placements) {
+        const key = `${p.source} → ${p.rule}`;
+        if (!people.has(key)) people.set(key, new Set());
+        people.get(key)!.add(a.employeeName);
+      }
+    }
+    return [...people.entries()].map(([rule, names]) => ({ rule, count: names.size }));
+  }, [assignments]);
+
+  const term = search.trim().toLowerCase();
+  const matching = term
+    ? assignments.filter((a) => a.employeeName.toLowerCase().includes(term))
+    : assignments;
+  const shown = showAll || term ? matching : matching.slice(0, PEOPLE_SHOWN);
+
+  return (
+    <section className={`${CARD} lg:col-span-2`}>
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          5 · Who went where
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {assignments.length} {assignments.length === 1 ? "person" : "people"} on this run
+        </p>
+      </div>
+
+      <ul className="mb-4 flex flex-wrap gap-2">
+        {byRule.map(({ rule, count }) => (
+          <li
+            key={rule}
+            className="rounded-full border border-border/60 bg-muted/50 px-3 py-1 text-xs text-foreground"
+          >
+            {rule} · {count}
+          </li>
+        ))}
+      </ul>
+
+      <input
+        type="search"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Find a person"
+        aria-label="Find a person"
+        className={`${INPUT_SM} mb-3 sm:max-w-xs`}
+      />
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px]">
+          <thead>
+            <tr>
+              <th className={TH}>Person</th>
+              <th className={TH}>Line</th>
+              <th className={TH}>Rule</th>
+              <th className={TH}>Account</th>
+              <th className={TH_NUM}>Amount</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border/60">
+            {shown.flatMap((a) =>
+              a.placements.map((p, i) => (
+                <tr key={`${a.employeeName}-${i}`}>
+                  <td className={`${TD} font-medium`}>{i === 0 ? a.employeeName : ""}</td>
+                  <td className={TD}>{p.type ? `${p.source} · ${p.type}` : p.source}</td>
+                  <td className={TD}>{p.rule}</td>
+                  <td className={TD}>
+                    {p.accountCode
+                      ? `${p.accountCode}${accountName(p.accountCode) ? ` · ${accountName(p.accountCode)}` : ""}`
+                      : "Shared pool"}
+                  </td>
+                  <td className={TD_NUM}>{money(p.amount)}</td>
+                </tr>
+              )),
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {term && matching.length === 0 ? (
+        <p className="mt-3 text-sm text-muted-foreground">Nobody on this run matches “{search}”.</p>
+      ) : null}
+      {!term && !showAll && matching.length > PEOPLE_SHOWN ? (
+        <button type="button" className={`${LINK_BUTTON} mt-3`} onClick={() => setShowAll(true)}>
+          Show all {matching.length} people
+        </button>
+      ) : null}
+    </section>
   );
 }

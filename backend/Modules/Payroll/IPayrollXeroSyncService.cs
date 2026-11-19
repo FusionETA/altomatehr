@@ -41,7 +41,10 @@ public sealed record PayrollXeroSplitPreview(
     IReadOnlyList<PayrollXeroPreviewLine> Replaced,
     // The whole journal with the split applied.
     IReadOnlyList<PayrollXeroPreviewLine> Lines,
-    IReadOnlyList<PayrollJournalSplit.Check> Checks)
+    IReadOnlyList<PayrollJournalSplit.Check> Checks,
+    // Who went where: each person on the run, and which rule took each of
+    // their amounts. Empty when there is no run to try the rules on.
+    IReadOnlyList<PayrollXeroSplitAssignment> Assignments)
 {
     public decimal ReplacedTotal => Replaced.Sum(l => l.Amount);
     public decimal TotalDebits => Lines.Where(l => l.Amount > 0m).Sum(l => l.Amount);
@@ -49,6 +52,15 @@ public sealed record PayrollXeroSplitPreview(
 }
 
 public sealed record PayrollXeroSplitAccount(string Code, string Name, string Type);
+
+public sealed record PayrollXeroSplitAssignment(
+    string EmployeeName, IReadOnlyList<PayrollXeroSplitPlacement> Placements);
+
+// `Source` and `Type` are display labels ("Allowances", "Commission"); the
+// account is null when the amount went into the pool the fixed and
+// percentage rules share.
+public sealed record PayrollXeroSplitPlacement(
+    string Source, string? Type, string Rule, string? AccountCode, decimal Amount);
 
 public sealed record PayrollXeroSplitOrgContext(
     PayrollJournalSplit.Context Context,

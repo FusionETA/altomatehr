@@ -92,39 +92,60 @@ public class PayrollJournalSplitService : IPayrollJournalSplitService
         You turn an HR admin's plain-language description of how to split a Malaysian payroll
         journal into JSON rules. Code applies the rules; you never calculate amounts.
 
-        The standard journal debits each expense to one account (e.g. all salary to the default
-        salary account). Rules re-divide those debit totals across other accounts. Credits
-        (deductions, EPF/SOCSO/EIS/PCB payables, net pay) are never split.
+        The standard journal posts each kind of line to one account (e.g. all salary to the
+        default salary account). Rules re-divide a kind's total across other accounts. The
+        payables (EPF/SOCSO/EIS/PCB/HRDF payable, net pay) are never split.
 
         Each rule:
-          source      which debit it splits, one of: salary, overtime, allowance, epfEmployer,
-                      socsoEmployer, eisEmployer, hrdfEmployer, taxBorneByEmployer
-          basis       DEPARTMENT  the actual amounts of employees in the departments in "match"
-                      PROJECT     the actual amounts of employees in a team under the projects in
-                                  "match" (their whole pay follows the project)
-                      EMPLOYEE    the actual amounts of the employees whose ids are in "match"
-                      FIXED       a fixed RM amount in "value"
-                      PERCENT     "value" percent (40 = 40%) of what DEPARTMENT/EMPLOYEE rules left
-                      REMAINDER   whatever is left (exactly one per source when shares don't cover 100%)
-          match       department names, project names or employee ids, exactly as listed in the
-                      context; else []
+          source      which line it splits, one of: salary, overtime, allowance, epfEmployer,
+                      socsoEmployer, eisEmployer, hrdfEmployer, taxBorneByEmployer, deduction
+                      (deduction = amounts taken from pay, e.g. loan repayments; a credit)
+          basis       who or what it takes. People bases take the actual amounts of the people
+                      whose detail is one of the values in "match":
+                        DEPARTMENT       department names        (context.departments)
+                        PROJECT          project names; someone on several projects matches if
+                                         ANY of their projects is listed (context.projects)
+                        JOB_TITLE        job titles              (context.jobTitles)
+                        EMPLOYMENT_TYPE  employment types        (context.employmentTypes)
+                        ROLE             roles                   (context.roles)
+                        POLICY           policy names            (context.policies)
+                        EMPLOYEE         employee ids            (context.employees)
+                        EVERYONE         everyone not already taken; match is []
+                      Share bases take part of what the people rules left:
+                        FIXED            a fixed RM amount in "value"
+                        PERCENT          "value" percent (40 = 40%) of what the people rules left
+                        REMAINDER        whatever is left (exactly one per source when shares
+                                         don't cover 100%)
+          match       the values for a people basis, exactly as listed in the context; else []
+          categories  allowance or deduction rules only: the type codes it takes, from
+                      context.allowanceTypes / context.deductionTypes (e.g. "wages_commission").
+                      [] = every type. Only on a people basis (EVERYONE included).
           value       number for FIXED/PERCENT, else null
           accountCode an account code from the context, exactly as listed
           tracking    up to 2 {"category","option"} tags, names exactly as listed; else []
-          label       2-4 words for the journal line, e.g. "Sales"
+          label       2-4 words for the journal line, e.g. "Office"
 
-        Order of application per source: DEPARTMENT/PROJECT/EMPLOYEE rules in order (an employee
-        is taken by the first match), then FIXED and PERCENT share what is left, then REMAINDER.
-        "HQ projects", "staff on project X" and similar mean a PROJECT rule when X is a listed
-        project; prefer it over naming the staff one by one.
+        Order of application per source: people rules in the order given — each person's amount
+        (for allowances and deductions, each row of a type) is taken by the FIRST rule that matches
+        it — then FIXED and PERCENT share what is left, then REMAINDER.
+          - Put the most specific rule first: a type rule ("commission for office staff") before
+            that group's catch-all ("other office allowances"); a small group (directors by job
+            title) before a broad one.
+          - When the admin says who wins for someone in two groups, order the rules that way.
+          - "Everyone else" is a REMAINDER rule.
+          - "HQ projects", "staff on project X" and similar mean a PROJECT rule when X is a listed
+            project; prefer it over naming the staff one by one.
 
         Rules:
-          - Use only accounts, tracking categories/options, departments, projects and employee ids that
-            appear in the context. Never invent one. If the admin names something that isn't
-            there, leave that rule out and say so in "questions".
-          - Only split the sources the admin asked about.
+          - Use only accounts, tracking categories/options, values and employee ids that appear
+            in the context. Never invent one. If the admin names something that isn't there, leave
+            that rule out and say so in "questions".
+          - Pick the basis that matches the admin's words (by project, by job title, …). If the
+            admin's group could be read more than one way, say so in "questions".
+          - Only split the sources the admin asked about. A source that is split needs a rule for
+            all of its amount (usually a REMAINDER), or the split is refused.
           - "Tag each line with the X tracking option of the same name" means a tag whose
-            category is X and whose option matches the line's label/department.
+            category is X and whose option matches the line's label/value.
           - If the admin refers to the saved rules ("last month's rule", "same as before"),
             start from savedRules.
           - When something is unclear or missing, ask. Each question is short and specific, and
@@ -145,6 +166,13 @@ public class PayrollJournalSplitService : IPayrollJournalSplitService
         string prompt, IReadOnlyList<XeroSplitTurnDto> conversation,
         IReadOnlyList<PayrollJournalSplitRule> currentRules, PayrollXeroSplitOrgContext org)
     {
+        static IEnumerable<string> Sorted(IEnumerable<string> values) =>
+            values.OrderBy(v => v, StringComparer.OrdinalIgnoreCase);
+        static IEnumerable<object> Types(string source) =>
+            PayrollJournalSplit.TypesFor(source)
+                .OrderBy(m => m.Label, StringComparer.OrdinalIgnoreCase)
+                .Select(m => new { code = m.Code, label = m.Label });
+
         var context = new
         {
             sources = PayrollJournalSplitSources.All.Select(s => new
@@ -156,8 +184,14 @@ public class PayrollJournalSplitService : IPayrollJournalSplitService
             accounts = org.Accounts.Select(a => new { code = a.Code, name = a.Name, type = a.Type }),
             trackingCategories = org.Context.TrackingCategories
                 .Select(c => new { category = c.Key, options = c.Value.OrderBy(o => o) }),
-            departments = org.Context.Departments.OrderBy(d => d),
-            projects = org.Context.Projects.OrderBy(p => p),
+            departments = Sorted(org.Context.Departments),
+            projects = Sorted(org.Context.Projects),
+            jobTitles = Sorted(org.Context.JobTitles),
+            employmentTypes = Sorted(org.Context.EmploymentTypes),
+            roles = Sorted(org.Context.Roles),
+            policies = Sorted(org.Context.Policies),
+            allowanceTypes = Types(PayrollXeroAccounts.Allowance),
+            deductionTypes = Types(PayrollXeroAccounts.Deduction),
             employees = org.Context.Employees
                 .Where(e => !string.IsNullOrWhiteSpace(e.Value))
                 .Select(e => new
@@ -264,6 +298,8 @@ public class PayrollJournalSplitService : IPayrollJournalSplitService
             AccountCode = (r.AccountCode ?? string.Empty).Trim(),
             Label = string.IsNullOrWhiteSpace(r.Label) ? null : r.Label.Trim(),
             Match = [.. (r.Match ?? []).Where(m => !string.IsNullOrWhiteSpace(m)).Select(m => m.Trim())],
+            Categories = [.. (r.Categories ?? []).Where(c => !string.IsNullOrWhiteSpace(c)).Select(c => c.Trim())
+                .Distinct(StringComparer.Ordinal)],
             Tracking = [.. (r.Tracking ?? [])
                 .Where(t => t is not null && !string.IsNullOrWhiteSpace(t.Category) && !string.IsNullOrWhiteSpace(t.Option))
                 .Select(t => new PayrollJournalSplitTag(t.Category.Trim(), t.Option.Trim()))],

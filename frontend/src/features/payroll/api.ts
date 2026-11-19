@@ -1477,16 +1477,33 @@ export type PayrollXeroMapping = {
 
 export type XeroJournalMode = "STANDARD" | "AI_SPLIT";
 
-export type XeroSplitBasis = "DEPARTMENT" | "PROJECT" | "EMPLOYEE" | "FIXED" | "PERCENT" | "REMAINDER";
+// People bases take the actual amounts of the people whose detail is one of
+// `match`; EVERYONE takes whoever is left. FIXED / PERCENT / REMAINDER share
+// what the people rules left.
+export type XeroSplitBasis =
+  | "DEPARTMENT"
+  | "PROJECT"
+  | "JOB_TITLE"
+  | "EMPLOYMENT_TYPE"
+  | "ROLE"
+  | "POLICY"
+  | "EMPLOYEE"
+  | "EVERYONE"
+  | "FIXED"
+  | "PERCENT"
+  | "REMAINDER";
 
 export type XeroSplitRule = {
   // salary | overtime | allowance | epfEmployer | socsoEmployer | eisEmployer
-  // | hrdfEmployer | taxBorneByEmployer
+  // | hrdfEmployer | taxBorneByEmployer | deduction
   source: string;
   basis: XeroSplitBasis;
-  // Department names (DEPARTMENT), project names (PROJECT) or employee
-  // profile ids (EMPLOYEE).
+  // The values a people basis matches (department, project, job title…
+  // names), or employee profile ids (EMPLOYEE).
   match: string[];
+  // Allowance and deduction rules: the type codes they take ([] = all).
+  // Optional so rules saved before types existed still read.
+  categories?: string[];
   // RM for FIXED, a percentage for PERCENT.
   value: number | null;
   accountCode: string;
@@ -1503,6 +1520,7 @@ export const XERO_SPLIT_SOURCE_LABELS: Record<string, string> = {
   eisEmployer: "EIS — employer",
   hrdfEmployer: "HRD Corp levy",
   taxBorneByEmployer: "PCB borne by employer",
+  deduction: "Deductions",
 };
 
 // warning: passed (posting isn't blocked) but worth a look — e.g. someone in
@@ -1514,6 +1532,19 @@ export type XeroSplitCheck = {
   warning?: boolean;
 };
 
+export type XeroSplitAssignment = {
+  employeeName: string;
+  placements: {
+    // Display labels: "Salary", "Allowances"…, and the type ("Commission").
+    source: string;
+    type: string | null;
+    rule: string;
+    // Null when it went into the pool the fixed / percentage rules share.
+    accountCode: string | null;
+    amount: number;
+  }[];
+};
+
 export type XeroSplitPreview = {
   ok: boolean;
   runId: string | null;
@@ -1521,6 +1552,8 @@ export type XeroSplitPreview = {
   replaced: XeroPreviewLine[];
   lines: XeroPreviewLine[];
   checks: XeroSplitCheck[];
+  // Who went where: each person, and which rule took each of their amounts.
+  assignments: XeroSplitAssignment[];
   replacedTotal: number;
   totalDebits: number;
   totalCredits: number;
