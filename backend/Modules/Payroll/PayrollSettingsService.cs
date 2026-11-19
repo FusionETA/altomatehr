@@ -147,6 +147,8 @@ public class PayrollSettingsService : IPayrollSettingsService
 
     private sealed record Split(XeroJournalMode Mode, string? Prompt, string RulesJson);
 
+    // The prompt as the AI read it: the admin's words plus their answers.
+
     private static Split SplitSummary(string? mappingJson)
     {
         if (string.IsNullOrWhiteSpace(mappingJson)) return new Split(XeroJournalMode.STANDARD, null, "[]");
@@ -157,7 +159,9 @@ public class PayrollSettingsService : IPayrollSettingsService
                 mappingJson, PayrollSnapshotJson.Options) ?? new PayrollXeroMapping();
             return new Split(
                 mapping.JournalMode,
-                mapping.SplitPrompt,
+                mapping.SplitAnswers.Count == 0
+                    ? mapping.SplitPrompt
+                    : $"{mapping.SplitPrompt}\n\nAnswers: {string.Join(" | ", mapping.SplitAnswers)}",
                 System.Text.Json.JsonSerializer.Serialize(mapping.SplitRules, PayrollSnapshotJson.Options));
         }
         catch (System.Text.Json.JsonException)

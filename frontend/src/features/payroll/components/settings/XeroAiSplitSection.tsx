@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { Check, CircleAlert, Loader2, Sparkles, X } from "lucide-react";
+import { Check, CircleAlert, Loader2, Send, Sparkles, X } from "lucide-react";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { Switch } from "@/shared/components/ui/switch";
 import { getAccountsWithLiabilities, type ChartOfAccount } from "@/features/settings/api";
@@ -10,6 +10,7 @@ import {
   type PayrollXeroMapping,
   type XeroSplitResult,
   type XeroSplitRule,
+  type XeroSplitTurn,
 } from "../../api";
 import {
   BADGE,
@@ -55,6 +56,11 @@ const SUGGESTIONS: { label: string; text: string }[] = [
   },
 ];
 
+// How much of the back-and-forth is sent each time (server allows 40 turns),
+// and how many answers are kept with the saved prompt.
+const MAX_TURNS = 20;
+const MAX_ANSWERS = 20;
+
 const money = (n: number) =>
   n.toLocaleString("en-MY", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -75,6 +81,14 @@ export function XeroAiSplitSection({
   const [busy, setBusy] = useState<"generate" | "check" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Every answer given since the prompt last changed — saved alongside the
+  // prompt (not inside it), so the prompt stays editable and within limits.
+  const [answers, setAnswers] = useState<string[]>(mapping.splitAnswers ?? []);
+  // This session's back-and-forth (the AI's questions, the admin's answers),
+  // sent with each follow-up so the AI refines instead of starting over.
+  const [conversation, setConversation] = useState<XeroSplitTurn[]>([]);
+  const [answer, setAnswer] = useState("");
+
   const rules = mapping.splitRules ?? [];
   const aiOn = mapping.journalMode === "AI_SPLIT";
   const preview = result?.preview ?? null;
@@ -82,16 +96,26 @@ export function XeroAiSplitSection({
 
   // Saved rules are re-checked when the tab opens, so the list below speaks
   // about today's accounts and staff, not the day they were generated.
-  const checkedOnce = useRef(false);
+  // Only the rules saved when the tab OPENED: rules a Generate produces come
+  // with their own checks, and re-checking them would replace the AI's
+  // summary and questions with a bare re-check.
+  const savedOnOpen = useRef(rules);
   useEffect(() => {
-    if (checkedOnce.current || rules.length === 0) return;
-    checkedOnce.current = true;
+    const saved = savedOnOpen.current;
+    if (saved.length === 0) return;
+    let live = true;
     setBusy("check");
-    checkXeroSplit(rules)
-      .then(setResult)
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setBusy(null));
-  }, [rules]);
+    checkXeroSplit(saved)
+      .then((checked) => {
+        // A Generate that landed first wins.
+        if (live) setResult((current) => current ?? checked);
+      })
+      .catch((e: Error) => live && setError(e.message))
+      .finally(() => live && setBusy((b) => (b === "check" ? null : b)));
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const accountName = useMemo(() => {
     const byCode = new Map(accounts.map((a) => [a.code?.toUpperCase(), a.name]));
@@ -101,21 +125,51 @@ export function XeroAiSplitSection({
   const salaryAccountId = mapping.accounts.salary ?? null;
   const salaryAccount = accounts.find((a) => a.id === salaryAccountId);
 
-  const generate = async () => {
+  // A changed prompt (typed, or a suggestion picked) is a new request: the
+  // old questions, answers and conversation no longer apply.
+  const changePrompt = (text: string) => {
+    setPrompt(text);
+    setConversation([]);
+    setAnswers([]);
+    setAnswer("");
+    setResult((current) => (current ? { ...current, questions: [] } : current));
+  };
+
+  // Generate starts a fresh conversation (carrying any answers already given
+  // to this prompt); an answer continues the current one.
+  const generate = async (reply?: string) => {
+    const text = reply?.trim();
+    const sent: XeroSplitTurn[] = text
+      ? [...conversation, { role: "admin", text }]
+      : answers.length > 0
+        ? [{ role: "admin", text: "Answers I gave to your earlier questions:\n" + answers.map((a) => `- ${a}`).join("\n") }]
+        : [];
+    // Only the newest turns travel — enough for the AI to follow, and well
+    // inside the server's limit however long the back-and-forth gets.
+    const trimmed = sent.slice(-MAX_TURNS);
+    // Refine what the AI produced last, unless this is a brand-new prompt.
+    const current = text || answers.length > 0 ? rules : [];
+
     setBusy("generate");
     setError(null);
     try {
-      const next = await generateXeroSplit(prompt);
+      const next = await generateXeroSplit(prompt, trimmed, current);
+      const nextAnswers = text ? [...answers, text].slice(-MAX_ANSWERS) : answers;
       setResult(next);
+      setConversation([...trimmed, { role: "ai", text: aiTurn(next) }]);
+      setAnswers(nextAnswers);
+      setAnswer("");
+
       // Applied to the mapping as it is NOW: the AI can take a while, and
       // the admin may have changed the standard accounts meanwhile.
-      onChange((current) => ({
-        ...current,
+      onChange((latest) => ({
+        ...latest,
         splitPrompt: prompt.trim(),
+        splitAnswers: nextAnswers,
         splitRules: next.rules,
         // Rules that fail a check can't post. Rather than leave the switch on
         // over them, turn it off; the admin turns it back on once they pass.
-        journalMode: next.ok ? current.journalMode : "STANDARD",
+        journalMode: next.ok ? latest.journalMode : "STANDARD",
       }));
     } catch (e) {
       setError((e as Error).message);
@@ -124,9 +178,21 @@ export function XeroAiSplitSection({
     }
   };
 
+  const startOver = () => {
+    setConversation([]);
+    setAnswers([]);
+    setAnswer("");
+    setResult(null);
+  };
+
+  const answersSoFar = answers;
+  const questions = result?.questions ?? [];
+
   const clearRules = () => {
     setResult(null);
-    onChange((current) => ({ ...current, splitRules: [], journalMode: "STANDARD" }));
+    setConversation([]);
+    setAnswers([]);
+    onChange((latest) => ({ ...latest, splitRules: [], splitAnswers: [], journalMode: "STANDARD" }));
   };
 
   const splitSources = new Set(rules.map((r) => r.source));
@@ -134,6 +200,7 @@ export function XeroAiSplitSection({
   const splitTotal = splitLines.reduce((sum, l) => sum + l.amount, 0);
   const checks = preview?.checks ?? [];
   const passedCount = checks.filter((c) => c.passed).length;
+  const flaggedCount = checks.filter((c) => c.warning).length;
 
   return (
     <div className="space-y-5">
@@ -217,7 +284,8 @@ export function XeroAiSplitSection({
           rows={4}
           maxLength={4000}
           value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
+          onChange={(e) => changePrompt(e.target.value)}
+          disabled={busy !== null}
           placeholder="e.g. Split 6100 Salaries & Wages: 40% to 6110 Salaries – Sales, 35% to 6120 Salaries – Operations, remainder to 6130 Salaries – Admin. Tag each line with the Department tracking option of the same name."
           className={`${TEXTAREA} mt-3`}
         />
@@ -228,7 +296,8 @@ export function XeroAiSplitSection({
               <button
                 key={s.label}
                 type="button"
-                onClick={() => setPrompt(s.text)}
+                onClick={() => changePrompt(s.text)}
+                disabled={busy !== null}
                 className="rounded-full border border-border/60 bg-muted/50 px-3 py-1 text-xs text-foreground transition hover:bg-muted"
               >
                 {s.label}
@@ -239,14 +308,14 @@ export function XeroAiSplitSection({
             type="button"
             className={BUTTON}
             disabled={busy !== null || prompt.trim().length < 5}
-            onClick={generate}
+            onClick={() => generate()}
           >
             {busy === "generate" ? (
               <Loader2 aria-hidden className="size-4 animate-spin" />
             ) : (
               <Sparkles aria-hidden className="size-4" />
             )}
-            {busy === "generate" ? "Generating…" : "Generate split"}
+            {busy === "generate" && !answer ? "Generating…" : "Generate split"}
           </button>
         </div>
         <p className={HINT}>
@@ -265,14 +334,89 @@ export function XeroAiSplitSection({
             ) : null}
           </div>
         ) : null}
-        {result && result.questions.length > 0 ? (
-          <div className={`${WARN_PANEL} mt-3`}>
-            <p className="font-semibold">The AI wasn't sure about:</p>
-            <ul className="mt-1 list-disc pl-5">
-              {result.questions.map((q) => (
-                <li key={q}>{q}</li>
+        {answersSoFar.length > 0 ? (
+          <div className="mt-3 rounded-2xl border border-border/60 bg-muted/30 px-4 py-3 text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold text-muted-foreground">Your answers so far</p>
+              <button
+                type="button"
+                className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
+                onClick={startOver}
+              >
+                Start over
+              </button>
+            </div>
+            <ul className="mt-1 list-disc space-y-0.5 pl-5 text-foreground">
+              {answersSoFar.map((text, i) => (
+                <li key={i} className="whitespace-pre-line">
+                  {text}
+                </li>
               ))}
             </ul>
+          </div>
+        ) : null}
+
+        {questions.length > 0 ? (
+          <div className={`${WARN_PANEL} mt-3`}>
+            <p className="font-semibold">The AI wasn't sure about:</p>
+            <ol className="mt-2 list-decimal space-y-3 pl-5">
+              {questions.map((q, i) => (
+                <li key={`${i}-${q.text}`}>
+                  <p>{q.text}</p>
+                  {q.options.length > 0 ? (
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {q.options.map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() =>
+                            setAnswer((current) => {
+                              const line = questions.length > 1 ? `${i + 1}. ${option}` : option;
+                              return current.trim() ? `${current.trimEnd()}\n${line}` : line;
+                            })
+                          }
+                          className="rounded-full border border-border/60 bg-card px-3 py-1 text-xs text-foreground transition hover:border-primary/40 hover:bg-muted"
+                        >
+                          {option}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </li>
+              ))}
+            </ol>
+
+            <label htmlFor="xeroSplitAnswer" className="mt-4 block text-xs font-semibold">
+              Answer the AI
+            </label>
+            <textarea
+              id="xeroSplitAnswer"
+              rows={3}
+              maxLength={4000}
+              value={answer}
+              onChange={(e) => setAnswer(e.target.value)}
+              placeholder={
+                questions.length > 1
+                  ? "Click a suggestion, or type — e.g. 1. Henry, Jacylyn and Prem are HQ  2. Use EXP-AD-002 for salary"
+                  : "Click a suggestion, or type your answer"
+              }
+              className={`${TEXTAREA} mt-1.5 text-foreground`}
+            />
+            <div className="mt-2 flex justify-end">
+              <button
+                type="button"
+                className={BUTTON}
+                disabled={busy !== null || answer.trim().length === 0}
+                onClick={() => generate(answer)}
+              >
+                {busy === "generate" && answer ? (
+                  <Loader2 aria-hidden className="size-4 animate-spin" />
+                ) : (
+                  <Send aria-hidden className="size-4" />
+                )}
+                {busy === "generate" && answer ? "Updating the rules…" : "Send answer"}
+              </button>
+            </div>
           </div>
         ) : null}
       </section>
@@ -357,6 +501,7 @@ export function XeroAiSplitSection({
                   }`}
                 >
                   {passedCount} of {checks.length} passed
+                  {flaggedCount > 0 ? ` · ${flaggedCount} flagged` : ""}
                 </span>
               ) : null}
             </div>
@@ -369,7 +514,9 @@ export function XeroAiSplitSection({
               <ul className="space-y-3">
                 {checks.map((check) => (
                   <li key={check.label} className="flex gap-2 text-sm">
-                    {check.passed ? (
+                    {check.warning ? (
+                      <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-amber-600" />
+                    ) : check.passed ? (
                       <Check aria-hidden className="mt-0.5 size-4 shrink-0 text-emerald-600" />
                     ) : (
                       <X aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
@@ -379,7 +526,11 @@ export function XeroAiSplitSection({
                       {check.detail ? (
                         <span
                           className={`block text-xs ${
-                            check.passed ? "text-muted-foreground" : "text-destructive"
+                            check.warning
+                              ? "text-amber-700 dark:text-amber-400"
+                              : check.passed
+                                ? "text-muted-foreground"
+                                : "text-destructive"
                           }`}
                         >
                           {check.detail}
@@ -404,6 +555,21 @@ export function XeroAiSplitSection({
   );
 }
 
+// The AI's reply as it is sent back on the next turn: what it understood,
+// and what it asked. Its rules travel separately as currentRules.
+function aiTurn(result: XeroSplitResult): string {
+  const parts: string[] = [];
+  if (result.summary) parts.push(`Summary: ${result.summary}`);
+  if (result.questions.length > 0) {
+    parts.push(
+      "Questions I asked:\n" + result.questions.map((q, i) => `${i + 1}. ${q.text}`).join("\n"),
+    );
+  }
+  // The rules travel separately (currentRules), so turns stay short.
+  if (parts.length === 0) parts.push(`Produced ${result.rules.length} rule(s).`);
+  return parts.join("\n\n").slice(0, 7000);
+}
+
 function RulesTable({
   rules,
   accountName,
@@ -421,6 +587,8 @@ function RulesTable({
         return "Remainder";
       case "DEPARTMENT":
         return `Dept: ${r.match.join(", ")}`;
+      case "PROJECT":
+        return `Project: ${r.match.join(", ")}`;
       default:
         return `${r.match.length} named staff`;
     }

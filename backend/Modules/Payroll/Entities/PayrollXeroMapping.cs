@@ -75,6 +75,11 @@ public sealed record PayrollXeroMapping
 
     public string? SplitPrompt { get; init; }
 
+    // The admin's answers to the AI's questions, kept apart from the prompt so
+    // the prompt stays editable and within its length. Part of the instruction
+    // the rules came from, so they are snapshotted with it.
+    public IReadOnlyList<string> SplitAnswers { get; init; } = [];
+
     public IReadOnlyList<PayrollJournalSplitRule> SplitRules { get; init; } = [];
 }
 
@@ -87,6 +92,9 @@ public enum XeroJournalMode
 // How one rule takes its share of a source's total.
 //
 //   DEPARTMENT — the actual amounts of every employee in the named departments
+//   PROJECT    — the actual amounts of every employee in a team under the named
+//                projects (whole pay follows the project; someone in teams under
+//                two projects is taken by the first rule that matches, and flagged)
 //   EMPLOYEE   — the actual amounts of the named employees (EmployeeProfile ids)
 //   FIXED      — a fixed RM amount (Value)
 //   PERCENT    — Value % of what the DEPARTMENT/EMPLOYEE rules left over
@@ -97,6 +105,7 @@ public enum XeroJournalMode
 public enum SplitBasis
 {
     DEPARTMENT,
+    PROJECT,
     EMPLOYEE,
     FIXED,
     PERCENT,
@@ -110,7 +119,8 @@ public sealed record PayrollJournalSplitRule
 
     public SplitBasis Basis { get; init; } = SplitBasis.REMAINDER;
 
-    // Department names (DEPARTMENT) or EmployeeProfile ids (EMPLOYEE).
+    // Department names (DEPARTMENT), project names (PROJECT) or EmployeeProfile
+    // ids (EMPLOYEE).
     public IReadOnlyList<string> Match { get; init; } = [];
 
     // RM for FIXED, a percentage (40 = 40%) for PERCENT.

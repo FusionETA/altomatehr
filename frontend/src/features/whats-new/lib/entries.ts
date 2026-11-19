@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: bb201f65
+// whats-new-covered-up-to: a8a07fb2
 
 // A line is for everyone, or — wrapped in admins(…) — for admins and owners
 // only. Employees and supervisors never see an admins line, so it doesn't
@@ -33,8 +33,10 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     title: "AI split for the Xero payroll journal",
     new: [
       admins("In Payroll settings → Xero sync, there's a new AI split (advanced) tab for Xero-connected companies. Describe how the journal's debit lines should split across accounts."),
-      admins("Describe the split in plain words: by percent, fixed RM, the remainder, department or named staff. AI turns it into rules once."),
-      admins("Each line can carry up to two Xero tracking tags."),
+      admins("Describe the split in plain words: by percent, fixed RM, the remainder, department, project or named staff. The AI turns it into rules, and each line can carry up to two tracking tags."),
+      admins("If the AI is unsure, it asks specific questions with one-click answers taken from your accounts, staff and projects. Reply in the \"Answer the AI\" box and it refines the rules instead of starting over."),
+      admins("You can split by project. A person's projects come from the teams they're in, and their whole pay follows the project."),
+      admins("Someone in teams under two projects goes to the first matching rule, and the checks flag it. Posting isn't blocked."),
       admins("The rules are checked, and posting is blocked if any check fails. The amounts still come from the payroll run, not the AI."),
       admins("The AI split is off by default. Switch it on once the checks pass, and every run posts with the saved rules."),
       admins("Each posted run keeps a copy of the split it used, and changes to the split are logged in the Activity log."),

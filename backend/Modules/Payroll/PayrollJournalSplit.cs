@@ -26,7 +26,11 @@ public static class PayrollJournalSplit
 {
     public const int MaxTags = 2;
 
-    public sealed record Check(string Label, bool Passed, string? Detail = null);
+    // Warning: passed (posting is not blocked), but worth an admin's eye.
+    public sealed record Check(string Label, bool Passed, string? Detail = null, bool Warning = false);
+
+    private static bool IsEmployeeRule(SplitBasis basis) =>
+        basis is SplitBasis.DEPARTMENT or SplitBasis.PROJECT or SplitBasis.EMPLOYEE;
 
     public sealed record Result(
         bool Ok,
@@ -53,9 +57,17 @@ public static class PayrollJournalSplit
         public IReadOnlySet<string> Departments { get; init; }
             = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        // Project names (live projects with at least one team).
+        public IReadOnlySet<string> Projects { get; init; }
+            = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         // EmployeeProfile id → name.
         public IReadOnlyDictionary<string, string> Employees { get; init; }
             = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        // EmployeeProfile id → their projects (via teams), for the AI's context.
+        public IReadOnlyDictionary<string, IReadOnlyList<string>> EmployeeProjects { get; init; }
+            = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
     }
 
     // Checks that need no run: do the rules make sense against the org?
@@ -125,19 +137,21 @@ public static class PayrollJournalSplit
         }
 
         var departments = rules.Where(r => r.Basis == SplitBasis.DEPARTMENT).SelectMany(r => r.Match).ToList();
+        var projects = rules.Where(r => r.Basis == SplitBasis.PROJECT).SelectMany(r => r.Match).ToList();
         var employees = rules.Where(r => r.Basis == SplitBasis.EMPLOYEE).SelectMany(r => r.Match).ToList();
-        if (departments.Count > 0 || employees.Count > 0)
+        if (departments.Count > 0 || projects.Count > 0 || employees.Count > 0)
         {
             var unknown = departments.Where(d => !context.Departments.Contains(d))
                 .Select(d => $"department \"{d}\"")
+                .Concat(projects.Where(p => !context.Projects.Contains(p)).Select(p => $"project \"{p}\" with a team"))
                 .Concat(employees.Where(e => !context.Employees.ContainsKey(e)).Select(e => $"employee {e}"))
                 .Distinct(StringComparer.Ordinal).ToList();
-            var empty = rules.Where(r => r.Basis is SplitBasis.DEPARTMENT or SplitBasis.EMPLOYEE && r.Match.Count == 0)
+            var empty = rules.Where(r => IsEmployeeRule(r.Basis) && r.Match.Count == 0)
                 .Select(Describe).ToList();
 
             checks.Add(unknown.Count == 0 && empty.Count == 0
-                ? new Check("Departments and employees named in the rules exist", true)
-                : new Check("Departments and employees named in the rules exist", false,
+                ? new Check("Departments, projects and employees named in the rules exist", true)
+                : new Check("Departments, projects and employees named in the rules exist", false,
                     string.Join("; ", unknown.Select(u => $"no {u}")
                         .Concat(empty.Select(e => $"{e} names nobody"))) + "."));
         }
@@ -188,6 +202,44 @@ public static class PayrollJournalSplit
         }
 
         if (checks.Any(c => !c.Passed)) return Refuse(checks);
+
+        // People a PROJECT rule took who are in teams under more than one
+        // project: their whole pay went to the first rule that matched. Not a
+        // failure — flagged so an admin can see who, and change the rules.
+        var multiProject = new List<string>();
+        foreach (var group in rules.GroupBy(r => r.Source, StringComparer.Ordinal))
+        {
+            var projectRules = group.Where(r => r.Basis == SplitBasis.PROJECT).ToList();
+            if (projectRules.Count == 0) continue;
+
+            foreach (var row in rows)
+            {
+                // Only when a PROJECT rule is what took them (not an earlier
+                // department or employee rule) and the rules name two or more
+                // of their projects — otherwise there was no choice to make.
+                var first = group.FirstOrDefault(r => IsEmployeeRule(r.Basis) && Matches(r, row));
+                if (first?.Basis != SplitBasis.PROJECT) continue;
+
+                var named = row.Projects
+                    .Where(p => projectRules.Any(r => r.Match.Any(m =>
+                        string.Equals(m.Trim(), p.Trim(), StringComparison.OrdinalIgnoreCase))))
+                    .ToList();
+                if (named.Count < 2) continue;
+
+                multiProject.Add($"{row.EmployeeName} ({string.Join(", ", named)}) → "
+                    + $"{(string.IsNullOrWhiteSpace(first.Label) ? string.Join(", ", first.Match) : first.Label.Trim())}");
+            }
+        }
+
+        multiProject = [.. multiProject.Distinct(StringComparer.Ordinal)];
+        if (multiProject.Count > 0)
+        {
+            checks.Add(new Check(
+                "Staff in more than one project",
+                true,
+                $"Their whole pay goes to the first project rule that matches them: {string.Join("; ", multiProject)}.",
+                Warning: true));
+        }
 
         var split = new Dictionary<string, List<PayrollJournal.Line>>(StringComparer.Ordinal);
         var problems = new List<string>();
@@ -254,7 +306,7 @@ public static class PayrollJournalSplit
         // 1. Employee rules take their people's actual amounts.
         var taken = new HashSet<int>();
         var takenTotal = 0m;
-        foreach (var rule in rules.Where(r => r.Basis is SplitBasis.DEPARTMENT or SplitBasis.EMPLOYEE))
+        foreach (var rule in rules.Where(r => IsEmployeeRule(r.Basis)))
         {
             var amount = 0m;
             for (var i = 0; i < rows.Count; i++)
@@ -359,6 +411,8 @@ public static class PayrollJournalSplit
     {
         SplitBasis.DEPARTMENT => row.Department is { } d
             && rule.Match.Any(m => string.Equals(m.Trim(), d.Trim(), StringComparison.OrdinalIgnoreCase)),
+        SplitBasis.PROJECT => row.Projects.Any(p =>
+            rule.Match.Any(m => string.Equals(m.Trim(), p.Trim(), StringComparison.OrdinalIgnoreCase))),
         SplitBasis.EMPLOYEE => row.EmployeeId is { } id
             && rule.Match.Contains(id, StringComparer.Ordinal),
         _ => false,
@@ -392,7 +446,7 @@ public static class PayrollJournalSplit
             SplitBasis.PERCENT => $"{rule.Value:0.##}%",
             SplitBasis.FIXED => $"RM {rule.Value:#,0.00}",
             SplitBasis.REMAINDER => "remainder",
-            SplitBasis.DEPARTMENT => string.Join(", ", rule.Match),
+            SplitBasis.DEPARTMENT or SplitBasis.PROJECT => string.Join(", ", rule.Match),
             _ => "named staff",
         };
 

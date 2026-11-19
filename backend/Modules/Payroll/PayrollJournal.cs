@@ -84,6 +84,9 @@ public static class PayrollJournal
         public string? EmployeeId { get; init; }
         public string? Department { get; init; }
 
+        // The projects of the teams this person is in, for PROJECT rules.
+        public IReadOnlyList<string> Projects { get; init; } = [];
+
         // Prorated, NOT basic. The engine builds gross on the prorated figure,
         // so debiting basic would leave the journal off by the proration for
         // every mid-month joiner and everyone on unpaid leave.
