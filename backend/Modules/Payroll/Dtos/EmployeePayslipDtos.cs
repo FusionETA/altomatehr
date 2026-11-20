@@ -21,6 +21,11 @@ public class EmployeePayslipSummaryDto
 
     // When the run went live. The date the payslip became real.
     public DateTime? SubmittedAt { get; set; }
+
+    // Set when the company password-protects payslips: what opens the PDF,
+    // e.g. "your IC number with no dashes (or your passport number)". Never
+    // the password itself.
+    public string? PdfPasswordHint { get; set; }
 }
 
 // A year the employee was paid in, for their own Form EA.

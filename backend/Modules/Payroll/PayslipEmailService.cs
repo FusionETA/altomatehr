@@ -123,7 +123,7 @@ public class PayslipEmailService : IPayslipEmailService
             var org = await _organizations.GetByIdAsync(_currentUser.OrganizationId ?? "");
             var periodLabel = PayrollPeriodLabel.For(run.PeriodYear, run.PeriodMonth);
             var name = directory.NameOf(payslip.UserId) is { Length: > 0 } n ? n : payslip.SnapshotName;
-            var html = PayslipEmailTemplate.BuildHtml(name, org?.Name ?? "AltomateHR", periodLabel);
+            var html = PayslipEmailTemplate.BuildHtml(name, org?.Name ?? "AltomateHR", periodLabel, file.PasswordHint);
 
             var delivered = await _email.SendAsync(
                 toEmail,

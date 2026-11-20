@@ -40,6 +40,8 @@ public class PayrollEmployeeRowDto
 
     public string? IdNumber { get; set; }
     public IdType? IdType { get; set; }
+    // For the payslip password's date-of-birth rule (PayslipLock).
+    public DateTime? DateOfBirth { get; set; }
     public string? Nationality { get; set; }
     public bool HasPr { get; set; }
     public bool IsResident { get; set; }

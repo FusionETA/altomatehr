@@ -336,6 +336,7 @@ public class AppDbContext : DbContext
         var payrollSettings = modelBuilder.Entity<PayrollSettings>();
         payrollSettings.HasIndex(s => s.OrganizationId).IsUnique();
         payrollSettings.Property(s => s.WorkingDaysRule).HasConversion<string>().HasMaxLength(20);
+        payrollSettings.Property(s => s.PayslipPasswordRule).HasConversion<string>().HasMaxLength(20);
 
         var companyInfo = modelBuilder.Entity<PayrollCompanyInfo>();
         companyInfo.HasIndex(c => c.OrganizationId).IsUnique();

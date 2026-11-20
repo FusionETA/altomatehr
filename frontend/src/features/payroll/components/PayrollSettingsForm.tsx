@@ -39,6 +39,7 @@ import {
 } from "../lib/company-info-options";
 import { PayrollSelect } from "./PayrollSelect";
 import { PortalCredentialsSection } from "./settings/PortalCredentialsSection";
+import { PayslipPasswordSection } from "./settings/PayslipPasswordSection";
 import { XeroSyncSection } from "./settings/XeroSyncSection";
 
 // How payroll runs, and who the employer is for filing purposes.
@@ -156,6 +157,25 @@ export function PayrollSettingsForm() {
     if (first) setError(first);
   }, [settingsQuery.error, infoQuery.error]);
 
+  // The payslip password saves on its own. Its result goes into the working
+  // copy AND the baseline, so it doesn't show up as an unsaved change on the
+  // rest of the form (and isn't lost by a later save or discard).
+  function onPayslipPasswordSaved(saved: PayrollSettings) {
+    const patch = {
+      lockPayslips: saved.lockPayslips,
+      payslipPasswordRule: saved.payslipPasswordRule,
+      payslipPasswordHint: saved.payslipPasswordHint,
+      hasPayslipCompanyPassword: saved.hasPayslipCompanyPassword,
+    };
+    setSettings((current) => (current ? { ...current, ...patch } : current));
+    setBaseline((current) => {
+      if (!current) return current;
+      const parsed = JSON.parse(current) as Snapshot;
+      return JSON.stringify({ ...parsed, settings: { ...parsed.settings, ...patch } } satisfies Snapshot);
+    });
+    cache.put("/payroll/settings", { ...(cache.peek<PayrollSettings>("/payroll/settings")?.data ?? saved), ...patch });
+  }
+
   // The Xero pill is about to disappear, so don't strand the admin on a
   // section that no longer has one.
   useEffect(() => {
@@ -204,6 +224,10 @@ export function PayrollSettingsForm() {
         isConfigured: _configured,
         updatedAt: _updated,
         abPayEnabled: _abPayEnabled,
+        lockPayslips: _lock,
+        payslipPasswordRule: _rule,
+        payslipPasswordHint: _hint,
+        hasPayslipCompanyPassword: _hasCompanyPassword,
         ...settingsBody
       } = settings;
       const {
@@ -258,6 +282,11 @@ export function PayrollSettingsForm() {
       pendingTitle: "Nothing is missing — review the defaults and save",
     },
     formE: { complete: formEComplete },
+    payslips: {
+      complete: Boolean(settings?.lockPayslips),
+      optional: true,
+      savedLabel: "On",
+    },
     credentials: {
       complete: credentialCount > 0,
       optional: true,
@@ -895,6 +924,11 @@ export function PayrollSettingsForm() {
         <PortalCredentialsSection onChanged={countCredentials} />
       ) : null}
 
+      {/* Saves on its own, like the portal logins: it changes no figure. */}
+      {section === "payslips" ? (
+        <PayslipPasswordSection settings={settings} onSaved={onPayslipPasswordSaved} />
+      ) : null}
+
       {section === "xero" && xeroConnected ? (
         <XeroSyncSection mapping={xeroMapping} onChange={setXeroMapping} />
       ) : null}
@@ -1028,7 +1062,7 @@ function Toggle({
 // calculated, who the employer is for filing, the portal logins, and the
 // accounting hand-off. One at a time rather than one long scroll — they are
 // filled at different times by different people.
-type SettingsSection = "general" | "formE" | "credentials" | "xero";
+type SettingsSection = "general" | "formE" | "payslips" | "credentials" | "xero";
 
 // Mirrors the reference's TabPill contract rather than inventing one.
 //
@@ -1058,6 +1092,10 @@ const SECTIONS: { id: SettingsSection; label: string }[] = [
   {
     id: "formE",
     label: "Form E (LHDN)",
+  },
+  {
+    id: "payslips",
+    label: "Payslip password",
   },
   {
     id: "credentials",

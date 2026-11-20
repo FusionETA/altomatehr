@@ -12,6 +12,7 @@ using AltomateHR.Api.Modules.Policies.Entities;
 using AltomateHR.Api.Tests.Audit;
 using AltomateHR.Api.Tests.Common;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace AltomateHR.Api.Tests.Payroll;
 
@@ -38,6 +39,20 @@ public class PayrollRunStateMachineTests : IDisposable
     private readonly PayrollRunClaimRepository _runClaims;
     private readonly PayslipRepository _payslips;
     private readonly PayrollRunRepository _runs;
+    // Real AES-GCM, for the company payslip password.
+    private readonly AltomateHR.Api.Common.ISecretBox _secrets = new AltomateHR.Api.Common.SecretBox(
+        new Microsoft.Extensions.Configuration.ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Secrets:PortalCredentialsKey"] = "a-test-key" })
+            .Build(),
+        new TestHostEnvironment());
+
+    private sealed class TestHostEnvironment : Microsoft.Extensions.Hosting.IHostEnvironment
+    {
+        public string EnvironmentName { get; set; } = "Development";
+        public string ApplicationName { get; set; } = "Tests";
+        public string ContentRootPath { get; set; } = ".";
+        public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; } = null!;
+    }
 
     public PayrollRunStateMachineTests()
     {
@@ -85,7 +100,7 @@ public class PayrollRunStateMachineTests : IDisposable
                 directory,
                 new StubPayrollOrganizations(),
                 _currentUser,
-                new PayrollSettingsService(new PayrollSettingsRepository(_db), _audit)),
+                new PayrollSettingsService(new PayrollSettingsRepository(_db), _audit, secrets: _secrets)),
             _hours,
             _leave,
             _currentUser,
@@ -416,6 +431,167 @@ public class PayrollRunStateMachineTests : IDisposable
         Assert.False((await _statutory.RenderAllPayslipsZipAsync(run.Id)).Ok);
         Assert.False((await _statutory.RenderPaymentSchedulePdfAsync(run.Id)).Ok);
         Assert.False((await _statutory.RenderPcbTxtAsync(run.Id)).Ok);
+    }
+
+    // ─── Payslip passwords ──────────────────────────────────────────────
+
+    private Task<PayslipPasswordSaveResult> LockPayslipsAsync(PayslipPasswordRule rule, string? companyPassword = null) =>
+        Settings().SavePayslipPasswordAsync(new SavePayslipPasswordDto
+        {
+            LockPayslips = true, PayslipPasswordRule = rule, CompanyPassword = companyPassword,
+        });
+
+    private PayrollSettingsService Settings() =>
+        new(new PayrollSettingsRepository(_db), _audit, secrets: _secrets);
+
+    private static bool IsEncrypted(byte[] pdf) =>
+        System.Text.Encoding.Latin1.GetString(pdf).Contains("/Encrypt");
+
+    [Fact]
+    public async Task PayslipsAreOpen_UntilTheCompanyLocksThem()
+    {
+        AddEmployee("usr-1", "Aisyah Binti Rahman");
+        var run = await SubmittedRunAsync(2026, 1);
+        var profileId = (await _db.Payslips.SingleAsync()).EmployeeProfileId;
+
+        var single = await _statutory.RenderPayslipPdfAsync(run.Id, profileId);
+        Assert.False(IsEncrypted(single.Content!));
+        Assert.Null(single.PasswordHint);
+    }
+
+    // Every copy: the single download (which the email and the employee
+    // portal also use), each PDF inside the ZIP, and the draft preview.
+    [Fact]
+    public async Task OnceLocked_EveryPayslipCopyIsEncrypted()
+    {
+        AddEmployee("usr-1", "Aisyah Binti Rahman");
+        var run = await SubmittedRunAsync(2026, 1);
+        var profileId = (await _db.Payslips.SingleAsync()).EmployeeProfileId;
+        await LockPayslipsAsync(PayslipPasswordRule.IC_DIGITS);
+
+        var single = await _statutory.RenderPayslipPdfAsync(run.Id, profileId);
+        Assert.True(single.Ok, single.Error);
+        Assert.True(IsEncrypted(single.Content!));
+        Assert.Equal(PayslipLock.Hint(PayslipPasswordRule.IC_DIGITS), single.PasswordHint);
+
+        var zip = await _statutory.RenderAllPayslipsZipAsync(run.Id);
+        Assert.True(zip.Ok, zip.Error);
+        using var archive = new System.IO.Compression.ZipArchive(new MemoryStream(zip.Content!));
+        await using var entry = Assert.Single(archive.Entries).Open();
+        using var copy = new MemoryStream();
+        await entry.CopyToAsync(copy);
+        Assert.True(IsEncrypted(copy.ToArray()));
+
+        // Only payslips: the summary in the same run stays open.
+        Assert.False(IsEncrypted((await _statutory.RenderSummaryPdfAsync(run.Id)).Content!));
+    }
+
+    [Fact]
+    public async Task ADraftPreview_IsLockedToo()
+    {
+        AddEmployee("usr-1", "Aisyah Binti Rahman");
+        var run = await GeneratedRunAsync(2026, 1);
+        var profileId = (await _db.Payslips.SingleAsync()).EmployeeProfileId;
+        await LockPayslipsAsync(PayslipPasswordRule.IC_LAST6);
+
+        var preview = await _statutory.RenderPayslipPdfAsync(run.Id, profileId);
+        Assert.True(preview.Ok, preview.Error);
+        Assert.True(IsEncrypted(preview.Content!));
+    }
+
+    // A password nobody can know would lock the employee out of their own
+    // payslip, so a missing field refuses — naming the person.
+    [Fact]
+    public async Task NoDateOfBirth_UnderTheDobRule_RefusesNamingThePerson()
+    {
+        var profile = AddEmployee("usr-1", "Aisyah Binti Rahman");
+        var run = await SubmittedRunAsync(2026, 1);
+        profile.DateOfBirth = null;
+        await _db.SaveChangesAsync();
+        await LockPayslipsAsync(PayslipPasswordRule.DOB_DDMMYYYY);
+
+        var single = await _statutory.RenderPayslipPdfAsync(run.Id, profile.Id);
+        Assert.False(single.Ok);
+        Assert.Contains("Aisyah Binti Rahman", single.Error);
+        Assert.Contains("date of birth", single.Error);
+
+        var zip = await _statutory.RenderAllPayslipsZipAsync(run.Id);
+        Assert.False(zip.Ok);
+        Assert.Contains("Aisyah Binti Rahman", zip.Error);
+    }
+
+    // ─── The company's own payslip password ─────────────────────────────
+
+    [Fact]
+    public async Task TheCompanyRule_LocksEveryPayslipWithTheCompanysPassword()
+    {
+        var profile = AddEmployee("usr-1", "Aisyah Binti Rahman");
+        var run = await SubmittedRunAsync(2026, 1);
+        // The company password needs no employee data at all.
+        profile.IdNumber = null;
+        profile.DateOfBirth = null;
+        await _db.SaveChangesAsync();
+
+        var saved = await LockPayslipsAsync(PayslipPasswordRule.COMPANY, "Globe-2026!");
+        Assert.Null(saved.Error);
+        Assert.True(saved.Settings!.HasPayslipCompanyPassword);
+
+        var single = await _statutory.RenderPayslipPdfAsync(run.Id, profile.Id);
+        Assert.True(single.Ok, single.Error);
+        Assert.True(IsEncrypted(single.Content!));
+        Assert.Equal("the payslip password your company gave you", single.PasswordHint);
+        Assert.True((await _statutory.RenderAllPayslipsZipAsync(run.Id)).Ok);
+    }
+
+    // Stored encrypted — never the password in the row — and readable back
+    // only through the audited reveal.
+    [Fact]
+    public async Task TheCompanyPassword_IsStoredEncrypted_AndRevealIsAudited()
+    {
+        await LockPayslipsAsync(PayslipPasswordRule.COMPANY, "Globe-2026!");
+
+        var row = await _db.PayrollSettings.SingleAsync();
+        Assert.DoesNotContain("Globe-2026!", row.PayslipCompanyPasswordEncrypted);
+
+        Assert.Equal("Globe-2026!", await Settings().RevealPayslipPasswordAsync());
+        Assert.Contains(_audit.Written, e => e.Action == AuditActions.PayrollPayslipPasswordReveal);
+
+        // The settings response says one is saved, not what it is.
+        var dto = await Settings().GetAsync();
+        Assert.True(dto.HasPayslipCompanyPassword);
+    }
+
+    [Fact]
+    public async Task TheCompanyRule_CantBeSwitchedOnWithoutAPassword_OrWithAShortOne()
+    {
+        Assert.NotNull((await LockPayslipsAsync(PayslipPasswordRule.COMPANY)).Error);
+        Assert.NotNull((await LockPayslipsAsync(PayslipPasswordRule.COMPANY, "12345")).Error);
+        Assert.False((await Settings().GetAsync()).LockPayslips);
+    }
+
+    // Switching it off and on again, or changing nothing else, keeps the
+    // saved password — it isn't wiped by a blank field.
+    [Fact]
+    public async Task ABlankPassword_KeepsTheSavedOne()
+    {
+        await LockPayslipsAsync(PayslipPasswordRule.COMPANY, "Globe-2026!");
+
+        var again = await LockPayslipsAsync(PayslipPasswordRule.COMPANY);
+
+        Assert.Null(again.Error);
+        Assert.Equal("Globe-2026!", await Settings().GetPayslipCompanyPasswordAsync());
+    }
+
+    // Saving the password setting is not a payroll input: drafts stay fresh.
+    [Fact]
+    public async Task LockingPayslips_DoesNotMakeADraftStale()
+    {
+        AddEmployee("usr-1", "Aisyah Binti Rahman");
+        var run = await GeneratedRunAsync(2026, 1);
+
+        await LockPayslipsAsync(PayslipPasswordRule.IC_DIGITS);
+
+        Assert.Null((await _db.PayrollRuns.SingleAsync(r => r.Id == run.Id)).LastMutatedAt);
     }
 
     // Every document carries the previous system's file name, so an admin's
