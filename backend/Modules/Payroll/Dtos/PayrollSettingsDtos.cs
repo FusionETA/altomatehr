@@ -15,6 +15,18 @@ public class PayrollSettingsDto
 
     public bool AutoApplySocsoEisRelief { get; set; }
 
+    // Payslip password (PayslipLock). Saved on its own endpoint —
+    // PUT /payroll/settings/payslip-password — not with the rest, so a
+    // client that doesn't know about it can never switch it off.
+    public bool LockPayslips { get; set; }
+    public PayslipPasswordRule PayslipPasswordRule { get; set; }
+    // What employees are told the password is, e.g. "your IC number with no
+    // dashes (or your passport number)". Never the password itself.
+    public string PayslipPasswordHint { get; set; } = string.Empty;
+    // True when a company password is saved (COMPANY rule). The password
+    // itself only comes back from the reveal endpoint.
+    public bool HasPayslipCompanyPassword { get; set; }
+
     public bool SyncClaimsToXeroOnSubmit { get; set; }
     public bool SyncPayrollToXeroOnSubmit { get; set; }
     public string? XeroMappingJson { get; set; }
@@ -67,6 +79,25 @@ public class SavePayrollSettingsDto
     [MaxLength(60)] public string? PayorOrganisationCode { get; set; }
     [MaxLength(20)] public string? EcpPayorAccountNo { get; set; }
     [MaxLength(20)] public string? EcpPayorBic { get; set; }
+}
+
+// Turn payslip passwords on or off, and choose what they are.
+public class SavePayslipPasswordDto
+{
+    public bool LockPayslips { get; set; }
+
+    [Required]
+    public PayslipPasswordRule PayslipPasswordRule { get; set; } = PayslipPasswordRule.IC_DIGITS;
+
+    // The COMPANY rule's password. Null or blank = keep the one already saved
+    // (so turning the switch off and on doesn't need it retyped).
+    [MaxLength(64)]
+    public string? CompanyPassword { get; set; }
+}
+
+public class PayslipCompanyPasswordDto
+{
+    public string Password { get; set; } = string.Empty;
 }
 
 // "Payroll at this company started in <month> <year>" — for a company that

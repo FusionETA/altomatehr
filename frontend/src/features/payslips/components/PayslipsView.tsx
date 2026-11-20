@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Download, FileText, LoaderCircle } from "lucide-react";
+import { Download, FileText, LoaderCircle, LockKeyhole } from "lucide-react";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { saveFile } from "@/shared/lib/api-client";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
@@ -115,6 +115,17 @@ export function PayslipsView() {
           className="mb-4"
           ariaLabel="Payslip year"
         />
+      ) : null}
+
+      {/* The company locks payslip PDFs: say once what opens them. The same
+          hint is on every payslip, so it isn't repeated on each card. */}
+      {payslips[0]?.pdfPasswordHint ? (
+        <p className="mb-4 flex items-start gap-2 rounded-2xl border border-border/60 bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+          <LockKeyhole aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Payslip PDFs are password-protected. Open them with {payslips[0].pdfPasswordHint}.
+          </span>
+        </p>
       ) : null}
 
       <ul className="space-y-3">

@@ -3239,6 +3239,9 @@ namespace AltomateHR.Api.Migrations
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
 
+                    b.Property<bool>("LockPayslips")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("OrganizationId")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -3261,6 +3264,15 @@ namespace AltomateHR.Api.Migrations
 
                     b.Property<int?>("PayrollStartYear")
                         .HasColumnType("int");
+
+                    b.Property<string>("PayslipCompanyPasswordEncrypted")
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
+
+                    b.Property<string>("PayslipPasswordRule")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
 
                     b.Property<bool>("SyncClaimsToXeroOnSubmit")
                         .HasColumnType("tinyint(1)");

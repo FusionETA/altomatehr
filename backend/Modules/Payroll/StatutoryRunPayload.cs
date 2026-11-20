@@ -39,6 +39,8 @@ public sealed record StatutoryEmployeeRow
 
     public string? IdNumber { get; init; }
     public IdType? IdType { get; init; }
+    // Read live, like the IC — the payslip password's date-of-birth rule.
+    public DateTime? DateOfBirth { get; init; }
     public string? EpfNumber { get; init; }
     public string? SocsoNumber { get; init; }
     public string? SsfwNumber { get; init; }
@@ -95,4 +97,8 @@ public sealed record StatutoryFileResult(
         new(true, fileName, System.Text.Encoding.UTF8.GetBytes(content), contentType, null);
 
     public static StatutoryFileResult Refused(string error) => new(false, null, null, null, error);
+
+    // Set when the file is a password-protected payslip: what the employee is
+    // told the password is (PayslipLock.Hint). Never the password.
+    public string? PasswordHint { get; init; }
 }

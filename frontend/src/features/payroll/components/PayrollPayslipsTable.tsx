@@ -1,10 +1,13 @@
 import { useMemo, useState } from "react";
-import { Download, FileText, LoaderCircle, Mail, Sliders, TriangleAlert } from "lucide-react";
+import { Download, FileText, LoaderCircle, LockKeyhole, Mail, Sliders, TriangleAlert } from "lucide-react";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import {
   downloadPayslipPdf,
   downloadTp1Form,
   emailPayslip,
+  getPayrollSettings,
   type AdjustmentCategory,
+  type PayslipPasswordRule,
   type Payslip,
   type PayslipLineItem,
 } from "../api";
@@ -75,6 +78,13 @@ export function PayrollPayslipsTable({
 
   const totals = useMemo(() => sum(payslips), [payslips]);
 
+  // Payslip PDFs may be password-protected — say what opens them, since the
+  // admin's own downloads are locked too. Same cache key as Payroll settings.
+  const settingsQuery = useCachedQuery("/payroll/settings", getPayrollSettings);
+  const passwordHint = settingsQuery.data?.lockPayslips
+    ? ADMIN_PASSWORD_HINT[settingsQuery.data.payslipPasswordRule]
+    : null;
+
   // Ten rows a page, like the other admin tables — a 19-person run was one
   // very long scroll to reach the totals. The footer and the remittance
   // panel below still add up the WHOLE run: that is the figure paid, and a
@@ -106,8 +116,15 @@ export function PayrollPayslipsTable({
 
   async function getPdf(payslip: Payslip) {
     setDownloading(payslip.id);
+    setEmailError(null);
     try {
       saveFile(await downloadPayslipPdf(runId, payslip.employeeProfileId));
+    } catch (e: unknown) {
+      // e.g. a locked payslip for someone the password rule has nothing for.
+      setEmailError({
+        id: payslip.id,
+        message: e instanceof Error ? e.message : "Could not download this payslip.",
+      });
     } finally {
       setDownloading(null);
     }
@@ -151,6 +168,14 @@ export function PayrollPayslipsTable({
           {payslips.length} employee(s). Select a row for the full breakdown. Scroll
           sideways for the employer's side.
         </p>
+        {passwordHint ? (
+          <p className={`${HINT} flex items-start gap-1.5`}>
+            <LockKeyhole aria-hidden className="mt-px h-3.5 w-3.5 shrink-0" />
+            <span>
+              Payslip PDFs are password-protected: each opens with {passwordHint}.
+            </span>
+          </p>
+        ) : null}
         <SearchInput
           value={query}
           onChange={setQuery}
@@ -575,6 +600,14 @@ const isNonCash = (line: PayslipLineItem, nonCash: Set<string>) =>
 
 const hours = (value: number | null): string =>
   value === null || value === 0 ? "" : String(Math.round(value * 10) / 10);
+
+// The payslip password rule, as an admin reads it (employees get "your …").
+const ADMIN_PASSWORD_HINT: Record<PayslipPasswordRule, string> = {
+  IC_DIGITS: "the employee's IC number with no dashes (or their passport number)",
+  IC_LAST6: "the last 6 digits of the employee's IC number (or passport number)",
+  DOB_DDMMYYYY: "the employee's date of birth as DDMMYYYY",
+  COMPANY: "the company payslip password (Payroll settings → Payslip password)",
+};
 
 function sum(payslips: Payslip[]) {
   return payslips.reduce(

@@ -15,11 +15,15 @@ public class PayrollSettingsService : IPayrollSettingsService
     // For the read-only AbPayEnabled flag. Optional for the same reason; with
     // none, the flag reads false (the AB Pay export is not offered).
     private readonly IApiKeyService? _apiKeys;
+    // Encrypts the company payslip password (COMPANY rule). Optional for the
+    // same reason; the app always supplies it.
+    private readonly Common.ISecretBox? _secrets;
 
     public PayrollSettingsService(
         IPayrollSettingsRepository repo, IAuditService audit, IPayrollDraftStaleness? drafts = null,
-        IApiKeyService? apiKeys = null)
+        IApiKeyService? apiKeys = null, Common.ISecretBox? secrets = null)
     {
+        _secrets = secrets;
         _drafts = drafts;
         _apiKeys = apiKeys;
         _repo = repo;
@@ -145,6 +149,84 @@ public class PayrollSettingsService : IPayrollSettingsService
             Metadata: new { settings.PayrollStartYear, settings.PayrollStartMonth }));
     }
 
+    public async Task<PayslipPasswordSaveResult> SavePayslipPasswordAsync(SavePayslipPasswordDto dto)
+    {
+        var settings = await _repo.GetAsync();
+        var isFirstSave = settings is null;
+        var now = DateTime.UtcNow;
+        // As with the start month: creating the row here is not a review of
+        // the payroll defaults, so ConfiguredAt stays as it was.
+        settings ??= new PayrollSettings { CreatedAt = now };
+
+        // A new company password, when one was typed. Blank keeps the saved one.
+        var newPassword = string.IsNullOrWhiteSpace(dto.CompanyPassword) ? null : dto.CompanyPassword;
+        if (newPassword is not null)
+        {
+            if (newPassword.Length < PayslipLock.MinCompanyPasswordLength)
+                return new(null, $"The payslip password needs at least {PayslipLock.MinCompanyPasswordLength} characters.");
+            if (_secrets is null)
+                return new(null, "Company payslip passwords aren't available on this server.");
+        }
+
+        var hasPassword = newPassword is not null || !string.IsNullOrEmpty(settings.PayslipCompanyPasswordEncrypted);
+        if (dto.LockPayslips && dto.PayslipPasswordRule == PayslipPasswordRule.COMPANY && !hasPassword)
+            return new(null, "Set the company payslip password before switching it on.");
+
+        var passwordChanged = newPassword is not null
+                              && _secrets!.Decrypt(settings.PayslipCompanyPasswordEncrypted) != newPassword;
+        var changed = settings.LockPayslips != dto.LockPayslips
+                      || settings.PayslipPasswordRule != dto.PayslipPasswordRule
+                      || passwordChanged;
+        settings.LockPayslips = dto.LockPayslips;
+        settings.PayslipPasswordRule = dto.PayslipPasswordRule;
+        if (newPassword is not null) settings.PayslipCompanyPasswordEncrypted = _secrets!.Encrypt(newPassword);
+        settings.UpdatedAt = now;
+
+        if (isFirstSave) await _repo.AddAsync(settings);
+        else await _repo.UpdateAsync(settings);
+
+        // No draft is marked stale: the password is on the file, not in the
+        // figures.
+        if (changed)
+        {
+            await _audit.WriteAsync(new AuditEvent(
+                AuditActions.PayrollSettingsUpdate,
+                dto.LockPayslips
+                    ? $"Payslip password on — {PayslipLock.Hint(dto.PayslipPasswordRule)}"
+                    : "Payslip password off",
+                TargetType: "PayrollSettings",
+                TargetId: settings.Id,
+                // Whether the company password changed, never what it is.
+                Metadata: new
+                {
+                    settings.LockPayslips,
+                    Rule = settings.PayslipPasswordRule.ToString(),
+                    CompanyPasswordChanged = passwordChanged,
+                }));
+        }
+
+        var saved = ToDto(settings, settings.ConfiguredAt is not null);
+        saved.AbPayEnabled = await AbPayEnabledAsync();
+        return new(saved, null);
+    }
+
+    public async Task<string?> GetPayslipCompanyPasswordAsync() =>
+        _secrets?.Decrypt((await _repo.GetAsync())?.PayslipCompanyPasswordEncrypted);
+
+    public async Task<string?> RevealPayslipPasswordAsync()
+    {
+        var settings = await _repo.GetAsync();
+        var password = _secrets?.Decrypt(settings?.PayslipCompanyPasswordEncrypted);
+        if (password is null) return null;
+
+        await _audit.WriteAsync(new AuditEvent(
+            AuditActions.PayrollPayslipPasswordReveal,
+            "Revealed the company payslip password",
+            TargetType: "PayrollSettings",
+            TargetId: settings!.Id));
+        return password;
+    }
+
     private sealed record Split(XeroJournalMode Mode, string? Prompt, string RulesJson);
 
     // The prompt as the AI read it: the admin's words plus their answers.
@@ -206,6 +288,10 @@ public class PayrollSettingsService : IPayrollSettingsService
         HrdfEnabled = s.HrdfEnabled,
         HrdfRate = s.HrdfRate,
         AutoApplySocsoEisRelief = s.AutoApplySocsoEisRelief,
+        LockPayslips = s.LockPayslips,
+        PayslipPasswordRule = s.PayslipPasswordRule,
+        PayslipPasswordHint = PayslipLock.Hint(s.PayslipPasswordRule),
+        HasPayslipCompanyPassword = !string.IsNullOrEmpty(s.PayslipCompanyPasswordEncrypted),
         SyncClaimsToXeroOnSubmit = s.SyncClaimsToXeroOnSubmit,
         SyncPayrollToXeroOnSubmit = s.SyncPayrollToXeroOnSubmit,
         XeroMappingJson = s.XeroMappingJson,

@@ -864,6 +864,16 @@ const admin = {
     await scrollTo(page, "SOCSO, EIS & SKBBK", 190, true);
     await shoot(page, "admin", "employee-socso-scheme");
   },
+  "payroll-settings-payslip-password": async (page) => {
+    await inDemoCo(page);
+    await go(page, "payroll");
+    await clickText(page, "Settings");
+    await clickText(page, "Payslip password");
+    await page.getByText("Save payslip password").first().waitFor({ timeout: 15000 });
+    await settle(page, 800);
+    await scrollTo(page, "Password-protect payslips", 60);
+    await shoot(page, "admin", "payroll-settings-payslip-password");
+  },
   "annual-forms": async (page) => {
     await inDemoCo(page);
     await go(page, "payroll");
@@ -1198,6 +1208,11 @@ const evan = {
     await scrollTo(page, "Overtime type", 20);
     await shoot(page, "employee", "overtime-form");
     await page.keyboard.press("Escape");
+  },
+  "payslips-password-note": async (page) => {
+    await go(page, "payslips");
+    await page.getByText(/Payslip PDFs are password-protected/).first().waitFor({ timeout: 15000 });
+    await shoot(page, "employee", "payslips-password-note");
   },
   "payslip-breakdown": async (page) => {
     await go(page, "payslips");

@@ -1510,10 +1510,14 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
           <code>{employeeNumber}_{name}_{mm-yyyy}.pdf</code>, with a <code>_DRAFT</code> suffix before
           <code>.pdf</code> when the run is not yet submitted.
         </p>
+        <div class="callout warn">
+          When <a href="payroll.html#payslip-password"><code>lockPayslips</code></a> is on in Payroll settings, this PDF (the draft preview too) is AES-256 password-protected with the employee's password under the company's rule. The bytes still come back <code>200</code>, but cannot be opened without it.
+        </div>
         <h3>Errors</h3>
         <ul>
           <li><code>404</code> — no such run.</li>
           <li><code>409</code> <code>{ "error": "That employee has no payslip on this run." }</code> — not generated yet, or not a member of this run.</li>
+          <li><code>409</code> <code>{ "error": "Payslips are password-protected with each employee's IC / passport number, and Jane Tan has none. Add it to their profile, then try again." }</code> &mdash; payslip passwords are on and this employee lacks the field the rule needs (<code>date of birth</code> for <code>DOB_DDMMYYYY</code>). A <code>COMPANY</code> rule whose password can't be read is a <code>409</code> too.</li>
         </ul>
 <pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/documents/payslip/emp_123 \
   -H "Authorization: Bearer wp_live_xxx" -o payslip.pdf</code></pre>
@@ -1525,13 +1529,14 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
           <span class="path">/payroll/runs/{id}/documents/payslips</span>
           <span class="tag scope">payroll:read</span>
         </div>
-        <p>Every payslip on the run, as a ZIP of individual PDFs (one per employee) — finance teams forward them one at a time.</p>
+        <p>Every payslip on the run, as a ZIP of individual PDFs (one per employee) — finance teams forward them one at a time. When <a href="payroll.html#payslip-password">payslip passwords</a> are on, each PDF in the ZIP is locked with its own employee's password.</p>
         <h3>Response <code>200</code></h3>
         <p><code>Content-Type: application/zip</code>, filename <code>Payslips_{yyyy}_{mm}_All.zip</code>.</p>
         <h3>Errors</h3>
         <ul>
           <li><code>404</code> — no such run.</li>
           <li><code>409</code> — run not submitted, or no payslips on the run.</li>
+          <li><code>409</code> <code>{ "error": "…" }</code> &mdash; payslip passwords are on and one or more employees lack the field the rule needs. The message names them, and the <strong>whole ZIP is refused</strong> rather than leaving someone out.</li>
         </ul>
 <pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/documents/payslips \
   -H "Authorization: Bearer wp_live_xxx" -o payslips.zip</code></pre>
@@ -1925,7 +1930,7 @@ curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/bank-file?paymentD
           <span class="tag scope">payroll:read</span>
         </div>
         <p>
-          Every document this run produces, zipped: the bank file, the manual-payments sheet, the summary (as both PDF and Excel), the allowance and deduction reports, all payslips, and the
+          Every document this run produces, zipped: the bank file, the manual-payments sheet, the summary (as both PDF and Excel), the allowance and deduction reports, all payslips (password-protected when <a href="payroll.html#payslip-password">payslip passwords</a> are on), and the
           three statutory files. One request instead of six. A document that cannot be rendered (e.g. no
           payroll bank configured) is left out of the zip rather than failing the whole bundle.
         </p>
@@ -1955,6 +1960,8 @@ curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/bank-file?paymentD
           <li><code>404</code> — no such run.</li>
           <li><code>409</code> <code>{ "error": "…" }</code> — the run itself is not submitted (an individual missing document inside the zip does not fail the request).</li>
         </ul>
+        <p>If payslip passwords are on and someone lacks the field the rule needs, the bundle's payslips ZIP is refused like any other missing document: it is left out and <code>payslips</code> appears in <code>X-Bundle-Skipped</code>.</p>
+        
 <pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/download \
   -H "Authorization: Bearer wp_live_xxx" -D - -o payroll-bundle.zip</code></pre>
       </section>

@@ -53,3 +53,14 @@ public enum PayslipLineKind
     DEDUCTION,
     REIMBURSEMENT,
 }
+
+// What a password-protected payslip opens with (PayrollSettings.LockPayslips).
+// Each is a fact about the employee they already know; PayslipLock.PasswordFor
+// turns the profile into the password.
+public enum PayslipPasswordRule
+{
+    IC_DIGITS,      // IC / passport number, letters and digits only
+    IC_LAST6,       // the last 6 of that
+    DOB_DDMMYYYY,   // date of birth, e.g. 01011990
+    COMPANY,        // one password the company sets (PayslipCompanyPasswordEncrypted)
+}
