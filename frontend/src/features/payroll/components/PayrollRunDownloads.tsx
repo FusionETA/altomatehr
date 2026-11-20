@@ -22,6 +22,8 @@ import {
   type PayslipEmailBulkResult,
 } from "../api";
 import { DISBURSEMENT_BANKS, formatFor } from "../lib/disbursement";
+import { formatDay, isWeekend, previousWeekday } from "../lib/working-day";
+import { getHolidays } from "@/features/settings/api";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { saveFile } from "@/shared/lib/api-client";
 import {
@@ -507,6 +509,15 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
 
   const context: DownloadContext = { paymentDate, recipientReference, tapeId, idCheck };
 
+  // OCBC takes only a KL working day. A weekend is refused by the server, so
+  // it is flagged here with the Friday before; a company-wide public holiday
+  // is only a warning — the holiday list may be another state's, not KL's.
+  const holidaysQuery = useCachedQuery(isOcbc ? "/holidays" : null, getHolidays);
+  const ocbcWeekend = isOcbc && isWeekend(paymentDate);
+  const ocbcHoliday = isOcbc
+    ? (holidaysQuery.data ?? []).find((h) => h.projectId === null && h.date === paymentDate)
+    : undefined;
+
   function toggle(key: string) {
     setPicked((current) => {
       const next = new Set(current);
@@ -723,6 +734,25 @@ function DownloadsModal({ run, onClose }: { run: PayrollRun; onClose: () => void
                       onChange={(e) => setPaymentDate(e.target.value)}
                     />
                   </div>
+
+                  {ocbcWeekend ? (
+                    <p className="basis-full text-xs font-medium text-destructive">
+                      {formatDay(paymentDate)} is a weekend — OCBC only accepts a working day in
+                      Kuala Lumpur.{" "}
+                      <button
+                        type="button"
+                        className="font-semibold underline underline-offset-2"
+                        onClick={() => setPaymentDate(previousWeekday(paymentDate))}
+                      >
+                        Use {formatDay(previousWeekday(paymentDate))}
+                      </button>
+                    </p>
+                  ) : ocbcHoliday ? (
+                    <p className="basis-full text-xs font-medium text-warning-foreground">
+                      {formatDay(paymentDate)} is {ocbcHoliday.name} in your holiday list. If it's
+                      a public holiday in Kuala Lumpur, OCBC will reject the file — pick another day.
+                    </p>
+                  ) : null}
 
                   {/* Hong Leong refuses the file without one, so it is asked
                       for here rather than discovered as a 409. OCBC takes it
