@@ -432,6 +432,22 @@ public class BankFileFormatsTests
     // 1-based, inclusive positions, as the spec writes them.
     private static string At(string line, int from, int to) => line[(from - 1)..to];
 
+    // "Debiting/Crediting Date — must be KL working days": Velocity rejects a
+    // weekend at upload, so the file is refused before it gets there.
+    [Theory]
+    [InlineData(2026, 10, 31, false)]   // Saturday
+    [InlineData(2026, 11, 1, false)]    // Sunday
+    [InlineData(2026, 10, 30, true)]    // Friday
+    [InlineData(2026, 11, 2, true)]     // Monday
+    public void Ocbc_RefusesAWeekendPaymentDate(int year, int month, int day, bool ok)
+    {
+        var result = PayrollBankFileOcbc.RenderGiroTxt(
+            Model(), new DateTime(year, month, day), "701-123425-6", "1", false, null);
+
+        Assert.Equal(ok, result.Ok);
+        if (!ok) Assert.Contains("weekend", result.Error);
+    }
+
     // Every bank the register can resolve must be payable from OCBC.
     [Fact]
     public void Ocbc_HasARoutingIdForEveryBankInTheRegister()
