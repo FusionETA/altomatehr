@@ -106,7 +106,7 @@
         their details first (via the import, or in the app).
       </div>
 
-      <section class="endpoint">
+      <section class="endpoint" id="employees-list">
         <div class="endpoint-head">
           <span class="method get">GET</span>
           <span class="path">/payroll/employees</span>
@@ -140,6 +140,7 @@
               <tr><td><code>paymentMethod</code></td><td>string</td><td><code>"BANK_TRANSFER"</code>, <code>"CASH"</code> or <code>"CHEQUE"</code>.</td></tr>
               <tr><td><code>bankName</code>, <code>bankAccountNumber</code></td><td>string?</td><td></td></tr>
               <tr><td><code>idNumber</code>, <code>idType</code></td><td>string?</td><td><code>idType</code> one of <code>NRIC</code>, <code>PASSPORT</code>, <code>ARMY_NO</code>, <code>POLICE_NO</code>.</td></tr>
+              <tr><td><code>dateOfBirth</code></td><td>string (date)?</td><td>ISO 8601. Here for the <code>DOB_DDMMYYYY</code> <a href="#payslip-password">payslip password</a> rule, so you can tell who is missing one.</td></tr>
               <tr><td><code>nationality</code>, <code>hasPr</code>, <code>isResident</code></td><td></td><td></td></tr>
               <tr><td><code>joinDate</code>, <code>leaveDate</code></td><td>string?</td><td>ISO date.</td></tr>
               <tr><td><code>isArchived</code></td><td>boolean</td><td></td></tr>
@@ -480,6 +481,7 @@
               <tr><td><code>epfEmployee</code>, <code>socsoEmployee</code>, <code>eisEmployee</code></td><td>decimal</td><td></td></tr>
               <tr><td><code>pcb</code></td><td>decimal</td><td>Tax actually taken from the employee's pay — includes any Additional PCB and <strong>excludes PCB the company paid for them</strong> (<code>pcbBorneByEmployer</code> on the payslip). Not the same as <code>pcb</code> on the payslip detail, which still contains the borne part.</td></tr>
               <tr><td><code>submittedAt</code></td><td>string?</td><td>ISO timestamp the run went live.</td></tr>
+              <tr><td><code>pdfPasswordHint</code></td><td>string?</td><td>What opens the payslip PDF, e.g. <code>"your date of birth as DDMMYYYY (for example 01011990)"</code>. <code>null</code> when payslip passwords are off. Never the password itself.</td></tr>
             </tbody>
           </table>
         </div>
@@ -603,7 +605,7 @@
         <p><code>404</code> empty body — no such payslip, it isn't the caller's, or its run isn't submitted. The three cases are deliberately indistinguishable.</p>
       </section>
 
-      <section class="endpoint">
+      <section class="endpoint" id="my-payslip-pdf">
         <div class="endpoint-head">
           <span class="method get">GET</span>
           <span class="path">/payslips/{id}/pdf</span>
@@ -611,9 +613,9 @@
         </div>
         <p>The payslip as a PDF (bank account masked).</p>
         <h3>Response <code>200</code></h3>
-        <p><code>application/pdf</code>.</p>
+        <p><code>application/pdf</code>. Password-protected (AES-256) when <a href="#payslip-password">payslip passwords</a> are on. (An API key has no own payslips, so it always gets <code>404</code> here; use <a href="payroll-runs.html#doc-payslip">the run document</a> instead.)</p>
         <h3>Errors</h3>
-        <p><code>404</code> empty — not found/not the caller's/not submitted. <code>409</code> <code>{ "error": "…" }</code> if the document can't be rendered (e.g. a data problem naming the employee).</p>
+        <p><code>404</code> empty — not found/not the caller's/not submitted. <code>409</code> <code>{ "error": "…" }</code> if the document can't be rendered (e.g. a data problem naming the employee, or the employee lacks the field the payslip password rule needs).</p>
       </section>
 
       <section class="endpoint">
@@ -895,6 +897,10 @@
               <tr><td><code>defaultEpfEmployeeRate</code>, <code>defaultEpfEmployerRate</code></td><td>decimal</td><td>Percent.</td></tr>
               <tr><td><code>hrdfEnabled</code>, <code>hrdfRate</code></td><td>boolean, decimal?</td><td></td></tr>
               <tr><td><code>autoApplySocsoEisRelief</code></td><td>boolean</td><td></td></tr>
+              <tr><td><code>lockPayslips</code></td><td>boolean</td><td>Read-only here. <code>true</code> when every payslip PDF is password-protected. See <a href="#payslip-password">Payslip password</a>.</td></tr>
+              <tr><td><code>payslipPasswordRule</code></td><td>string</td><td>Read-only here. <code>IC_DIGITS</code>, <code>IC_LAST6</code>, <code>DOB_DDMMYYYY</code> or <code>COMPANY</code>.</td></tr>
+              <tr><td><code>payslipPasswordHint</code></td><td>string</td><td>Read-only here. What employees are told the password is, e.g. <code>"your IC number with no dashes (or your passport number)"</code>. Never the password itself.</td></tr>
+              <tr><td><code>hasPayslipCompanyPassword</code></td><td>boolean</td><td>Read-only here. <code>true</code> when a company password is saved (the <code>COMPANY</code> rule). The password is never returned by the API.</td></tr>
               <tr><td><code>syncClaimsToXeroOnSubmit</code>, <code>syncPayrollToXeroOnSubmit</code>, <code>xeroMappingJson</code></td><td></td><td><code>xeroMappingJson</code> is a JSON string whose <code>accounts</code> object is keyed by slot name. The optional <code>taxBorneByEmployer</code> slot ("PCB borne by employer") is the expense account for PCB the company pays for staff; unset, that amount posts to <code>salary</code>. See <a href="payroll-runs.html#xero-preview">Xero journal preview</a>. The same JSON also carries the optional AI-split settings: <code>journalMode</code>, <code>splitPrompt</code> and <code>splitRules</code> (see <a href="#xero-split">AI split of the Xero journal</a>).</td></tr>
               <tr><td><code>payrollBankName</code>, <code>payorAccountHolderName</code>, <code>payorOrganisationCode</code>, <code>ecpPayorAccountNo</code>, <code>ecpPayorBic</code></td><td>string?</td><td>The payor side of the bank file. <code>payorOrganisationCode</code> is used by the Maybank file only (CIMB no longer needs it). <code>ecpPayorAccountNo</code> is the debiting account for the Public Bank, Maybank and OCBC files. <code>payrollBankName</code> decides the bank-file layout; <code>"OCBC Bank (Malaysia) Berhad"</code> gives the OCBC Velocity GIRO TXT (see <a href="payroll-runs.html#doc-bank-file">bank file</a>).</td></tr>
               <tr><td><code>abPayEnabled</code></td><td>boolean</td><td>Read-only. <code>true</code> when the company is connected to ABPay (it has an active API key named &ldquo;ABPay&hellip;&rdquo;), which is what makes <a href="payroll-runs.html#doc-ab-pay-timesheet"><code>GET /payroll/runs/{id}/documents/ab-pay-timesheet</code></a> available. It follows the company's API keys; it is not a saved setting and <code>PUT /payroll/settings</code> ignores it.</td></tr>
@@ -931,10 +937,52 @@
           </table>
         </div>
         <h3>Response</h3>
-        <p><code>200</code> with the saved <code>PayrollSettingsDto</code> (including the read-only <code>abPayEnabled</code>).</p>
+        <p><code>200</code> with the saved <code>PayrollSettingsDto</code> (including the read-only <code>abPayEnabled</code>). The payslip password fields are not part of this request and are left as they were, so this call can never switch the password off.</p>
 <pre><code>curl -X PUT https://&lt;api-host&gt;/payroll/settings \
   -H "Authorization: Bearer wp_live_xxx" -H "Content-Type: application/json" \
   -d '{"workingDaysRule":"TWENTY_SIX","defaultEpfEmployeeRate":11,"defaultEpfEmployerRate":13,"autoApplySocsoEisRelief":true}'</code></pre>
+      </section>
+
+      <section class="endpoint" id="payslip-password">
+        <div class="endpoint-head">
+          <span class="method put">PUT</span>
+          <span class="path">/payroll/settings/payslip-password</span>
+          <span class="tag scope">payroll:write</span>
+        </div>
+        <p>Turn payslip passwords on or off and choose what the password is. It has its own endpoint, apart from <a href="#payroll-settings">PUT /payroll/settings</a>.</p>
+        <p><strong>Scope:</strong> <code>payroll:write</code>. <strong>Module gate:</strong> Payroll. Also needs the admin's &ldquo;change settings&rdquo; access, which a key always has.</p>
+        <h3>Request</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Limits</th></tr></thead>
+            <tbody>
+              <tr><td><code>lockPayslips</code></td><td>boolean</td><td>No (default <code>false</code>)</td><td>On or off.</td></tr>
+              <tr><td><code>payslipPasswordRule</code></td><td>string</td><td>Yes (defaults to <code>IC_DIGITS</code> if omitted)</td><td><code>IC_DIGITS</code>: the IC or passport number with no dashes or spaces (letters upper-cased). <code>IC_LAST6</code>: the last 6 characters of that. <code>DOB_DDMMYYYY</code>: the date of birth, e.g. <code>01011990</code>. <code>COMPANY</code>: one password for everyone.</td></tr>
+              <tr><td><code>companyPassword</code></td><td>string?</td><td>No</td><td>Max 64; at least 6 characters when sent. Used by <code>COMPANY</code>. Blank or omitted keeps the saved one.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Response <code>200</code></h3>
+        <p>The saved settings, the same shape as <a href="#payroll-settings">GET /payroll/settings</a>.</p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>400</code> <code>{ "error": "Set the company payslip password before switching it on." }</code> &mdash; <code>COMPANY</code> with <code>lockPayslips: true</code> and no password sent or saved.</li>
+          <li><code>400</code> <code>{ "error": "The payslip password needs at least 6 characters." }</code></li>
+          <li><code>400</code> validation failure (<code>{ "errors": { … } }</code>, see the <a href="index.html#errors">overview</a>) &mdash; for example an unknown rule or a password over 64 characters.</li>
+          <li><code>403</code> &mdash; missing scope or module.</li>
+        </ul>
+        <h3>Things that bite</h3>
+        <ul>
+          <li><strong>When it is on, every payslip PDF the API returns is AES-256 encrypted</strong> and needs the employee's password to open (printing is allowed; editing and copying are not): <a href="payroll-runs.html#doc-payslip">a single payslip</a>, each PDF inside the <a href="payroll-runs.html#doc-payslips">payslips ZIP</a>, the payslips in the <a href="payroll-runs.html#doc-download">documents bundle</a>, <a href="#my-payslip-pdf"><code>GET /payslips/{id}/pdf</code></a>, the draft preview, and the PDF attached to payslip emails. Other documents are unchanged.</li>
+          <li><strong>A person the rule has nothing for blocks their payslip.</strong> If an employee has no IC / passport number (or no date of birth for <code>DOB_DDMMYYYY</code>), the request answers <code>409</code> naming them; the payslips ZIP is refused whole. Check <code>idNumber</code> and <code>dateOfBirth</code> on <a href="#employees-list">GET /payroll/employees</a> first.</li>
+          <li>Changing the password does not mark any draft run stale; the password is on the file, not in the figures. The API never returns the company password (see below).</li>
+        </ul>
+        <p>
+          A read-only <code>GET /payroll/settings/payslip-password/reveal</code> exists for the AltomateHR app, which shows the company password to an admin on request. It is marked <code>[HumanOnly]</code> and answers <code>403</code> to any key.
+        </p>
+<pre><code>curl -X PUT https://&lt;api-host&gt;/payroll/settings/payslip-password \
+  -H "Authorization: Bearer wp_live_xxx" -H "Content-Type: application/json" \
+  -d '{"lockPayslips":true,"payslipPasswordRule":"COMPANY","companyPassword":"example-pass-123"}'</code></pre>
       </section>
 
       <section class="endpoint" id="xero-split">

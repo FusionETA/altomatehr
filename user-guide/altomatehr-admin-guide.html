@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 347bb7b
+  user-guide-covered-up-to: a8b02b5
 -->
 <html lang="en">
 <head>
@@ -755,7 +755,7 @@
   <details class="topic" id="payroll-settings" open>
     <summary><h2>Payroll settings</h2></summary>
     <div class="topic-body">
-    <p class="topic-lede">Under <strong>Payroll → Settings</strong>. Four sections, each marked Completed, Required or
+    <p class="topic-lede">Under <strong>Payroll → Settings</strong>. Five sections, each marked Completed, Required or
       Optional so you can see what's left.</p>
     <p>Until someone presses <span class="btn-name">Save payroll settings</span> on the General section, a note says
       payroll hasn't been set up yet. The values shown are the Malaysian defaults — review them and save to confirm.
@@ -782,6 +782,25 @@
     <div class="note warn"><span class="nt">Fill these in before your first run</span>
       <p>Employer name, E number, SSM number and PERKESO code are required. A run can't be sent for approval while
         any is missing — the app tells you while you're still preparing the run, not when you try to download.</p>
+    </div>
+    <h3>Payslip password</h3>
+    <p>Lock every payslip PDF with a password. It's off by default. It applies to the admin download, the employee's own
+      download, the all-payslips ZIP and the run's download-all bundle, payslip emails and integrations. Only payslips
+      are locked; other payroll documents stay as they are. Opening a locked payslip needs the password; printing is allowed.</p>
+    <ol class="steps">
+      <li>Open <strong>Payroll → Settings → Payslip password</strong>.</li>
+      <li>Switch on <strong>Password-protect payslips</strong>.</li>
+      <li>Under <strong>Password</strong>, choose what opens the payslip: <em>Employee's IC number, digits only</em>,
+        <em>Last 6 digits of employee's IC</em>, <em>Employee's date of birth (DDMMYYYY)</em> or
+        <em>A password the company sets</em>.</li>
+      <li>For the company password, type it (at least 6 characters). Once saved it shows masked; press
+        <span class="btn-name">Reveal</span> to see it (only admins allowed to change settings can). Leave the field blank to keep the current one.</li>
+      <li>Press <span class="btn-name">Save payslip password</span>. This tab saves on its own button, not the bar at the bottom.</li>
+    </ol>
+    <div class="note warn"><span class="nt">Check before you switch it on</span>
+      <p>With the company password, everyone shares one password, and a warning on the tab says so. With an IC or date of
+        birth rule, the tab lists anyone who is missing that detail: their payslips won't download or email until you add it.
+        Changing the password or rule only affects payslips made afterwards; ones already sent keep the old password.</p>
     </div>
     <h3>Credentials</h3>
     <p>Store your KWSP i-Akaun, PERKESO ASSIST and LHDN e-PCB logins so whoever runs payroll has them. They're
@@ -843,6 +862,10 @@
         <div class="shot-item">
           <img src="shots/admin/payroll-settings-forme.png" alt="Payroll → Settings → Form E (LHDN): employer details with required fields" loading="lazy">
           <p class="shot-cap">Form E (LHDN)</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/payroll-settings-payslip-password.png" alt="Payroll → Settings → Payslip password: the company password option, the masked current password with a Reveal button, the shared-password warning and Save payslip password" loading="lazy">
+          <p class="shot-cap">Payslip password</p>
         </div>
       </div>
       <p class="shot-cap shot-cap-main">Payroll settings</p>
@@ -2101,6 +2124,9 @@
     <p>Individual payslips can be downloaded or emailed from each person's row once the run is filed. Each row also has
       a button for that person's <strong>Borang PCB/TP1</strong> (the reliefs they claimed, this month and year to date).
       <span class="btn-name">Email all</span> asks you to confirm first — payslips can't be recalled once sent.</p>
+    <p>When <a href="#payroll-settings">payslip passwords</a> are on, a note above the Payslips table says what the PDFs
+      open with. If a payslip can't be produced — for example the employee has no IC or date of birth on file for the
+      rule you chose — the download shows an error on that person's row.</p>
     
     <figure class="shot" data-place="Files">
       <div class="shot-grid" data-orient="screen">
