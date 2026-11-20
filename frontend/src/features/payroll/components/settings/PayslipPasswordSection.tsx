@@ -83,13 +83,15 @@ export function PayslipPasswordSection({
 
   const isCompany = rule === "COMPANY";
   const hasSaved = settings.hasPayslipCompanyPassword;
-  const tooShort = password.length > 0 && password.length < MIN_COMPANY_PASSWORD;
-  const needsPassword = lock && isCompany && !hasSaved && password.length === 0;
+  // Whitespace-only counts as blank, as it does on the server.
+  const typed = password.trim().length > 0;
+  const tooShort = typed && password.length < MIN_COMPANY_PASSWORD;
+  const needsPassword = lock && isCompany && !hasSaved && !typed;
 
   const dirty =
     lock !== settings.lockPayslips ||
     rule !== settings.payslipPasswordRule ||
-    (isCompany && password.length > 0);
+    (isCompany && typed);
   const field = rule === "DOB_DDMMYYYY" ? "date of birth" : "IC / passport number";
 
   async function save() {

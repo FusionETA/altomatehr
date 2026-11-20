@@ -208,6 +208,18 @@ public class AdminAccessTests
         Assert.Equal(allowed, result is null);
     }
 
+    // Revealing a secret (the company payslip password) is a GET that needs
+    // the settings switch all the same.
+    [Fact]
+    public async Task A_secret_revealing_read_needs_the_settings_switch()
+    {
+        var noSettings = new FixedAccess(new AdminAccess(true, null, CanChangeSettings: false, null));
+        Assert.NotNull(await Run(new RequireSettingsAttribute { IncludeReads = true }, noSettings, "GET"));
+
+        var withSettings = new FixedAccess(AdminAccess.Full);
+        Assert.Null(await Run(new RequireSettingsAttribute { IncludeReads = true }, withSettings, "GET"));
+    }
+
     [Fact]
     public async Task A_limited_scope_cannot_act_company_wide_and_cannot_download_a_filing()
     {

@@ -106,11 +106,14 @@ public class PayrollController : ControllerBase
 
     // The company payslip password in clear (COMPANY rule). Its own endpoint
     // behind an explicit click, like the portal logins, and audited — it opens
-    // every payslip in the company. `payroll:read` like every payroll GET (and
-    // the portal-login reveal); RequireSettings keeps it to admins who can
-    // change payroll settings.
+    // every payslip in the company. `payroll:read` like every payroll GET;
+    // RequireSettings WITH reads keeps it to admins who can change payroll
+    // settings (a plain [RequireSettings] lets every GET through), and
+    // HumanOnly keeps API keys and partner tokens out — no integration needs
+    // the password that opens every payslip.
+    [HumanOnly]
     [RequireScope("payroll:read")]
-    [RequireSettings]
+    [RequireSettings(IncludeReads = true)]
     [HttpGet("settings/payslip-password/reveal")]
     public async Task<IActionResult> RevealPayslipPassword()
     {

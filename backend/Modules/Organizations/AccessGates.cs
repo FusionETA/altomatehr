@@ -29,13 +29,17 @@ internal static class AccessGate
 // Changing the company's CONFIGURATION — organisation details, claim settings,
 // work schedule (shifts, holidays), payroll settings / company info / portal
 // logins, the Xero connection. Needs the "Change settings" switch from the
-// Owner's Manage access. Reading those pages is not gated here.
+// Owner's Manage access. Reading those pages is not gated here — unless
+// `IncludeReads`, for a read that discloses a secret (revealing a password is
+// no lesser act than setting it).
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]
 public sealed class RequireSettingsAttribute : Attribute, IAsyncActionFilter
 {
+    public bool IncludeReads { get; init; }
+
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
-        if (!AccessGate.IsRead(context))
+        if (IncludeReads || !AccessGate.IsRead(context))
         {
             var access = context.HttpContext.RequestServices.GetRequiredService<IModuleAccessService>();
             if (!(await access.GetAccessAsync()).CanChangeSettings)
