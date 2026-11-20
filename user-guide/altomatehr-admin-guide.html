@@ -553,7 +553,7 @@
             employees whose policy requires it.</li>
           <li><strong>Work schedule</strong> — hours and working days that override the company default for this site.</li>
         </ul>
-        <p><strong>Active</strong> and <strong>Archived</strong> tabs keep old sites out of the way. The
+        <p><strong>Active</strong> and <strong>Archived</strong> tabs keep old sites out of the way. With Xero connected, a site you archive stays archived after a sync. The
           <strong>Geofence radius</strong> card sets how close counts as on-site (200 m by default).</p></li>
       <li><h4>Work Schedule</h4>
         <p>The company's default hours and working days, and the <strong>public holidays</strong> —
@@ -2027,7 +2027,12 @@
       Upload it under <strong>GIRO file upload</strong> in Velocity@ocbc. It pays every employee paid by bank transfer,
       whichever bank they use, OCBC staff included. Above the file, fill in:</p>
     <ul>
-      <li><strong>Payment date</strong> — the day the money should go out.</li>
+      <li><strong>Payment date</strong> — the day the money should go out. OCBC only accepts a working day in Kuala Lumpur.
+        It starts as the last day of the month, so in a month that ends on a weekend you'll see a red line straight away:
+        <em>… is a weekend — OCBC only accepts a working day in Kuala Lumpur</em>. Press the <span class="btn-name">Use Fri …</span>
+        button beside it to move the date to the Friday before; a weekend date is refused when you download. If the date is
+        a company-wide holiday in your holiday list, an amber warning appears instead — it doesn't block the file, but if
+        it's also a public holiday in Kuala Lumpur, OCBC will reject it, so pick another day.</li>
       <li><strong>Recipient reference</strong> — what employees see on their bank statement, up to 20 characters. It
         starts as something like <em>SALARY OCT 2026</em>; change it if you like, or leave it empty to use that.</li>
       <li><strong>Tape ID</strong> — starts at 001. Each file you send for the same payment date from the same account
@@ -2536,7 +2541,10 @@
         disconnecting restores them.</li>
       <li><strong>Projects</strong> — pulled from Xero Projects, or from the options of a tracking category you choose.
         Once you choose a category, it <em>is</em> the project list: projects made by hand, or not in that category, are
-        hidden from the pickers (clearing the category brings them back).</li>
+        hidden from the pickers (clearing the category brings them back).
+        A project you archive in AltomateHR stays archived when Xero syncs, and a project closed or archived in Xero is
+        archived here too. So restoring a project that Xero has closed won't last past the next sync — reopen it in Xero
+        as well.</li>
       <li><strong>Claims</strong> — approved claims become a bill (own money) or a spend-money transaction (company money).</li>
       <li><strong>Payroll</strong> — the payroll journal is posted when a run is approved, if you've switched it on. In
         <strong>Payroll → Settings → Xero sync</strong>, the expense lines offer expense accounts and the payables

@@ -3972,6 +3972,9 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("varchar(1000)");
 
+                    b.Property<bool>("ArchivedByAdmin")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<bool>("ArchivedByXeroConnect")
                         .HasColumnType("tinyint(1)");
 

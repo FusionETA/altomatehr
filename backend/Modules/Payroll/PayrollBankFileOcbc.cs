@@ -115,6 +115,18 @@ public static class PayrollBankFileOcbc
                 + "before generating the OCBC file.");
         }
 
+        // "Debiting/Crediting Date — must be KL working days." Velocity rejects a
+        // weekend value date at upload, so it is refused here, before anyone
+        // has to find out from OCBC. Public holidays aren't checked: the
+        // company's holiday list may be another state's, not KL's — the
+        // download panel warns about those instead.
+        if (!IsKlWorkingWeekday(valueDate))
+        {
+            return StatutoryFileResult.Refused(
+                $"OCBC only accepts a payment date on a working day in Kuala Lumpur, and "
+                + $"{valueDate:dddd d MMMM yyyy} is a weekend. Pick a weekday — usually the Friday before.");
+        }
+
         // Three digits, 001–999. Blank means the first file of the day.
         var tape = string.IsNullOrWhiteSpace(tapeId) ? "1" : tapeId.Trim();
         if (!int.TryParse(tape, NumberStyles.None, CultureInfo.InvariantCulture, out var tapeNumber)
@@ -216,6 +228,12 @@ public static class PayrollBankFileOcbc
         var fileName = $"OCBC_GIRO_Payroll_{model.Run.PeriodMonth:D2}{model.Run.PeriodYear}_T{tapeNumber:D3}.txt";
         return new StatutoryFileResult(true, fileName, content, ContentType, null);
     }
+
+    // Kuala Lumpur's weekend is Saturday and Sunday (not Friday–Saturday, as
+    // in Johor, Kedah, Kelantan and Terengganu): the spec's working days are
+    // KL's, wherever the company is.
+    public static bool IsKlWorkingWeekday(DateTime date) =>
+        date.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday);
 
     // An NRIC goes in New IC (digits only, 12); anything else — passport,
     // police or army number — in the Police/Army/Passport field.

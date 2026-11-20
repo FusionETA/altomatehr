@@ -46,6 +46,17 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     ],
   },
   {
+    date: "2026-11-20",
+    title: "Archived projects and OCBC payment dates",
+    improved: [
+      admins("The OCBC payroll file only takes a weekday in Kuala Lumpur as the payment date. Downloads now refuses a Saturday or Sunday, and the dialog offers a \"Use Fri …\" button."),
+      admins("The Downloads dialog also warns if the payment date is a company holiday in your holiday list, as OCBC rejects the file on a KL public holiday. Files already downloaded are not changed."),
+    ],
+    fixed: [
+      admins("Projects you archive in AltomateHR now stay archived after a Xero sync. Before, a sync could bring them back, even though a project closed in Xero is still archived."),
+    ],
+  },
+  {
     date: "2026-11-19",
     title: "AI split for the Xero payroll journal",
     new: [

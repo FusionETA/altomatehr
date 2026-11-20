@@ -360,6 +360,14 @@
         <code>archivedByXeroConnect</code>, so a later Xero disconnect won't silently
         reverse an admin's own choice.
       </p>
+      <div class="callout">
+        <strong>A Xero sync never un-archives what you archived here.</strong> Archiving a project
+        through the API (or the app) is remembered separately from Xero's status. A later sync of
+        Xero projects or of a tracking category still updates the name and Xero status, and still
+        archives a project Xero has closed, but a project open in Xero stays archived until you
+        call <a href="#restore-project">restore</a>. Restoring clears the memory, so the next sync
+        goes back to following Xero.
+      </div>
       <section class="endpoint" id="archive-project">
         <div class="endpoint-head">
           <span class="method post">POST</span>

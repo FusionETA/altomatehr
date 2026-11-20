@@ -56,4 +56,18 @@ public class ProjectSaveTests
         Assert.Single(archived.GeofencePoints);
         Assert.Single(archived.AllowedIpEntries);
     }
+
+    [Fact]
+    public async Task SetArchivedAsync_RemembersTheAdminsChoiceApartFromXero()
+    {
+        var projects = new List<Project>();
+        var service = Create(projects);
+        var created = await service.CreateAsync(WithSitesAndAllowlist());
+
+        await service.SetArchivedAsync(created.Id, true);
+        Assert.True(projects.Single().ArchivedByAdmin);
+
+        await service.SetArchivedAsync(created.Id, false);
+        Assert.False(projects.Single().ArchivedByAdmin);
+    }
 }
