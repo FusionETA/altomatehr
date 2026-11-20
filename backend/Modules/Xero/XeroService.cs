@@ -690,7 +690,9 @@ public class XeroService : IXeroService
             existing.Name = xeroProject.Name;
             existing.XeroStatus = xeroProject.Status;
             existing.XeroSyncedAt = now;
-            existing.IsArchived = IsClosedProject(xeroProject.Status);
+            // Closed in Xero archives it; open in Xero never restores what an
+            // admin archived here.
+            existing.IsArchived = IsClosedProject(xeroProject.Status) || existing.ArchivedByAdmin;
             await _repo.UpdateProjectAsync(existing);
             result.Updated++;
         }
@@ -807,7 +809,7 @@ public class XeroService : IXeroService
             existing.XeroTrackingCategoryId = category.TrackingCategoryId;
             existing.XeroStatus = option.Status;
             existing.XeroSyncedAt = now;
-            existing.IsArchived = archived;
+            existing.IsArchived = archived || existing.ArchivedByAdmin;
             await _repo.UpdateProjectAsync(existing);
             result.Updated++;
         }

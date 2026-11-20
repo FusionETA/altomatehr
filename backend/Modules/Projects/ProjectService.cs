@@ -160,6 +160,8 @@ public class ProjectService : IProjectService
         if (project is null) return null;
 
         project.IsArchived = archived;
+        // Remembered apart from Xero's status, so a sync can't undo it.
+        project.ArchivedByAdmin = archived;
         // Whatever the admin decides here, they now own this row: clearing the
         // flag stops a later disconnect from silently reversing their choice.
         project.ArchivedByXeroConnect = false;

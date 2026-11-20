@@ -68,6 +68,22 @@ public class XeroProjectSyncTests
     }
 
     [Fact]
+    public async Task SyncProjectsAsync_KeepsAnAdminArchivedXeroProjectArchived()
+    {
+        var repo = new FakeXeroRepository();
+        repo.Projects.Add(new Project
+        {
+            OrganizationId = "org-1", Name = "Client Site A", XeroProjectId = "x-1",
+            IsArchived = true, ArchivedByAdmin = true,
+        });
+        var service = Create(repo, [new XeroProjectResponse("x-1", "Client Site A", "INPROGRESS")]);
+
+        await service.SyncProjectsAsync();
+
+        Assert.True(repo.Projects.Single().IsArchived);
+    }
+
+    [Fact]
     public async Task DisconnectAsync_BringsBackOnlyTheProjectsXeroHid()
     {
         var repo = new FakeXeroRepository();
@@ -369,6 +385,41 @@ public class XeroTrackingCategoryProjectSyncTests
         await service.SyncProjectsAsync();
 
         Assert.True(repo.Projects.Single().IsArchived);
+    }
+
+    // Globe Engineering, 2026-11-19: every option was still ACTIVE in Xero, so
+    // one sync brought back 219 projects archived here.
+    [Fact]
+    public async Task SyncProjectsAsync_KeepsAProjectTheAdminArchived_WhileXeroStillHasItActive()
+    {
+        var repo = new FakeXeroRepository();
+        repo.Projects.Add(new Project
+        {
+            OrganizationId = "org-1", Name = "Old Site", XeroTrackingOptionId = "opt-1",
+            IsArchived = true, ArchivedByAdmin = true,
+        });
+        var service = Create(repo, [Category("cat-1", "Altomatehr", ("opt-1", "Old Site"))]);
+
+        await service.SyncProjectsAsync();
+
+        Assert.True(repo.Projects.Single().IsArchived);
+    }
+
+    [Fact]
+    public async Task SyncProjectsAsync_FollowsXeroAgain_OnceTheAdminRestoredIt()
+    {
+        // Archived only because Xero had it archived; it's active there now.
+        var repo = new FakeXeroRepository();
+        repo.Projects.Add(new Project
+        {
+            OrganizationId = "org-1", Name = "Old Site", XeroTrackingOptionId = "opt-1",
+            IsArchived = true, ArchivedByAdmin = false,
+        });
+        var service = Create(repo, [Category("cat-1", "Altomatehr", ("opt-1", "Old Site"))]);
+
+        await service.SyncProjectsAsync();
+
+        Assert.False(repo.Projects.Single().IsArchived);
     }
 
     [Fact]

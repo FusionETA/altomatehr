@@ -71,5 +71,12 @@ public class Project : ITenantScoped
     // these and leaves anything the admin archived on purpose archived.
     public bool ArchivedByXeroConnect { get; set; }
 
+    // An admin archived it here. A Xero sync copies Xero's status onto
+    // IsArchived, and Xero orgs rarely archive their tracking options, so
+    // without this every sync brought back what the admin had archived
+    // (Globe Engineering, 2026-11-19: 219 projects). The sync keeps a project
+    // archived while this is set; restoring it here clears it.
+    public bool ArchivedByAdmin { get; set; }
+
     public DateTime CreatedAt { get; set; }
 }
