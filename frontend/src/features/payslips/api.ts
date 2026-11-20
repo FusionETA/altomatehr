@@ -23,6 +23,9 @@ export type PayslipSummary = {
   pcb: number;
   /** When the run went live: the date this payslip became real. */
   submittedAt: string | null;
+  /** Set when the company password-protects payslips: what opens the PDF,
+   *  e.g. "your IC number with no dashes (or your passport number)". */
+  pdfPasswordHint: string | null;
 };
 
 export const getMyPayslips = () => apiGet<PayslipSummary[]>("/payslips");

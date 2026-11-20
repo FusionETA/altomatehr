@@ -10,7 +10,10 @@ public static class PayslipEmailTemplate
 {
     public static string Subject(string periodLabel) => $"Your payslip — {periodLabel}";
 
-    public static string BuildHtml(string name, string organizationName, string periodLabel)
+    // `passwordHint` (PayslipLock.Hint) when the PDF is password-protected:
+    // the email says what the password is made of, never the password.
+    public static string BuildHtml(
+        string name, string organizationName, string periodLabel, string? passwordHint = null)
     {
         var safeName = WebUtility.HtmlEncode(name);
         var safeOrg = WebUtility.HtmlEncode(organizationName);
@@ -19,6 +22,10 @@ public static class PayslipEmailTemplate
         var body =
             EmailTemplate.Paragraph(
                 $"Hi {safeName}, your payslip from {safeOrg} for {safePeriod} is attached as a PDF.")
+            + (passwordHint is null
+                ? ""
+                : EmailTemplate.Paragraph(
+                    $"The PDF is password-protected. Open it with {WebUtility.HtmlEncode(passwordHint)}."))
             + EmailTemplate.Paragraph(
                 "If you weren't expecting this email, please contact your administrator.",
                 muted: true);

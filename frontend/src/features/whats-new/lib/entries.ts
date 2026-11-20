@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 347bb7b
+// whats-new-covered-up-to: a8b02b56
 
 // A line is for everyone, or — wrapped in admins(…) — for admins and owners
 // only. Employees and supervisors never see an admins line, so it doesn't
@@ -28,6 +28,23 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-11-20",
+    title: "Password-protected payslips",
+    new: [
+      admins("In Payroll → Settings → Payslip password, you can now lock every payslip PDF with a password. It's off by default."),
+      admins("Choose the password: the employee's IC number (digits only), the last 6 digits of their IC, their date of birth (DDMMYYYY), or one password you set."),
+      admins("Every copy is locked: admin and employee downloads, the all-payslips ZIP, emails and integrations. Earlier months too. Other payroll documents aren't changed."),
+      admins("You can reveal or change the company password later on the same tab."),
+      "Payslip PDFs may now be password-protected. The Payslips page and the payslip email say what opens yours, never the password itself.",
+    ],
+    improved: [
+      admins("If the chosen password needs an IC number or date of birth that's missing, that person's payslip won't download or email until it's added. The Payslip password tab lists who's missing one."),
+    ],
+    fixed: [
+      admins("On a payroll run, downloading a single payslip now shows an error if it can't be made. Before, nothing happened."),
+    ],
+  },
   {
     date: "2026-11-19",
     title: "AI split for the Xero payroll journal",

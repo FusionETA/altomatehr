@@ -61,6 +61,22 @@ public class PayrollSettings : ITenantScoped
         : year == startYear ? startMonth
         : 13;
 
+    // ---- Payslip password ----
+
+    // Every payslip PDF that leaves the app — downloaded by an admin or the
+    // employee, inside a ZIP, emailed, or fetched over the API — is locked
+    // with the employee's own password under `PayslipPasswordRule`
+    // (PayslipLock). Off by default. A display setting, not a payroll input:
+    // changing it doesn't make drafts stale.
+    public bool LockPayslips { get; set; }
+    public PayslipPasswordRule PayslipPasswordRule { get; set; } = PayslipPasswordRule.IC_DIGITS;
+
+    // The password for the COMPANY rule: one the company sets, the same for
+    // every payslip. Encrypted with ISecretBox (AES-GCM) — not hashed, because
+    // it has to be read back to lock each file, and an admin can reveal it.
+    // Never returned by GET /payroll/settings.
+    [MaxLength(512)] public string? PayslipCompanyPasswordEncrypted { get; set; }
+
     // ---- Xero ----
 
     // Both are gated in the UI behind an active Xero connection.

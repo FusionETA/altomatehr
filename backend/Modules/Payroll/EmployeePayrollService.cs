@@ -14,6 +14,7 @@ public class EmployeePayrollService : IEmployeePayrollService
     private readonly IStatutoryFileService _statutory;
     private readonly ICurrentUser _currentUser;
     private readonly ITp1FormService? _tp1;
+    private readonly IPayrollSettingsService? _settings;
 
     public EmployeePayrollService(
         IPayslipRepository payslips,
@@ -21,9 +22,11 @@ public class EmployeePayrollService : IEmployeePayrollService
         IPayrollAnnualReportService annual,
         IStatutoryFileService statutory,
         ICurrentUser currentUser,
-        ITp1FormService? tp1 = null)
+        ITp1FormService? tp1 = null,
+        IPayrollSettingsService? settings = null)
     {
         _tp1 = tp1;
+        _settings = settings;
         _payslips = payslips;
         _profiles = profiles;
         _annual = annual;
@@ -37,6 +40,11 @@ public class EmployeePayrollService : IEmployeePayrollService
         if (profileId is null) return [];
 
         var rows = await _payslips.GetForEmployeeAsync(profileId);
+
+        // The PDF is locked when the company says so; the portal tells them
+        // what opens it, beside the download button.
+        var settings = _settings is null ? null : await _settings.GetEffectiveAsync();
+        var hint = settings?.LockPayslips == true ? PayslipLock.Hint(settings.PayslipPasswordRule) : null;
 
         return [.. rows.Select(row => new EmployeePayslipSummaryDto
         {
@@ -53,6 +61,7 @@ public class EmployeePayrollService : IEmployeePayrollService
             // the company pays for them is not — matches the detail view.
             Pcb = row.Payslip.Pcb - row.Payslip.PcbBorneByEmployer + row.Payslip.VoluntaryPcb,
             SubmittedAt = row.Run.SubmittedAt,
+            PdfPasswordHint = hint,
         })];
     }
 

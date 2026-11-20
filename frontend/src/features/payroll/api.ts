@@ -33,6 +33,15 @@ export type PayrollSettings = {
   hrdfEnabled: boolean;
   hrdfRate: number | null;
   autoApplySocsoEisRelief: boolean;
+  // Payslip passwords — saved on their own (savePayslipPassword), never with
+  // the rest of the settings.
+  lockPayslips: boolean;
+  payslipPasswordRule: PayslipPasswordRule;
+  // What employees are told opens the PDF. Never the password itself.
+  payslipPasswordHint: string;
+  // A company password is saved (COMPANY rule). The password itself only
+  // comes back from revealPayslipPassword.
+  hasPayslipCompanyPassword: boolean;
   syncClaimsToXeroOnSubmit: boolean;
   syncPayrollToXeroOnSubmit: boolean;
   xeroMappingJson: string | null;
@@ -53,8 +62,34 @@ export type PayrollSettings = {
 
 export type SavePayrollSettings = Omit<
   PayrollSettings,
-  "isConfigured" | "updatedAt" | "abPayEnabled"
+  | "isConfigured"
+  | "updatedAt"
+  | "abPayEnabled"
+  | "lockPayslips"
+  | "payslipPasswordRule"
+  | "payslipPasswordHint"
+  | "hasPayslipCompanyPassword"
 >;
+
+// What a password-protected payslip opens with.
+export type PayslipPasswordRule = "IC_DIGITS" | "IC_LAST6" | "DOB_DDMMYYYY" | "COMPANY";
+
+// `companyPassword`: the COMPANY rule's password. Omit or blank to keep the
+// one already saved.
+export const savePayslipPassword = (
+  lockPayslips: boolean,
+  payslipPasswordRule: PayslipPasswordRule,
+  companyPassword?: string,
+) =>
+  apiPut<PayrollSettings>("/payroll/settings/payslip-password", {
+    lockPayslips,
+    payslipPasswordRule,
+    companyPassword: companyPassword || null,
+  });
+
+// The company payslip password in clear. Audited on the server.
+export const revealPayslipPassword = () =>
+  apiGet<{ password: string }>("/payroll/settings/payslip-password/reveal");
 
 export const getPayrollSettings = () =>
   apiGet<PayrollSettings>("/payroll/settings");
@@ -806,6 +841,8 @@ export type PayrollEmployee = {
 
   idNumber: string | null;
   idType: IdType | null;
+  // For the payslip password's date-of-birth rule.
+  dateOfBirth: string | null;
   nationality: string | null;
   hasPr: boolean;
   isResident: boolean;

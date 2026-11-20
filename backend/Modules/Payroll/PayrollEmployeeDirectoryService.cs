@@ -92,6 +92,7 @@ public class PayrollEmployeeDirectoryService : IPayrollEmployeeDirectoryService
 
             IdNumber = profile.IdNumber,
             IdType = profile.IdType,
+            DateOfBirth = profile.DateOfBirth,
             Nationality = profile.Nationality,
             HasPr = profile.HasPr,
             IsResident = PayslipCalculator.IsTaxResident(profile.IsResident, profile.Nationality),

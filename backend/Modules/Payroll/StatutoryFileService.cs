@@ -136,11 +136,47 @@ public class StatutoryFileService : IStatutoryFileService
         }
 
         var (payslip, _) = await BuildPayslipAsync(model, row);
+        var pdf = PayslipPdf.Render(payslip with { DraftLabel = IsPreview(model.Run) ? model.StatusLabel : null });
+
+        // Every copy is locked when the company asks for it — the admin's
+        // download and the draft preview included — so a payslip never leaves
+        // the app open (PayslipLock).
+        var settings = await _settings.GetEffectiveAsync();
+        if (settings.LockPayslips)
+        {
+            var companyPassword = settings.PayslipPasswordRule == PayslipPasswordRule.COMPANY
+                ? await _settings.GetPayslipCompanyPasswordAsync()
+                : null;
+            if (settings.PayslipPasswordRule == PayslipPasswordRule.COMPANY && companyPassword is null)
+                return StatutoryFileResult.Refused(NoCompanyPassword);
+            var password = PayslipLock.PasswordFor(settings.PayslipPasswordRule, row.IdNumber, row.DateOfBirth, companyPassword);
+            if (password is null)
+                return StatutoryFileResult.Refused(NoPayslipPassword(settings.PayslipPasswordRule, [row.EmployeeName]));
+            pdf = PayslipLock.Lock(pdf, password);
+        }
 
         return new StatutoryFileResult(
             true, PayslipFileName(model, row, preview: IsPreview(model.Run)),
-            PayslipPdf.Render(payslip with { DraftLabel = IsPreview(model.Run) ? model.StatusLabel : null }),
-            PayslipPdf.ContentType, null);
+            pdf, PayslipPdf.ContentType, null)
+        {
+            PasswordHint = settings.LockPayslips ? PayslipLock.Hint(settings.PayslipPasswordRule) : null,
+        };
+    }
+
+    // The COMPANY rule with its password unreadable (never saved, or saved
+    // under a key this server no longer has). Saving refuses the first case,
+    // so this is mostly the second.
+    private const string NoCompanyPassword =
+        "Payslips are locked with the company payslip password, but it can't be read. Set it again in Payroll settings → Payslip password.";
+
+    // Refused rather than guessed: a password nobody can know locks the
+    // employee out of their own payslip.
+    private static string NoPayslipPassword(PayslipPasswordRule rule, IReadOnlyList<string> names)
+    {
+        var field = PayslipLock.MissingField(rule);
+        return names.Count == 1
+            ? $"Payslips are password-protected with each employee's {field}, and {names[0]} has none. Add it to their profile, then try again."
+            : $"Payslips are password-protected with each employee's {field}. Add it for {string.Join(", ", names)}, then try again.";
     }
 
     public async Task<StatutoryFileResult> RenderAllPayslipsZipAsync(string runId)
@@ -164,6 +200,31 @@ public class StatutoryFileService : IStatutoryFileService
             .ToDictionary(g => g.Key, g => (IReadOnlyList<Entities.PayslipLineItem>)g.ToList(),
                 StringComparer.Ordinal);
 
+        // Each payslip in the ZIP is locked with its own employee's password.
+        // Someone the rule has nothing for refuses the whole ZIP, naming them:
+        // a ZIP quietly missing a person reads as complete.
+        var settings = await _settings.GetEffectiveAsync();
+        var passwords = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (settings.LockPayslips)
+        {
+            var companyPassword = settings.PayslipPasswordRule == PayslipPasswordRule.COMPANY
+                ? await _settings.GetPayslipCompanyPasswordAsync()
+                : null;
+            if (settings.PayslipPasswordRule == PayslipPasswordRule.COMPANY && companyPassword is null)
+                return StatutoryFileResult.Refused(NoCompanyPassword);
+
+            var missing = new List<string>();
+            foreach (var row in model.Rows)
+            {
+                if (PayslipLock.PasswordFor(settings.PayslipPasswordRule, row.IdNumber, row.DateOfBirth, companyPassword) is { } password)
+                    passwords[row.Payslip.Id] = password;
+                else
+                    missing.Add(row.EmployeeName);
+            }
+            if (missing.Count > 0)
+                return StatutoryFileResult.Refused(NoPayslipPassword(settings.PayslipPasswordRule, missing));
+        }
+
         // Two employees can sanitise to the same name; the second becomes
         // "…_2.pdf", as the previous system numbered them.
         var used = new HashSet<string>(StringComparer.Ordinal);
@@ -182,6 +243,8 @@ public class StatutoryFileService : IStatutoryFileService
 
                 await using var stream = entry.Open();
                 var pdf = PayslipPdf.Render(BuildPayslipModel(model, row, ytd, lineItems));
+                if (passwords.TryGetValue(row.Payslip.Id, out var password))
+                    pdf = PayslipLock.Lock(pdf, password);
                 await stream.WriteAsync(pdf);
             }
         }
@@ -908,6 +971,7 @@ public class StatutoryFileService : IStatutoryFileService
                            ?? string.Empty,
             IdNumber = profile?.IdNumber,
             IdType = profile?.IdType,
+            DateOfBirth = profile?.DateOfBirth,
             EpfNumber = profile?.EpfNumber,
             SocsoNumber = profile?.SocsoNumber,
             SsfwNumber = profile?.SsfwNumber,
