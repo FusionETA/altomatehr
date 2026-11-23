@@ -420,16 +420,18 @@ public static class PayslipCalculator
             ? input.EpfEmployeeRate
             : input.DefaultEpfEmployeeRate;
 
-        // The KWSP 13%→12% cliff is decided by the REGULAR monthly wage, not by
-        // the wage a one-off bonus happens to inflate this month. So the whole
-        // wage (bonus included) is contributed on, but the rate is picked from
-        // the wage without it.
+        // The KWSP 13%→12% cliff is decided by the wage WITHOUT a bonus, not by
+        // the wage a bonus happens to inflate this month. So the whole wage
+        // (bonus included) is contributed on, but the rate is picked from the
+        // wage without it. Only a bonus — commission and other additional pay
+        // are ordinary EPF wages and count toward the tier.
         var regularEpfWage = Money.Round2(Math.Max(0m, epfWage - buckets.ArEpfAmount));
+        var tierEpfWage = Money.Round2(Math.Max(0m, epfWage - buckets.EpfBonusAmount));
 
         var epfInput = new EpfCalculator.Input
         {
             Wage = epfWage,
-            RateDeterminingWage = regularEpfWage,
+            RateDeterminingWage = tierEpfWage,
             EmployeeRate = employeeRate,
             EmployeeVoluntary = input.EpfEmployeeVoluntary,
             EmployerVoluntary = input.EpfEmployerVoluntary,
@@ -629,7 +631,7 @@ public static class PayslipCalculator
 
             LineItems = lineItems,
             EpfRates = SnapshotEpfRates(
-                epf, employeeRate, epfWage, regularEpfWage,
+                epf, employeeRate, epfWage, tierEpfWage,
                 input.EpfEmployeeVoluntary, input.EpfEmployerVoluntary),
             StatutoryWarnings = CollectWarnings(input),
         };
@@ -662,6 +664,9 @@ public static class PayslipCalculator
         // derive the LHDN form's Kt — the EPF actually deducted always comes off
         // the combined wage.
         public decimal ArEpfAmount;
+        // The part of ArEpfAmount that is a bonus — the only part KWSP keeps
+        // out of the employer-rate tier.
+        public decimal EpfBonusAmount;
 
         public decimal Zakat;
         public decimal Tp1Relief;
@@ -823,6 +828,9 @@ public static class PayslipCalculator
             // Tracked separately only so Kt can be derived as a band difference
             // after the fact. It does not change what is deducted.
             if (treatAsAdditional) b.ArEpfAmount += amount;
+
+            // A bonus is the one thing KWSP leaves out of the 13%/12% tier.
+            if (meta.IsKwspBonus && !a.TreatAsRecurring) b.EpfBonusAmount += amount;
         }
 
         if (meta.SubjectToSocso) b.SocsoBase += amount;

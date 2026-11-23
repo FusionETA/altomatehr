@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: d90e757
+// whats-new-covered-up-to: 5328b6c
 
 // A line is for everyone, or — wrapped in admins(…) — for admins and owners
 // only. Employees and supervisors never see an admins line, so it doesn't
@@ -30,7 +30,7 @@ export type WhatsNewEntry = {
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-11-23",
-    title: "Unpaid leave from your own timesheet",
+    title: "Unpaid leave from your timesheet, and employer EPF in commission months",
     new: [
       admins("New switch in Payroll → Settings → Unpaid leave: \"Dock unpaid leave approved in the Leave module\". It's on by default, so nothing changes unless you turn it off."),
       admins("Turn it off if your unpaid leave comes from your timesheet, such as the U/L column sent through ABPay. Leave records then stop reducing pay, so it isn't deducted twice."),
@@ -38,6 +38,11 @@ export const WHATS_NEW: WhatsNewEntry[] = [
     improved: [
       admins("With the switch off, approved leave no longer reduces pay, this month or as a later catch-up. Unpaid days on the payroll run, and days typed on it, still apply."),
       admins("Leave balances aren't changed either way. Only draft runs change when re-run; approved months keep what was filed, and aren't reopened if you switch back on."),
+      admins("Commission and incentives now count toward the 13% / 12% employer EPF rate, like salary. Only bonuses are left out, as KWSP says."),
+      admins("This applies when you re-run a draft run with commission, incentives or a bonus. Approved months keep what was filed. Employee EPF and PCB don't change."),
+    ],
+    fixed: [
+      admins("Employer EPF in months with commission or incentives was often RM 1–3 below KWSP's table. It now follows the table, so those amounts go up."),
     ],
   },
   {
