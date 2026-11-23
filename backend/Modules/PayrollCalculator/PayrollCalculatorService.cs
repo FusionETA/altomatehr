@@ -141,12 +141,14 @@ public class PayrollCalculatorService : IPayrollCalculatorService
             DefaultEpfEmployeeRate = 11m,
 
             // Foreign workers and the 60+ are employment-injury only (the engine
-            // also flips the 60+ itself). EIS doesn't cover foreign workers, and
-            // Lindung 24 is left off for them until PERKESO's coverage is
-            // confirmed (handover §9 question 1).
+            // also flips the 60+ itself). EIS doesn't cover foreign workers.
+            // Lindung 24 applies to everyone, foreign workers included: PERKESO's
+            // Lindung 24 Jam page says "Foreign employees are required to
+            // contribute under SKBBK" (perkeso.gov.my, our-services/protection/
+            // lindung-24-jam), matching StatutoryTables' SKBBK note.
             SocsoScheme = foreign || over60 ? SocsoScheme.EMPLOYMENT_INJURY_ONLY : SocsoScheme.EMPLOYMENT_INJURY_INVALIDITY,
             ContributeToEis = !foreign,
-            ContributeToSkbbk = !foreign,
+            ContributeToSkbbk = true,
 
             SpouseWorking = request.MaritalStatus switch
             {

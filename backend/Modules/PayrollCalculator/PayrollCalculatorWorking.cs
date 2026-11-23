@@ -53,7 +53,7 @@ public static class PayrollCalculatorWorking
         if (foreign)
         {
             lines.Add($"Foreign workers have employment injury cover only, paid by the employer: {Rm(r.SocsoEmployer)}.");
-            lines.Add("Lindung 24 is not charged for foreign workers.");
+            if (r.SkbbkEmployee > 0m) lines.Add($"The employee pays {Rm(r.SkbbkEmployee)} for Lindung 24, which foreign workers must contribute to.");
         }
         else if (r.SocsoEmployee == 0m)
         {
