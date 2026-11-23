@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AltomateHR.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261123083036_PayrollSettingsDockApprovedUnpaidLeave")]
+    [Migration("20261123084006_PayrollSettingsDockApprovedUnpaidLeave")]
     partial class PayrollSettingsDockApprovedUnpaidLeave
     {
         /// <inheritdoc />
@@ -3532,6 +3532,9 @@ namespace AltomateHR.Api.Migrations
                     b.Property<decimal?>("UnpaidLeaveDays")
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
+
+                    b.Property<bool>("UnpaidLeaveFromLeaveModule")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");

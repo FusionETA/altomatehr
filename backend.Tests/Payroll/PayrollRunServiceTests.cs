@@ -2625,6 +2625,25 @@ public class PayrollRunServiceTests : IDisposable
         Assert.Empty((await GenerateOneAsync(await CreateRunAsync(2026, 11))).LineItems);
     }
 
+    // September filed with docking from the Leave module OFF (the timesheet
+    // carried the leave), then switched back ON: September's leave record is
+    // not docked again on October as "approved late".
+    [Fact]
+    public async Task GenerateAsync_DoesNotReopenAMonthFiledWithLeaveDockingOff()
+    {
+        AddEmployee("usr-1", "Aisyah", monthlySalary: 3000m);
+        var settings = new PayrollSettings { OrganizationId = "org-1", DockApprovedUnpaidLeave = false };
+        _db.PayrollSettings.Add(settings);
+        await _db.SaveChangesAsync();
+        _leave.Parts.Add(Leave("leave-a", 9, 2, DateTime.UtcNow.AddMinutes(-5)));
+        await FiledThroughApprovalAsync(9);
+
+        settings.DockApprovedUnpaidLeave = true;
+        await _db.SaveChangesAsync();
+
+        Assert.Empty((await GenerateOneAsync(await CreateRunAsync(2026, 10))).LineItems);
+    }
+
     // Docked in September, cancelled afterwards: paid back on October as
     // arrears of wages.
     [Fact]

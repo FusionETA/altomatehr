@@ -652,9 +652,11 @@ public class PayrollRunService : IPayrollRunService
         // part): settled at 0, a later work-week change can't re-price it.
         //
         // With DockApprovedUnpaidLeave off, the Leave module takes no pay at
-        // all: nothing this month, nothing carried from earlier months, and
-        // no application recorded as settled (so turning it back on later
-        // finds them owed rather than paid).
+        // all: nothing this month and nothing carried from earlier months —
+        // refunds included, so a month docked while it was on is settled again
+        // only once it is back on. The payslip records that its leave came
+        // from elsewhere (UnpaidLeaveFromLeaveModule), so those months are
+        // never revisited from leave records later.
         var dockLeave = settings.DockApprovedUnpaidLeave;
         var carriesByProfile = dockLeave
             ? await UnpaidLeaveCarriesAsync(run, profiles)
@@ -740,6 +742,7 @@ public class PayrollRunService : IPayrollRunService
 
             var payslip = ToPayslip(run, profile, name, membership, result, now);
             payslip.TracksUnpaidLeave = _settlements is not null;
+            payslip.UnpaidLeaveFromLeaveModule = dockLeave;
             payslips.Add(payslip);
             lineItems.AddRange(result.LineItems.Select((li, i) =>
                 WithCarry(ToLineItem(payslip.Id, li, now, i + 1), carries)));
@@ -1776,6 +1779,11 @@ public class PayrollRunService : IPayrollRunService
             .Select(a => (a.PayrollRunId, a.EmployeeProfileId))
             .ToHashSet();
         filed = filed.Where(f => !typed.Contains((f.Run.Id, f.Payslip.EmployeeProfileId))).ToList();
+
+        // Likewise a month generated with docking from the Leave module off:
+        // its unpaid leave came from the run's own lines, so leave records
+        // don't reopen it.
+        filed = filed.Where(f => f.Payslip.UnpaidLeaveFromLeaveModule).ToList();
 
         var settled = (await _settlements.GetFinalForYearAsync(run.PeriodYear))
             .GroupBy(s => (s.EmployeeProfileId, s.PeriodMonth))

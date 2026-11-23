@@ -91,6 +91,13 @@ public class Payslip : ITenantScoped
     // on payslips from before the records existed. See UnpaidLeaveCarryForward.
     public bool TracksUnpaidLeave { get; set; }
 
+    // Whether this payslip's unpaid leave came from the Leave module
+    // (PayrollSettings.DockApprovedUnpaidLeave was on). False: it came from
+    // the run's own lines (an ABPay timesheet), so leave records never
+    // revisit this month — turning docking back on later must not treat its
+    // leave as owed and dock it a second time.
+    public bool UnpaidLeaveFromLeaveModule { get; set; } = true;
+
     // The PCB the company paid instead of deducting it ("PCB borne by
     // employer" was on for this month); 0 otherwise. Still inside `Pcb` and
     // remitted with it, but not taken from net pay — and the year's total is
