@@ -650,9 +650,17 @@ public class PayrollRunService : IPayrollRunService
         // applications this month docks, recorded so a later run can tell.
         // Every approved unpaid part is recorded, a 0-day one too (a weekend
         // part): settled at 0, a later work-week change can't re-price it.
-        var carriesByProfile = await UnpaidLeaveCarriesAsync(run, profiles);
+        //
+        // With DockApprovedUnpaidLeave off, the Leave module takes no pay at
+        // all: nothing this month, nothing carried from earlier months, and
+        // no application recorded as settled (so turning it back on later
+        // finds them owed rather than paid).
+        var dockLeave = settings.DockApprovedUnpaidLeave;
+        var carriesByProfile = dockLeave
+            ? await UnpaidLeaveCarriesAsync(run, profiles)
+            : new Dictionary<string, IReadOnlyList<SettledMonth>>(StringComparer.Ordinal);
         var bornePerquisites = await TaxBornePerquisitesAsync(run, profiles);
-        var ownPartsByUser = _settlements is null
+        var ownPartsByUser = _settlements is null || !dockLeave
             ? []
             : (await _leave.GetLeavePartsForOrgAsync(periodStart, periodEnd))
                 .Where(p => p.IsApprovedUnpaid)
@@ -664,7 +672,9 @@ public class PayrollRunService : IPayrollRunService
         // With settlements, from the same read as what's recorded, so a leave
         // decided mid-generation can't be docked without a record or the
         // other way round.
-        var unpaidDaysByUser = _settlements is null
+        var unpaidDaysByUser = !dockLeave
+            ? new Dictionary<string, double>(StringComparer.Ordinal)
+            : _settlements is null
             ? await _leave.GetApprovedUnpaidDaysForOrgAsync(periodStart, periodEnd)
             : ownPartsByUser.ToDictionary(kv => kv.Key, kv => kv.Value.Sum(p => p.Days), StringComparer.Ordinal);
 

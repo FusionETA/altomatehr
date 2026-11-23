@@ -1,0 +1,32 @@
+﻿using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
+
+namespace AltomateHR.Api.Migrations
+{
+    /// <inheritdoc />
+    public partial class PayrollSettingsDockApprovedUnpaidLeave : Migration
+    {
+        /// <inheritdoc />
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.AddColumn<bool>(
+                name: "DockApprovedUnpaidLeave",
+                table: "PayrollSettings",
+                type: "tinyint(1)",
+                nullable: false,
+                // On for every company that exists today: docking approved
+                // unpaid leave is what they all do now. Ayu Borneo's
+                // companies are switched off in Payroll Settings.
+                defaultValue: true);
+        }
+
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DropColumn(
+                name: "DockApprovedUnpaidLeave",
+                table: "PayrollSettings");
+        }
+    }
+}

@@ -37,6 +37,15 @@ public class PayrollSettings : ITenantScoped
     // there's no declaration to wait for. See PcbReliefs.PerkesoCap.
     public bool AutoApplySocsoEisRelief { get; set; } = true;
 
+    // Dock unpaid leave approved in AltomateHR's Leave module. On by default.
+    // A company whose pay comes from its own timesheet (Ayu Borneo, through
+    // ABPay) turns it off: its unpaid leave arrives as a pay line on the run,
+    // priced the way its timesheet prices it, and leave records — imported
+    // history, say — must not take pay a second way. Off leaves the records
+    // alone (balances, the Leave module); it only stops them reducing pay.
+    // Days an admin types on the run still apply.
+    public bool DockApprovedUnpaidLeave { get; set; } = true;
+
     // ---- Year-end forms ----
 
     // When this company started running its payroll here, if that was part-way

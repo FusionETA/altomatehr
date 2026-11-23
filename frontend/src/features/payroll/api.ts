@@ -33,6 +33,9 @@ export type PayrollSettings = {
   hrdfEnabled: boolean;
   hrdfRate: number | null;
   autoApplySocsoEisRelief: boolean;
+  // Dock unpaid leave approved in the Leave module. Off for a company whose
+  // unpaid leave comes as pay lines on the run (e.g. from ABPay's timesheet).
+  dockApprovedUnpaidLeave: boolean;
   // Payslip passwords — saved on their own (savePayslipPassword), never with
   // the rest of the settings.
   lockPayslips: boolean;
