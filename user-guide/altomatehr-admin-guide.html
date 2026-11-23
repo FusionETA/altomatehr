@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: a8b02b5
+  user-guide-covered-up-to: d90e757
 -->
 <html lang="en">
 <head>
@@ -769,6 +769,11 @@
       <li><strong>EPF defaults</strong> and your <strong>EPF employer no.</strong></li>
       <li><strong>HRD Corp levy</strong> — whether you pay it, the rate, and your HRD Corp employer no.</li>
       <li><strong>PCB compliance</strong> — auto-apply the RM 350 SOCSO + EIS relief.</li>
+      <li><strong>Unpaid leave</strong> — the switch <span class="btn-name">Dock unpaid leave approved in the Leave module</span>.
+        It's on by default: leave approved in the Leave module is docked from pay. Switch it off if your unpaid leave
+        comes as a line on the payroll run instead, for example the U/L column of an ABPay timesheet, so leave records
+        don't take pay a second way. Off means leave records never reduce pay and leave balances aren't affected either
+        way; unpaid leave comes only from lines on the run or from days you type on the run.</li>
       <li><strong>Payroll disbursement bank</strong> — Maybank, CIMB, Public Bank, Hong Leong or OCBC (<em>OCBC (incl. OCBC Al-Amin)</em> in the list), with the account
         details. For OCBC, the first 3 digits of the account number are OCBC's branch code. This decides <a href="#files">which bank file</a> a run produces. Choose “Other bank” if you pay
         salaries another way.</li>
@@ -858,6 +863,10 @@
         <div class="shot-item">
           <img src="shots/admin/payroll-settings-general.png" alt="Payroll → Settings → General: working-days rule and EPF defaults" loading="lazy">
           <p class="shot-cap">General</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/payroll-settings-unpaid-leave.png" alt="Payroll → Settings → General: the Unpaid leave card with the switch Dock unpaid leave approved in the Leave module turned on" loading="lazy">
+          <p class="shot-cap">Unpaid leave switch</p>
         </div>
         <div class="shot-item">
           <img src="shots/admin/payroll-settings-forme.png" alt="Payroll → Settings → Form E (LHDN): employer details with required fields" loading="lazy">
@@ -1548,6 +1557,9 @@
         approved, it's deducted on the person's next run instead, and cancelled leave that was already deducted is paid
         back the same way — see <a href="#payroll">Running payroll</a>. If a person's
         unpaid leave isn't in the Leave module, you can type their unpaid days on the payroll draft instead.</p>
+      <p>If your company's unpaid leave comes from somewhere else (an ABPay timesheet, say), switch off
+        <span class="btn-name">Dock unpaid leave approved in the Leave module</span> under <strong>Payroll → Settings → General → Unpaid leave</strong>.
+        Approved leave then stops reducing pay, and leave balances aren't affected.</p>
     </div>
     
     <figure class="shot" data-place="Leave">
@@ -1653,6 +1665,9 @@
             <em>The 2 days approved in the Leave module won't be docked, because this month already has its own unpaid leave line below.</em></li>
           <li>The box is only there for monthly staff. Hourly staff are paid for the hours they worked.</li>
         </ul>
+        <p>If <span class="btn-name">Dock unpaid leave approved in the Leave module</span> is switched off in
+          <strong>Payroll → Settings → General</strong>, the Leave module's days are never docked. Only unpaid lines on the run
+          and days you type here reduce pay.</p>
         <p>Approved unpaid leave from the Leave module is worked out the same way: monthly salary ÷ the month's calendar
           days × the unpaid days. Only working days of the leave count, so a weekend or public holiday inside an unpaid
           leave isn't deducted.</p>

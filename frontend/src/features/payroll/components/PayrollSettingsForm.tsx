@@ -480,6 +480,28 @@ export function PayrollSettingsForm() {
             />
           </section>
 
+          {/* ── Unpaid leave ───────────────────────────────────────── */}
+          <section className={CARD}>
+            <header className="mb-5">
+              <h3 className="text-[15px] font-semibold text-foreground">Unpaid leave</h3>
+              <p className={HINT}>
+                Where unpaid leave is taken from pay. Leave approved in the Leave module is
+                docked at the monthly salary ÷ the month&apos;s calendar days. Turn this off if
+                your unpaid leave comes as a line on the payroll run instead — for example
+                the U/L column of a timesheet sent through ABPay — so leave records don&apos;t
+                take pay a second way. Leave balances aren&apos;t affected either way, and days
+                typed on a run still apply.
+              </p>
+            </header>
+
+            <Toggle
+              id="dockApprovedUnpaidLeave"
+              label="Dock unpaid leave approved in the Leave module"
+              checked={settings.dockApprovedUnpaidLeave}
+              onChange={(dockApprovedUnpaidLeave) => patchSettings({ dockApprovedUnpaidLeave })}
+            />
+          </section>
+
           {/* ── SKBBK, read-only ───────────────────────────────────── */}
           <section className={CARD}>
             <header className="mb-3">

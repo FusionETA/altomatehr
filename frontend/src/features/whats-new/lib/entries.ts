@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: fdfdb96
+// whats-new-covered-up-to: d90e757
 
 // A line is for everyone, or — wrapped in admins(…) — for admins and owners
 // only. Employees and supervisors never see an admins line, so it doesn't
@@ -28,6 +28,18 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-11-23",
+    title: "Unpaid leave from your own timesheet",
+    new: [
+      admins("New switch in Payroll → Settings → Unpaid leave: \"Dock unpaid leave approved in the Leave module\". It's on by default, so nothing changes unless you turn it off."),
+      admins("Turn it off if your unpaid leave comes from your timesheet, such as the U/L column sent through ABPay. Leave records then stop reducing pay, so it isn't deducted twice."),
+    ],
+    improved: [
+      admins("With the switch off, approved leave no longer reduces pay, this month or as a later catch-up. Unpaid days on the payroll run, and days typed on it, still apply."),
+      admins("Leave balances aren't changed either way. Only draft runs change when re-run; approved months keep what was filed, and aren't reopened if you switch back on."),
+    ],
+  },
   {
     date: "2026-11-20",
     title: "Password-protected payslips",

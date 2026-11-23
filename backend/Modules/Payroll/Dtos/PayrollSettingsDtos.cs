@@ -15,6 +15,8 @@ public class PayrollSettingsDto
 
     public bool AutoApplySocsoEisRelief { get; set; }
 
+    public bool DockApprovedUnpaidLeave { get; set; }
+
     // Payslip password (PayslipLock). Saved on its own endpoint —
     // PUT /payroll/settings/payslip-password — not with the rest, so a
     // client that doesn't know about it can never switch it off.
@@ -68,6 +70,10 @@ public class SavePayrollSettingsDto
     [Range(0, 100)] public decimal? HrdfRate { get; set; }
 
     public bool AutoApplySocsoEisRelief { get; set; } = true;
+
+    // Defaults to on, so a client that doesn't send it keeps today's
+    // behaviour rather than silently stopping unpaid-leave deductions.
+    public bool DockApprovedUnpaidLeave { get; set; } = true;
 
     public bool SyncClaimsToXeroOnSubmit { get; set; }
     public bool SyncPayrollToXeroOnSubmit { get; set; }

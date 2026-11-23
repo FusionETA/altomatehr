@@ -2324,6 +2324,66 @@ public class PayrollRunServiceTests : IDisposable
         Assert.Equal(193.55m, Assert.Single(payslip.LineItems).Amount);   // 3000 / 31 × 2
     }
 
+    // ---- Docking from the Leave module switched off ----
+    //
+    // Ayu Borneo's unpaid leave comes as the U/L line ABPay puts on the run;
+    // leave records (an imported history among them) must not take pay too.
+    // October 2026: 11 people docked ~RM 58 each for a 6 Oct record that their
+    // timesheet, and SQL, never docked.
+
+    private async Task DockingFromLeaveOffAsync()
+    {
+        _db.PayrollSettings.Add(new PayrollSettings { OrganizationId = "org-1", DockApprovedUnpaidLeave = false });
+        await _db.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task GenerateAsync_DocksNothingFromTheLeaveModule_WhenTurnedOff()
+    {
+        AddEmployee("usr-1", "Kwaliya", monthlySalary: 3100m);
+        await DockingFromLeaveOffAsync();
+        _leave.SetUnpaidDays("usr-1", 2);
+        var run = await CreateRunAsync();
+
+        var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        Assert.Empty(payslip.LineItems);
+        Assert.Equal(3100m, payslip.GrossPay);
+        Assert.Empty(await _db.UnpaidLeaveSettlements.ToListAsync());   // nothing recorded as settled
+    }
+
+    [Fact]
+    public async Task GenerateAsync_StillTakesTheRunsOwnUnpaidLeaveLine_WhenLeaveDockingIsOff()
+    {
+        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 2600m);
+        await DockingFromLeaveOffAsync();
+        _leave.SetUnpaidDays("usr-1", 1);
+        var run = await CreateRunAsync();
+        await AddAdjustmentAsync(run.Id, profile.Id, manualJson: PayrollRunAdjustments.Serialize(new List<ManualLineItem>
+        {
+            new() { Kind = PayslipLineKind.DEDUCTION, Category = PayrollAdjustmentCategories.DeductUnpaidLeave, Label = "U/L (KK1 / FD)", Amount = 100m },
+        }));
+
+        var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        var unpaid = Assert.Single(payslip.LineItems, l => l.Category == PayrollAdjustmentCategories.DeductUnpaidLeave);
+        Assert.Equal("U/L (KK1 / FD)", unpaid.Label);
+        Assert.Equal(2500m, payslip.GrossPay);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_StillDocksDaysTypedOnTheRun_WhenLeaveDockingIsOff()
+    {
+        var profile = AddEmployee("usr-1", "Aisyah", monthlySalary: 3100m);
+        await DockingFromLeaveOffAsync();
+        var run = await CreateRunAsync();
+        await TypeUnpaidDaysAsync(run, profile, 1m);
+
+        var payslip = Assert.Single((await _service.GenerateAsync(run.Id)).Result!.Detail.Payslips);
+
+        Assert.Equal(100m, Assert.Single(payslip.LineItems).Amount);   // 3100 / 31
+    }
+
     // ---- Unpaid days typed on the run (staff not on the Leave module yet) ----
 
     private async Task TypeUnpaidDaysAsync(PayrollRunDto run, EmployeeProfile profile, decimal? days)
@@ -2563,6 +2623,25 @@ public class PayrollRunServiceTests : IDisposable
         Assert.True((await _service.ApproveAsync(october.Id)).Ok);
 
         Assert.Empty((await GenerateOneAsync(await CreateRunAsync(2026, 11))).LineItems);
+    }
+
+    // September filed with docking from the Leave module OFF (the timesheet
+    // carried the leave), then switched back ON: September's leave record is
+    // not docked again on October as "approved late".
+    [Fact]
+    public async Task GenerateAsync_DoesNotReopenAMonthFiledWithLeaveDockingOff()
+    {
+        AddEmployee("usr-1", "Aisyah", monthlySalary: 3000m);
+        var settings = new PayrollSettings { OrganizationId = "org-1", DockApprovedUnpaidLeave = false };
+        _db.PayrollSettings.Add(settings);
+        await _db.SaveChangesAsync();
+        _leave.Parts.Add(Leave("leave-a", 9, 2, DateTime.UtcNow.AddMinutes(-5)));
+        await FiledThroughApprovalAsync(9);
+
+        settings.DockApprovedUnpaidLeave = true;
+        await _db.SaveChangesAsync();
+
+        Assert.Empty((await GenerateOneAsync(await CreateRunAsync(2026, 10))).LineItems);
     }
 
     // Docked in September, cancelled afterwards: paid back on October as

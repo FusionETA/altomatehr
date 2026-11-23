@@ -650,9 +650,19 @@ public class PayrollRunService : IPayrollRunService
         // applications this month docks, recorded so a later run can tell.
         // Every approved unpaid part is recorded, a 0-day one too (a weekend
         // part): settled at 0, a later work-week change can't re-price it.
-        var carriesByProfile = await UnpaidLeaveCarriesAsync(run, profiles);
+        //
+        // With DockApprovedUnpaidLeave off, the Leave module takes no pay at
+        // all: nothing this month and nothing carried from earlier months —
+        // refunds included, so a month docked while it was on is settled again
+        // only once it is back on. The payslip records that its leave came
+        // from elsewhere (UnpaidLeaveFromLeaveModule), so those months are
+        // never revisited from leave records later.
+        var dockLeave = settings.DockApprovedUnpaidLeave;
+        var carriesByProfile = dockLeave
+            ? await UnpaidLeaveCarriesAsync(run, profiles)
+            : new Dictionary<string, IReadOnlyList<SettledMonth>>(StringComparer.Ordinal);
         var bornePerquisites = await TaxBornePerquisitesAsync(run, profiles);
-        var ownPartsByUser = _settlements is null
+        var ownPartsByUser = _settlements is null || !dockLeave
             ? []
             : (await _leave.GetLeavePartsForOrgAsync(periodStart, periodEnd))
                 .Where(p => p.IsApprovedUnpaid)
@@ -664,7 +674,9 @@ public class PayrollRunService : IPayrollRunService
         // With settlements, from the same read as what's recorded, so a leave
         // decided mid-generation can't be docked without a record or the
         // other way round.
-        var unpaidDaysByUser = _settlements is null
+        var unpaidDaysByUser = !dockLeave
+            ? new Dictionary<string, double>(StringComparer.Ordinal)
+            : _settlements is null
             ? await _leave.GetApprovedUnpaidDaysForOrgAsync(periodStart, periodEnd)
             : ownPartsByUser.ToDictionary(kv => kv.Key, kv => kv.Value.Sum(p => p.Days), StringComparer.Ordinal);
 
@@ -730,6 +742,7 @@ public class PayrollRunService : IPayrollRunService
 
             var payslip = ToPayslip(run, profile, name, membership, result, now);
             payslip.TracksUnpaidLeave = _settlements is not null;
+            payslip.UnpaidLeaveFromLeaveModule = dockLeave;
             payslips.Add(payslip);
             lineItems.AddRange(result.LineItems.Select((li, i) =>
                 WithCarry(ToLineItem(payslip.Id, li, now, i + 1), carries)));
@@ -1766,6 +1779,11 @@ public class PayrollRunService : IPayrollRunService
             .Select(a => (a.PayrollRunId, a.EmployeeProfileId))
             .ToHashSet();
         filed = filed.Where(f => !typed.Contains((f.Run.Id, f.Payslip.EmployeeProfileId))).ToList();
+
+        // Likewise a month generated with docking from the Leave module off:
+        // its unpaid leave came from the run's own lines, so leave records
+        // don't reopen it.
+        filed = filed.Where(f => f.Payslip.UnpaidLeaveFromLeaveModule).ToList();
 
         var settled = (await _settlements.GetFinalForYearAsync(run.PeriodYear))
             .GroupBy(s => (s.EmployeeProfileId, s.PeriodMonth))

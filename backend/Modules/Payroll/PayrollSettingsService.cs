@@ -91,6 +91,7 @@ public class PayrollSettingsService : IPayrollSettingsService
                 settings.HrdfEnabled,
                 settings.HrdfRate,
                 settings.AutoApplySocsoEisRelief,
+                settings.DockApprovedUnpaidLeave,
             }));
 
         // EPF rates, the working-days rule and HRDF all change what a draft
@@ -264,6 +265,7 @@ public class PayrollSettingsService : IPayrollSettingsService
         settings.HrdfRate = dto.HrdfEnabled ? dto.HrdfRate : null;
 
         settings.AutoApplySocsoEisRelief = dto.AutoApplySocsoEisRelief;
+        settings.DockApprovedUnpaidLeave = dto.DockApprovedUnpaidLeave;
 
         settings.SyncClaimsToXeroOnSubmit = dto.SyncClaimsToXeroOnSubmit;
         settings.SyncPayrollToXeroOnSubmit = dto.SyncPayrollToXeroOnSubmit;
@@ -288,6 +290,7 @@ public class PayrollSettingsService : IPayrollSettingsService
         HrdfEnabled = s.HrdfEnabled,
         HrdfRate = s.HrdfRate,
         AutoApplySocsoEisRelief = s.AutoApplySocsoEisRelief,
+        DockApprovedUnpaidLeave = s.DockApprovedUnpaidLeave,
         LockPayslips = s.LockPayslips,
         PayslipPasswordRule = s.PayslipPasswordRule,
         PayslipPasswordHint = PayslipLock.Hint(s.PayslipPasswordRule),

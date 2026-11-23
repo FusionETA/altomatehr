@@ -3224,6 +3224,9 @@ namespace AltomateHR.Api.Migrations
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
 
+                    b.Property<bool>("DockApprovedUnpaidLeave")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<string>("EcpPayorAccountNo")
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
@@ -3526,6 +3529,9 @@ namespace AltomateHR.Api.Migrations
                     b.Property<decimal?>("UnpaidLeaveDays")
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
+
+                    b.Property<bool>("UnpaidLeaveFromLeaveModule")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime(6)");

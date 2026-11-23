@@ -122,7 +122,10 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
         // The same two figures generation uses: approved unpaid days from the
         // Leave module, and the month's calendar days (EA s.18A — see
         // PayPeriod.UnpaidLeaveDeduction; the working-days setting doesn't apply).
-        var approvedUnpaid = _leave is null
+        // Nothing when the company has turned docking from leave records off —
+        // the form shows what generation will actually take.
+        var dockLeave = _settings is null || (await _settings.GetEffectiveAsync()).DockApprovedUnpaidLeave;
+        var approvedUnpaid = _leave is null || !dockLeave
             ? 0m
             : (decimal)(await _leave.GetApprovedUnpaidDaysForOrgAsync(periodStart, periodEnd))
                 .GetValueOrDefault(profile.UserId);
