@@ -1417,6 +1417,7 @@ public class PayslipCalculatorTests
             allowances: [Allowance(PayrollAdjustmentCategories.WagesCommission, 3221.37m)]));
 
         Assert.Equal(612m, r.EpfEmployer);
+        Assert.Equal(12m, r.EpfRates!.Employer);   // the snapshot says what was charged
     }
 
     // A bonus is KWSP's one exception: 4,290 + 500 bonus = 4,790 stays under

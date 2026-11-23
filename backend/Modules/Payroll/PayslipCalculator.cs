@@ -631,7 +631,7 @@ public static class PayslipCalculator
 
             LineItems = lineItems,
             EpfRates = SnapshotEpfRates(
-                epf, employeeRate, epfWage, regularEpfWage,
+                epf, employeeRate, epfWage, tierEpfWage,
                 input.EpfEmployeeVoluntary, input.EpfEmployerVoluntary),
             StatutoryWarnings = CollectWarnings(input),
         };
