@@ -49,7 +49,7 @@ public static class EpfCalculator
         public decimal AdditionalRemuneration { get; init; }
 
         // Which wage decides the cliff. Defaults to Wage. The orchestrator passes
-        // the regular monthly portion so a bonus month doesn't move an
+        // the wage without any bonus, so a bonus month doesn't move an
         // under-RM-5,000 employee onto the 12% tier for one run.
         public decimal? RateDeterminingWage { get; init; }
 
@@ -179,14 +179,14 @@ public static class EpfCalculator
 
             employee = band.Employee + Money.CeilRinggit(totalWage, employeeVoluntaryRate);
 
-            // Whether AR lifted the wage decides the employer treatment. Callers
-            // pass the whole EPF-subject bonus inside Wage and signal AR only by
-            // supplying a lower RateDeterminingWage, so compare the two:
+            // The band table on the total, like the employee side — KWSP
+            // mandates it up to RM 20,000 — with one exception: a bonus that
+            // lifts the total over RM 5,000 while the wage without it is under.
+            // KWSP keeps such an employee at 13%, and the table only lists 12%
+            // above RM 5,000, so that one case is the exact 13%, ceiled once.
+            // (Before October 2026 ANY lift — commission included — took the
+            // exact percentage, RM 1–3 short of the table on most wages.)
             //
-            //   no lift  → band table on the total, mirroring the employee side.
-            //   AR lift  → single ceil of (mandatory + voluntary) × total, with
-            //              the mandatory rate still chosen by the regular wage,
-            //              so a bonus can't tip a sub-RM-5,000 employee to 12%.
             //   employer pays extra (no lift) → the employer's whole rate on
             //              the actual wage, ceiled once — as PayrollPanda does.
             //              Band + a separate ceil of the extra over-paid it by
@@ -194,7 +194,7 @@ public static class EpfCalculator
             //              ceil(15% × 4,537) = 681; on 5,246 (12% + 2%) 636 +
             //              105 = 741 where ceil(14% × 5,246) = 735. Never below
             //              the band, so the statutory share is always met.
-            var hasArLift = rateWage < totalWage;
+            var hasArLift = rateWage <= RateCliffWage && totalWage > RateCliffWage;
 
             employer = hasArLift
                 ? Money.CeilRinggit(totalWage, employerMandatoryRate + employerVoluntaryRate)

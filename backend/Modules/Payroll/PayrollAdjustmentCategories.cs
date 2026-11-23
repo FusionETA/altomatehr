@@ -94,6 +94,15 @@ public sealed record PayrollAdjustmentCategoryMeta
     // 10,000 bonus is not withheld against as a RM 10,000/month salary.
     public bool IsAdditionalRemuneration { get; init; }
 
+    // A bonus, for KWSP's employer-rate rule: the 13% (≤ RM 5,000) / 12% tier
+    // is read from the wage WITHOUT the bonus, so a bonus month can't move
+    // someone onto 12%. KWSP makes that exception for bonus only — commission,
+    // incentives and the like are ordinary wages for EPF, and count toward the
+    // tier like salary (whatever LHDN does with them for PCB). October 2026:
+    // treating commission this way kept 3 Ayu Borneo staff at 13% where KWSP
+    // and SQL had 12%.
+    public bool IsKwspBonus { get; init; }
+
     // Zakat. Comes off the month's PCB ringgit for ringgit, capped at the PCB.
     public bool OffsetsPcb { get; init; }
 
@@ -331,7 +340,7 @@ public static class PayrollAdjustmentCategories
                 Kind = PayslipLineKind.ALLOWANCE,
                 SubjectToEpf = true, SubjectToSocso = false, SubjectToEis = false,
                 SubjectToPcb = true, SubjectToHrdf = false,
-                IsAdditionalRemuneration = true,
+                IsAdditionalRemuneration = true, IsKwspBonus = true,
                 SkipProration = true,
             },
 
@@ -342,7 +351,7 @@ public static class PayrollAdjustmentCategories
                 Kind = PayslipLineKind.ALLOWANCE,
                 SubjectToEpf = true, SubjectToSocso = true, SubjectToEis = true,
                 SubjectToPcb = true, SubjectToHrdf = false,
-                IsAdditionalRemuneration = true,
+                IsAdditionalRemuneration = true, IsKwspBonus = true,
                 SkipProration = true,
             },
 

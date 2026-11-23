@@ -1388,4 +1388,57 @@ public class PayslipCalculatorTests
         Assert.Equal(9000m, perquisite.GrossPay);
         Assert.True(perquisite.Pcb > plain.Pcb);
     }
+
+    // ─── Employer EPF: KWSP's table in commission and bonus months ──────
+    //
+    // Ayu Borneo, October 2026: in every commission month the employer share
+    // was RM 1–3 short of KWSP's table (an exact 13%), or stayed at 13% where
+    // commission took the wage over RM 5,000. SQL Payroll matched the table.
+
+    // LANA CHALSE's wage: 1,800 basic + 901.83 commission = 2,701.83, in the
+    // 2,700.01–2,720 band → 13% × 2,720 = 353.60 → 354 (the exact 13% gave 352).
+    [Fact]
+    public void Commission_EmployerEpfReadsTheKwspTable()
+    {
+        var r = PayslipCalculator.Calculate(Make(monthlySalary: 1800m,
+            allowances: [Allowance(PayrollAdjustmentCategories.WagesCommission, 901.83m)]));
+
+        Assert.Equal(354m, r.EpfEmployer);
+        Assert.Equal(300m, r.EpfEmployee);   // 11% × 2,720 = 299.20 → 300, already the table
+    }
+
+    // FREDDY BIN MAPINSIN: 1,800 basic + 3,221.37 commission = 5,021.37.
+    // Commission is ordinary EPF wages, so the wage is over RM 5,000 and the
+    // tier is 12%: the 5,000.01–5,100 band → 12% × 5,100 = 612 (13% gave 653).
+    [Fact]
+    public void Commission_CountsTowardTheTwelvePercentTier()
+    {
+        var r = PayslipCalculator.Calculate(Make(monthlySalary: 1800m,
+            allowances: [Allowance(PayrollAdjustmentCategories.WagesCommission, 3221.37m)]));
+
+        Assert.Equal(612m, r.EpfEmployer);
+    }
+
+    // A bonus is KWSP's one exception: 4,290 + 500 bonus = 4,790 stays under
+    // RM 5,000, so it's simply the table — 4,780.01–4,800 → 13% × 4,800 = 624
+    // (the exact 13% of 4,790 gave 623).
+    [Fact]
+    public void BonusUnderTheCliff_EmployerEpfReadsTheKwspTable()
+    {
+        var r = PayslipCalculator.Calculate(Make(monthlySalary: 4290m,
+            allowances: [Allowance(PayrollAdjustmentCategories.WagesBonusNonAnnual, 500m)]));
+
+        Assert.Equal(624m, r.EpfEmployer);
+    }
+
+    // …and a bonus that takes the wage over RM 5,000 keeps the employee at 13%,
+    // which the table doesn't list above RM 5,000: the exact 13% of the total.
+    [Fact]
+    public void BonusOverTheCliff_KeepsThirteenPercent()
+    {
+        var r = PayslipCalculator.Calculate(Make(monthlySalary: 4100m,
+            allowances: [Allowance(PayrollAdjustmentCategories.WagesBonusNonAnnual, 1218m)]));
+
+        Assert.Equal(692m, r.EpfEmployer);   // ceil(13% × 5,318)
+    }
 }
