@@ -874,6 +874,15 @@ const admin = {
     await scrollTo(page, "Password-protect payslips", 60);
     await shoot(page, "admin", "payroll-settings-payslip-password");
   },
+  "payroll-settings-unpaid-leave": async (page) => {
+    await inDemoCo(page);
+    await go(page, "payroll");
+    await clickText(page, "Settings");
+    await page.getByText("Dock unpaid leave approved in the Leave module").first().waitFor({ timeout: 15000 });
+    await settle(page, 800);
+    await scrollTo(page, "Unpaid leave", 200, true);
+    await shoot(page, "admin", "payroll-settings-unpaid-leave");
+  },
   "annual-forms": async (page) => {
     await inDemoCo(page);
     await go(page, "payroll");

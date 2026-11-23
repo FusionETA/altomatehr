@@ -897,6 +897,7 @@
               <tr><td><code>defaultEpfEmployeeRate</code>, <code>defaultEpfEmployerRate</code></td><td>decimal</td><td>Percent.</td></tr>
               <tr><td><code>hrdfEnabled</code>, <code>hrdfRate</code></td><td>boolean, decimal?</td><td></td></tr>
               <tr><td><code>autoApplySocsoEisRelief</code></td><td>boolean</td><td></td></tr>
+              <tr><td><code>dockApprovedUnpaidLeave</code></td><td>boolean</td><td><code>true</code> (the default) when generating payroll docks unpaid leave approved in the Leave module. <code>false</code> = it doesn't: see the note under <a href="#payroll-settings-put">PUT /payroll/settings</a>.</td></tr>
               <tr><td><code>lockPayslips</code></td><td>boolean</td><td>Read-only here. <code>true</code> when every payslip PDF is password-protected. See <a href="#payslip-password">Payslip password</a>.</td></tr>
               <tr><td><code>payslipPasswordRule</code></td><td>string</td><td>Read-only here. <code>IC_DIGITS</code>, <code>IC_LAST6</code>, <code>DOB_DDMMYYYY</code> or <code>COMPANY</code>.</td></tr>
               <tr><td><code>payslipPasswordHint</code></td><td>string</td><td>Read-only here. What employees are told the password is, e.g. <code>"your IC number with no dashes (or your passport number)"</code>. Never the password itself.</td></tr>
@@ -911,7 +912,7 @@
         </div>
       </section>
 
-      <section class="endpoint">
+      <section class="endpoint" id="payroll-settings-put">
         <div class="endpoint-head">
           <span class="method put">PUT</span>
           <span class="path">/payroll/settings</span>
@@ -928,6 +929,7 @@
               <tr><td><code>hrdfEnabled</code></td><td>boolean</td><td>No</td><td></td></tr>
               <tr><td><code>hrdfRate</code></td><td>decimal?</td><td>No</td><td>0–100. Cleared server-side when <code>hrdfEnabled</code> is false.</td></tr>
               <tr><td><code>autoApplySocsoEisRelief</code></td><td>boolean</td><td>No (default true)</td><td></td></tr>
+              <tr><td><code>dockApprovedUnpaidLeave</code></td><td>boolean</td><td>No (default true)</td><td>Whether generation docks unpaid leave approved in the Leave module. Omitted = <code>true</code>, so an older client keeps today's behaviour. Like every field here it is replaced on each save.</td></tr>
               <tr><td><code>syncClaimsToXeroOnSubmit</code>, <code>syncPayrollToXeroOnSubmit</code>, <code>xeroMappingJson</code></td><td></td><td>No</td><td>The mapping JSON is stored as sent, so include <code>journalMode</code>, <code>splitPrompt</code> and <code>splitRules</code> in it to keep the AI split; leaving them out turns it off (see <a href="#xero-split">AI split</a>).</td></tr>
               <tr><td><code>payrollBankName</code></td><td>string?</td><td>No</td><td>Max 120.</td></tr>
               <tr><td><code>payorAccountHolderName</code></td><td>string?</td><td>No</td><td>Max 160.</td></tr>
@@ -935,6 +937,15 @@
               <tr><td><code>ecpPayorAccountNo</code>, <code>ecpPayorBic</code></td><td>string?</td><td>No</td><td>Max 20.</td></tr>
             </tbody>
           </table>
+        </div>
+        <div class="callout warn">
+          <strong><code>dockApprovedUnpaidLeave: false</code> stops the Leave module reducing pay.</strong>
+          Payroll generation no longer docks unpaid leave approved in the Leave module, neither this month nor as
+          a settlement of earlier months (late approvals, refunds). Leave records themselves are untouched. Unpaid-leave
+          lines on the run and days typed on the run's adjustment (<code>unpaidLeaveDays</code>) still apply.
+          <code>autoUnpaidLeaveDays</code> on the adjustment form shows <code>0</code> while it is off. A month
+          generated with it off is never reopened from leave records later, even if you turn it back on. Saving
+          marks generated drafts stale, as other pay-affecting settings do.
         </div>
         <h3>Response</h3>
         <p><code>200</code> with the saved <code>PayrollSettingsDto</code> (including the read-only <code>abPayEnabled</code>). The payslip password fields are not part of this request and are left as they were, so this call can never switch the password off.</p>
