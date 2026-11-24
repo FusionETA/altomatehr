@@ -22,6 +22,12 @@ public interface IEmployeePayrollService
     // The same PDF the admin can download for them.
     Task<StatutoryFileResult> RenderMyPayslipPdfAsync(string payslipId);
 
+    // The password of the caller's own payslip, under the RANDOM
+    // payslip-password rule. Not found for anyone else's payslip, or under
+    // any other rule.
+    Task<PayslipPasswordResult> GetMyPayslipPasswordAsync(string payslipId) =>
+        Task.FromResult(PayslipPasswordResult.NotFound);
+
     // The caller's own Borang PCB/TP1 for that payslip's month — "employee
     // also can print and save these TP Form" (MTD Spec 2026, item 16).
     Task<StatutoryFileResult> RenderMyTp1FormAsync(string payslipId);

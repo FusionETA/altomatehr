@@ -26,6 +26,10 @@ public class EmployeePayslipSummaryDto
     // e.g. "your IC number with no dashes (or your passport number)". Never
     // the password itself.
     public string? PdfPasswordHint { get; set; }
+
+    // True under the RANDOM rule: this payslip has a password of its own,
+    // shown on request (GET /payslips/{id}/pdf-password) next to its PDF.
+    public bool PdfPasswordOnPage { get; set; }
 }
 
 // A year the employee was paid in, for their own Form EA.

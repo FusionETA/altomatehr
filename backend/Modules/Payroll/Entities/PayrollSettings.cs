@@ -80,12 +80,6 @@ public class PayrollSettings : ITenantScoped
     public bool LockPayslips { get; set; }
     public PayslipPasswordRule PayslipPasswordRule { get; set; } = PayslipPasswordRule.IC_DIGITS;
 
-    // The password for the COMPANY rule: one the company sets, the same for
-    // every payslip. Encrypted with ISecretBox (AES-GCM) — not hashed, because
-    // it has to be read back to lock each file, and an admin can reveal it.
-    // Never returned by GET /payroll/settings.
-    [MaxLength(512)] public string? PayslipCompanyPasswordEncrypted { get; set; }
-
     // ---- Xero ----
 
     // Both are gated in the UI behind an active Xero connection.

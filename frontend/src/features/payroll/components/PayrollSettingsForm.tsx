@@ -165,7 +165,6 @@ export function PayrollSettingsForm() {
       lockPayslips: saved.lockPayslips,
       payslipPasswordRule: saved.payslipPasswordRule,
       payslipPasswordHint: saved.payslipPasswordHint,
-      hasPayslipCompanyPassword: saved.hasPayslipCompanyPassword,
     };
     setSettings((current) => (current ? { ...current, ...patch } : current));
     setBaseline((current) => {
@@ -227,7 +226,6 @@ export function PayrollSettingsForm() {
         lockPayslips: _lock,
         payslipPasswordRule: _rule,
         payslipPasswordHint: _hint,
-        hasPayslipCompanyPassword: _hasCompanyPassword,
         ...settingsBody
       } = settings;
       const {

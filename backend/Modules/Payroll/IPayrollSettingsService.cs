@@ -25,15 +25,7 @@ public interface IPayrollSettingsService
     // Payslip passwords (PayrollSettings.LockPayslips / PayslipPasswordRule).
     // Not a payroll input, so drafts aren't marked stale. Default keeps
     // hand-written test doubles compiling.
-    // Refused (Error set, nothing saved) when the COMPANY rule is switched on
-    // with no password saved or given, or the password given is too short.
+    // Error is reserved for a refused save (nothing saved); none today.
     Task<PayslipPasswordSaveResult> SavePayslipPasswordAsync(SavePayslipPasswordDto dto) =>
         throw new NotSupportedException();
-
-    // The COMPANY rule's password in clear, for locking files. Null when none
-    // is saved. Not for responses — RevealPayslipPasswordAsync is, audited.
-    Task<string?> GetPayslipCompanyPasswordAsync() => Task.FromResult<string?>(null);
-
-    // The same, for an admin who clicked Reveal. Audited.
-    Task<string?> RevealPayslipPasswordAsync() => Task.FromResult<string?>(null);
 }

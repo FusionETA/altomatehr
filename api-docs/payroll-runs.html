@@ -543,6 +543,7 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
             <tr><td><code>earningLines</code></td><td>object[] or null</td><td>The named lines under Earnings after basic pay and overtime: <code>{ "label": string, "amount": number }</code>. Reimbursements and cash allowances are positive; deductions that reduce gross (unpaid leave, an advance) are <strong>negative</strong>. Benefits in kind are not here. <code>null</code> when basic pay + overtime + these lines do not add up to <code>grossPay</code> (e.g. an imported payslip) &mdash; show the totals instead.</td></tr>
             <tr><td><code>deductionLines</code></td><td>object[] or null</td><td>The named non-statutory deductions taken from pay (loan repayment, zakat, CP38, one-off deductions), each <code>{ "label": string, "amount": number }</code> with a positive amount. Excludes gross-reducing deductions (in <code>earningLines</code>), cash-neutral ones (in <code>notInPayLines</code>) and Additional PCB (inside the PCB figure). An imported payslip's zakat and CP38 are appended as <code>"Zakat"</code> / <code>"CP38 arrears"</code> lines. <code>null</code> when they do not reconcile to <code>totalDeductions</code>.</td></tr>
             <tr><td><code>notInPayLines</code></td><td>object[]</td><td>Lines shown on the payslip that are not paid in cash: benefits in kind and cash-neutral deductions such as TP1 reliefs. <code>{ "label": string, "amount": number }</code>; empty when none.</td></tr>
+            <tr><td><code>pdfPasswordRule</code></td><td>string | null</td><td>The payslip-password rule this payslip was first locked with: <code>IC_DIGITS</code>, <code>IC_LAST6</code>, <code>DOB_DDMMYYYY</code> or <code>RANDOM</code>. <code>null</code> until it is first locked. It is kept even if the company later changes its rule.</td></tr>
             <tr><td><code>lineItems[].subjectToEpf</code> / <code>.subjectToSocso</code> / <code>.subjectToEis</code> / <code>.subjectToPcb</code></td><td>boolean</td><td>Which wage bases this line fed, as the category defines it.</td></tr>
           </tbody>
         </table>
@@ -1517,7 +1518,7 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
         <ul>
           <li><code>404</code> — no such run.</li>
           <li><code>409</code> <code>{ "error": "That employee has no payslip on this run." }</code> — not generated yet, or not a member of this run.</li>
-          <li><code>409</code> <code>{ "error": "Payslips are password-protected with each employee's IC / passport number, and Jane Tan has none. Add it to their profile, then try again." }</code> &mdash; payslip passwords are on and this employee lacks the field the rule needs (<code>date of birth</code> for <code>DOB_DDMMYYYY</code>). A <code>COMPANY</code> rule whose password can't be read is a <code>409</code> too.</li>
+          <li><code>409</code> <code>{ "error": "Payslips are password-protected with each employee's IC / passport number, and Jane Tan has none. Add it to their profile, then try again." }</code> &mdash; payslip passwords are on and this employee lacks the field the rule needs (<code>date of birth</code> for <code>DOB_DDMMYYYY</code>). A <code>RANDOM</code> payslip whose password can't be read on the server is a <code>409</code> too.</li>
         </ul>
 <pre><code>curl https://&lt;api-host&gt;/payroll/runs/run_123/documents/payslip/emp_123 \
   -H "Authorization: Bearer wp_live_xxx" -o payslip.pdf</code></pre>
@@ -1529,7 +1530,7 @@ curl -X PATCH https://&lt;api-host&gt;/payroll/runs/run_123 \
           <span class="path">/payroll/runs/{id}/documents/payslips</span>
           <span class="tag scope">payroll:read</span>
         </div>
-        <p>Every payslip on the run, as a ZIP of individual PDFs (one per employee) — finance teams forward them one at a time. When <a href="payroll.html#payslip-password">payslip passwords</a> are on, each PDF in the ZIP is locked with its own employee's password.</p>
+        <p>Every payslip on the run, as a ZIP of individual PDFs (one per employee) — finance teams forward them one at a time. When <a href="payroll.html#payslip-password">payslip passwords</a> are on, each PDF in the ZIP is locked with its own employee's password (under <code>RANDOM</code>, that payslip's own random password).</p>
         <h3>Response <code>200</code></h3>
         <p><code>Content-Type: application/zip</code>, filename <code>Payslips_{yyyy}_{mm}_All.zip</code>.</p>
         <h3>Errors</h3>
@@ -2117,8 +2118,10 @@ curl "https://&lt;api-host&gt;/payroll/runs/run_123/documents/bank-file?paymentD
     <section class="section">
       <h2>Not available to API keys</h2>
       <p>
-        Every action on <code>PayrollRunsController</code> is reachable with a scoped API key — none are
-        marked <code>[HumanOnly]</code>. All of them also require the <strong>Payroll</strong> module on
+        <code>GET /payroll/runs/{id}/payslips/{employeeProfileId}/pdf-password</code> is
+        <code>[HumanOnly]</code>: it shows a payroll admin one payslip's random password (<code>{ "password": "K7PM-X4QR" }</code>,
+        <code>404</code> when the payslip has none, audited), and answers <code>403</code> to any key
+        even though it carries <code>payroll:read</code>. Every other action on <code>PayrollRunsController</code> is reachable with a scoped API key. All of them also require the <strong>Payroll</strong> module on
         the org's plan.
       </p>
     </section>

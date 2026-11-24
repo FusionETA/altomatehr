@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 5328b6c
+// whats-new-covered-up-to: 0e93e2b7
 
 // A line is for everyone, or — wrapped in admins(…) — for admins and owners
 // only. Employees and supervisors never see an admins line, so it doesn't
@@ -28,6 +28,20 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-11-24",
+    title: "Random payslip passwords",
+    new: [
+      admins("In Payroll → Settings → Payslip password, you can now choose \"A random password for each payslip\". Each payslip gets its own, like K7PM-X4QR, the same on every copy."),
+      admins("Payslips already locked keep their password. Any other payslip gets one the first time it's downloaded or emailed, earlier months included."),
+      admins("On a payroll run's Payslips table, press Show on a row to see that person's password, then Copy. Each look is recorded in the activity log."),
+      "If your company uses random passwords, each payslip on your Payslips page shows its PDF password. Press Show, then Copy. The payslip email never includes it.",
+    ],
+    improved: [
+      admins("The \"A password the company sets\" option is gone, as one shared password let anyone open a forwarded payslip. If you used it, choose another option."),
+      admins("A payslip keeps the password it was first locked with. Re-running a month or changing the option later won't change payslips already handed out."),
+    ],
+  },
   {
     date: "2026-11-23",
     title: "Unpaid leave from your timesheet, and employer EPF in commission months",

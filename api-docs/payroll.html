@@ -481,7 +481,8 @@
               <tr><td><code>epfEmployee</code>, <code>socsoEmployee</code>, <code>eisEmployee</code></td><td>decimal</td><td></td></tr>
               <tr><td><code>pcb</code></td><td>decimal</td><td>Tax actually taken from the employee's pay — includes any Additional PCB and <strong>excludes PCB the company paid for them</strong> (<code>pcbBorneByEmployer</code> on the payslip). Not the same as <code>pcb</code> on the payslip detail, which still contains the borne part.</td></tr>
               <tr><td><code>submittedAt</code></td><td>string?</td><td>ISO timestamp the run went live.</td></tr>
-              <tr><td><code>pdfPasswordHint</code></td><td>string?</td><td>What opens the payslip PDF, e.g. <code>"your date of birth as DDMMYYYY (for example 01011990)"</code>. <code>null</code> when payslip passwords are off. Never the password itself.</td></tr>
+              <tr><td><code>pdfPasswordHint</code></td><td>string?</td><td>What opens the payslip PDF, e.g. <code>"your date of birth as DDMMYYYY (for example 01011990)"</code>. <code>null</code> when payslip passwords are off. Under <code>RANDOM</code> it says the password is shown next to the payslip in the AltomateHR app. Set per payslip: a payslip keeps the rule it was first locked with. Never the password itself.</td></tr>
+              <tr><td><code>pdfPasswordOnPage</code></td><td>boolean</td><td><code>true</code> when this payslip has a random password of its own (<code>RANDOM</code> rule), which the employee reads in the app via <code>GET /payslips/{id}/pdf-password</code> (<a href="#not-for-keys">app-only</a>).</td></tr>
             </tbody>
           </table>
         </div>
@@ -598,6 +599,7 @@
               <tr><td><code>earningLines</code></td><td>object[] or null</td><td>The named lines under Earnings after basic pay and overtime: <code>{ "label": string, "amount": decimal }</code>. Reimbursements and cash allowances are positive; deductions that reduce gross (unpaid leave, an advance) are <strong>negative</strong>. Benefits in kind are not here. <code>null</code> when basic pay + overtime + these lines do not add up to <code>grossPay</code> (e.g. an imported payslip) &mdash; show the totals instead.</td></tr>
               <tr><td><code>deductionLines</code></td><td>object[] or null</td><td>The named non-statutory deductions taken from pay (loan repayment, zakat, CP38, one-off deductions), each <code>{ "label": string, "amount": decimal }</code> with a positive amount. Excludes gross-reducing deductions (in <code>earningLines</code>), cash-neutral ones (in <code>notInPayLines</code>) and Additional PCB (inside the PCB figure). An imported payslip's zakat and CP38 are appended as <code>"Zakat"</code> / <code>"CP38 arrears"</code> lines. <code>null</code> when they do not reconcile to <code>totalDeductions</code>.</td></tr>
               <tr><td><code>notInPayLines</code></td><td>object[]</td><td>Lines shown on the payslip that are not paid in cash: benefits in kind and cash-neutral deductions such as TP1 reliefs. <code>{ "label": string, "amount": decimal }</code>; empty when none.</td></tr>
+              <tr><td><code>pdfPasswordRule</code></td><td>string | null</td><td>The payslip-password rule this payslip was first locked with: <code>IC_DIGITS</code>, <code>IC_LAST6</code>, <code>DOB_DDMMYYYY</code> or <code>RANDOM</code>. <code>null</code> until it is first locked. It is kept even if the company later changes its rule.</td></tr>
             </tbody>
           </table>
         </div>
@@ -899,9 +901,8 @@
               <tr><td><code>autoApplySocsoEisRelief</code></td><td>boolean</td><td></td></tr>
               <tr><td><code>dockApprovedUnpaidLeave</code></td><td>boolean</td><td><code>true</code> (the default) when generating payroll docks unpaid leave approved in the Leave module. <code>false</code> = it doesn't: see the note under <a href="#payroll-settings-put">PUT /payroll/settings</a>.</td></tr>
               <tr><td><code>lockPayslips</code></td><td>boolean</td><td>Read-only here. <code>true</code> when every payslip PDF is password-protected. See <a href="#payslip-password">Payslip password</a>.</td></tr>
-              <tr><td><code>payslipPasswordRule</code></td><td>string</td><td>Read-only here. <code>IC_DIGITS</code>, <code>IC_LAST6</code>, <code>DOB_DDMMYYYY</code> or <code>COMPANY</code>.</td></tr>
+              <tr><td><code>payslipPasswordRule</code></td><td>string</td><td>Read-only here. <code>IC_DIGITS</code>, <code>IC_LAST6</code>, <code>DOB_DDMMYYYY</code> or <code>RANDOM</code> (each payslip has its own password).</td></tr>
               <tr><td><code>payslipPasswordHint</code></td><td>string</td><td>Read-only here. What employees are told the password is, e.g. <code>"your IC number with no dashes (or your passport number)"</code>. Never the password itself.</td></tr>
-              <tr><td><code>hasPayslipCompanyPassword</code></td><td>boolean</td><td>Read-only here. <code>true</code> when a company password is saved (the <code>COMPANY</code> rule). The password is never returned by the API.</td></tr>
               <tr><td><code>syncClaimsToXeroOnSubmit</code>, <code>syncPayrollToXeroOnSubmit</code>, <code>xeroMappingJson</code></td><td></td><td><code>xeroMappingJson</code> is a JSON string whose <code>accounts</code> object is keyed by slot name. The optional <code>taxBorneByEmployer</code> slot ("PCB borne by employer") is the expense account for PCB the company pays for staff; unset, that amount posts to <code>salary</code>. See <a href="payroll-runs.html#xero-preview">Xero journal preview</a>. The same JSON also carries the optional AI-split settings: <code>journalMode</code>, <code>splitPrompt</code> and <code>splitRules</code> (see <a href="#xero-split">AI split of the Xero journal</a>).</td></tr>
               <tr><td><code>payrollBankName</code>, <code>payorAccountHolderName</code>, <code>payorOrganisationCode</code>, <code>ecpPayorAccountNo</code>, <code>ecpPayorBic</code></td><td>string?</td><td>The payor side of the bank file. <code>payorOrganisationCode</code> is used by the Maybank file only (CIMB no longer needs it). <code>ecpPayorAccountNo</code> is the debiting account for the Public Bank, Maybank and OCBC files. <code>payrollBankName</code> decides the bank-file layout; <code>"OCBC Bank (Malaysia) Berhad"</code> gives the OCBC Velocity GIRO TXT (see <a href="payroll-runs.html#doc-bank-file">bank file</a>).</td></tr>
               <tr><td><code>abPayEnabled</code></td><td>boolean</td><td>Read-only. <code>true</code> when the company is connected to ABPay (it has an active API key named &ldquo;ABPay&hellip;&rdquo;), which is what makes <a href="payroll-runs.html#doc-ab-pay-timesheet"><code>GET /payroll/runs/{id}/documents/ab-pay-timesheet</code></a> available. It follows the company's API keys; it is not a saved setting and <code>PUT /payroll/settings</code> ignores it.</td></tr>
@@ -968,8 +969,7 @@
             <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Limits</th></tr></thead>
             <tbody>
               <tr><td><code>lockPayslips</code></td><td>boolean</td><td>No (default <code>false</code>)</td><td>On or off.</td></tr>
-              <tr><td><code>payslipPasswordRule</code></td><td>string</td><td>Yes (defaults to <code>IC_DIGITS</code> if omitted)</td><td><code>IC_DIGITS</code>: the IC or passport number with no dashes or spaces (letters upper-cased). <code>IC_LAST6</code>: the last 6 characters of that. <code>DOB_DDMMYYYY</code>: the date of birth, e.g. <code>01011990</code>. <code>COMPANY</code>: one password for everyone.</td></tr>
-              <tr><td><code>companyPassword</code></td><td>string?</td><td>No</td><td>Max 64; at least 6 characters when sent. Used by <code>COMPANY</code>. Blank or omitted keeps the saved one.</td></tr>
+              <tr><td><code>payslipPasswordRule</code></td><td>string</td><td>Yes (defaults to <code>IC_DIGITS</code> if omitted)</td><td><code>IC_DIGITS</code>: the IC or passport number with no dashes or spaces (letters upper-cased). <code>IC_LAST6</code>: the last 6 characters of that. <code>DOB_DDMMYYYY</code>: the date of birth, e.g. <code>01011990</code>. <code>RANDOM</code>: a random password of its own for every payslip, e.g. <code>K7PM-X4QR</code> (the dash is part of it).</td></tr>
             </tbody>
           </table>
         </div>
@@ -977,23 +977,20 @@
         <p>The saved settings, the same shape as <a href="#payroll-settings">GET /payroll/settings</a>.</p>
         <h3>Errors</h3>
         <ul>
-          <li><code>400</code> <code>{ "error": "Set the company payslip password before switching it on." }</code> &mdash; <code>COMPANY</code> with <code>lockPayslips: true</code> and no password sent or saved.</li>
-          <li><code>400</code> <code>{ "error": "The payslip password needs at least 6 characters." }</code></li>
-          <li><code>400</code> validation failure (<code>{ "errors": { … } }</code>, see the <a href="index.html#errors">overview</a>) &mdash; for example an unknown rule or a password over 64 characters.</li>
+          <li><code>400</code> validation failure (<code>{ "errors": { … } }</code>, see the <a href="index.html#errors">overview</a>) &mdash; for example an unknown rule (<code>COMPANY</code> is no longer accepted).</li>
           <li><code>403</code> &mdash; missing scope or module.</li>
         </ul>
         <h3>Things that bite</h3>
         <ul>
           <li><strong>When it is on, every payslip PDF the API returns is AES-256 encrypted</strong> and needs the employee's password to open (printing is allowed; editing and copying are not): <a href="payroll-runs.html#doc-payslip">a single payslip</a>, each PDF inside the <a href="payroll-runs.html#doc-payslips">payslips ZIP</a>, the payslips in the <a href="payroll-runs.html#doc-download">documents bundle</a>, <a href="#my-payslip-pdf"><code>GET /payslips/{id}/pdf</code></a>, the draft preview, and the PDF attached to payslip emails. Other documents are unchanged.</li>
           <li><strong>A person the rule has nothing for blocks their payslip.</strong> If an employee has no IC / passport number (or no date of birth for <code>DOB_DDMMYYYY</code>), the request answers <code>409</code> naming them; the payslips ZIP is refused whole. Check <code>idNumber</code> and <code>dateOfBirth</code> on <a href="#employees-list">GET /payroll/employees</a> first.</li>
-          <li>Changing the password does not mark any draft run stale; the password is on the file, not in the figures. The API never returns the company password (see below).</li>
+          <li>Changing the password does not mark any draft run stale; the password is on the file, not in the figures. </li>
+          <li><strong>A payslip keeps the rule it was first locked with.</strong> Changing the company's rule only affects payslips not yet locked; re-running or re-importing a run keeps each person's. The payslip's <code>pdfPasswordRule</code> shows which (<code>null</code> until first locked).</li>
+          <li><strong><code>RANDOM</code>:</strong> a password such as <code>K7PM-X4QR</code> is created the first time that payslip is locked and kept. Every copy (all the locked downloads above) opens with it. A payslip's random password is never returned to an API key; it is shown to the employee, and to payroll admins, in the AltomateHR app.</li>
         </ul>
-        <p>
-          A read-only <code>GET /payroll/settings/payslip-password/reveal</code> exists for the AltomateHR app, which shows the company password to an admin on request. It is marked <code>[HumanOnly]</code> and answers <code>403</code> to any key.
-        </p>
 <pre><code>curl -X PUT https://&lt;api-host&gt;/payroll/settings/payslip-password \
   -H "Authorization: Bearer wp_live_xxx" -H "Content-Type: application/json" \
-  -d '{"lockPayslips":true,"payslipPasswordRule":"COMPANY","companyPassword":"example-pass-123"}'</code></pre>
+  -d '{"lockPayslips":true,"payslipPasswordRule":"RANDOM"}'</code></pre>
       </section>
 
       <section class="endpoint" id="xero-split">
@@ -1531,8 +1528,13 @@
       </section>
     </section>
 
-    <p>
-      Not available to API keys (human-only, omitted above): none in this module — every
+    <p id="not-for-keys">
+      Not available to API keys (<code>[HumanOnly]</code>, so a key gets <code>403</code>):
+      <code>GET /payslips/{id}/pdf-password</code>, which the AltomateHR app uses to show an
+      employee the random password of their own approved payslip (<code>404</code> when that
+      payslip has none), and <code>GET /payroll/runs/{id}/payslips/{employeeProfileId}/pdf-password</code>,
+      which shows a payroll admin the same for one payslip on a run (<code>404</code> when it has none;
+      each look is audited). Both answer <code>{ "password": "K7PM-X4QR" }</code>. Every other
       Payroll action documented here is reachable with a key. (Payroll run generation,
       submission, approval and statutory-file/document downloads are on
       <a href="payroll-runs.html">Payroll runs</a>, a separate page.)

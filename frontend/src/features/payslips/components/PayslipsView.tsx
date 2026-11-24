@@ -5,7 +5,14 @@ import { saveFile } from "@/shared/lib/api-client";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import { SkeletonCards } from "@/shared/components/Skeleton";
 import { rmWithUnit, shortDate } from "@/features/payroll/lib/payroll-format";
-import { downloadMyPayslipPdf, downloadMyTp1Form, getMyPayslips, type PayslipSummary } from "../api";
+import {
+  downloadMyPayslipPdf,
+  downloadMyTp1Form,
+  getMyPayslipPdfPassword,
+  getMyPayslips,
+  type PayslipSummary,
+} from "../api";
+import { PayslipPasswordRow } from "@/shared/components/PayslipPasswordRow";
 import { EaFormsCard } from "./EaFormsCard";
 import { PayslipDetailModal } from "./PayslipDetailModal";
 
@@ -123,7 +130,9 @@ export function PayslipsView() {
         <p className="mb-4 flex items-start gap-2 rounded-2xl border border-border/60 bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
           <LockKeyhole aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
-            Payslip PDFs are password-protected. Open them with {payslips[0].pdfPasswordHint}.
+            {payslips[0].pdfPasswordOnPage
+              ? "Payslip PDFs are password-protected, and each payslip has its own password. Press Show next to a payslip to see it."
+              : `Payslip PDFs are password-protected. Open them with ${payslips[0].pdfPasswordHint}.`}
           </span>
         </p>
       ) : null}
@@ -193,6 +202,20 @@ export function PayslipsView() {
                   TP1
                 </button>
               </div>
+
+              {/* This payslip's own PDF password (RANDOM rule), on request. An
+                  older payslip locked another way says how to open it, when
+                  that differs from the note at the top. */}
+              {payslip.pdfPasswordOnPage ? (
+                <PayslipPasswordRow
+                  load={() => getMyPayslipPdfPassword(payslip.id)}
+                  className="mt-3"
+                />
+              ) : payslip.pdfPasswordHint && payslip.pdfPasswordHint !== payslips[0]?.pdfPasswordHint ? (
+                <p className="mt-3 text-xs text-muted-foreground">
+                  This PDF opens with {payslip.pdfPasswordHint}.
+                </p>
+              ) : null}
             </div>
           </li>
         ))}

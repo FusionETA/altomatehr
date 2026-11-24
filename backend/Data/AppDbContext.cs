@@ -363,6 +363,7 @@ public class AppDbContext : DbContext
         // index it needs; the run's own detail page uses the unique one above.
         payslip.HasIndex(p => new { p.OrganizationId, p.EmployeeProfileId });
         payslip.Property(p => p.SnapshotSalaryType).HasConversion<string>().HasMaxLength(20);
+        payslip.Property(p => p.PdfPasswordRule).HasConversion<string>().HasMaxLength(20);
 
         var lineItem = modelBuilder.Entity<PayslipLineItem>();
         lineItem.HasIndex(li => li.PayslipId);

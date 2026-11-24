@@ -25,9 +25,6 @@ public class PayrollSettingsDto
     // What employees are told the password is, e.g. "your IC number with no
     // dashes (or your passport number)". Never the password itself.
     public string PayslipPasswordHint { get; set; } = string.Empty;
-    // True when a company password is saved (COMPANY rule). The password
-    // itself only comes back from the reveal endpoint.
-    public bool HasPayslipCompanyPassword { get; set; }
 
     public bool SyncClaimsToXeroOnSubmit { get; set; }
     public bool SyncPayrollToXeroOnSubmit { get; set; }
@@ -94,14 +91,10 @@ public class SavePayslipPasswordDto
 
     [Required]
     public PayslipPasswordRule PayslipPasswordRule { get; set; } = PayslipPasswordRule.IC_DIGITS;
-
-    // The COMPANY rule's password. Null or blank = keep the one already saved
-    // (so turning the switch off and on doesn't need it retyped).
-    [MaxLength(64)]
-    public string? CompanyPassword { get; set; }
 }
 
-public class PayslipCompanyPasswordDto
+// A payslip's own password (RANDOM rule), as GET …/pdf-password returns it.
+public class PayslipPdfPasswordDto
 {
     public string Password { get; set; } = string.Empty;
 }
