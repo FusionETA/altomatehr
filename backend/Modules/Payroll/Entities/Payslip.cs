@@ -199,12 +199,18 @@ public class Payslip : ITenantScoped
     // run is filed.
     [MaxLength(300)] public string? StatutoryWarnings { get; set; }
 
-    // This payslip's own PDF password under the RANDOM payslip-password rule
-    // (PayslipLock.NewRandomPassword), encrypted with ISecretBox. Made the
-    // first time the payslip is locked and kept, so every download of it —
-    // portal, admin, ZIP, email, API — opens with the same password. A draft
-    // re-run replaces the payslip, and with it the password; drafts never
-    // reach staff. Null until needed, and under the other rules.
+    // The payslip-password rule this payslip was FIRST locked with, and — for
+    // RANDOM — its own password (PayslipLock.NewRandomPassword, encrypted
+    // with ISecretBox). Stamped the first time a copy is locked and kept for
+    // good, so every later copy — portal, admin, ZIP, email, API — opens the
+    // same way as the ones already handed out, even after the company changes
+    // its rule (or switches locking off: the Show endpoints still return a
+    // stamped RANDOM password).
+    //
+    // A re-run or re-import rebuilds the payslip row; ReplaceForRunAsync
+    // carries both across to the person's new payslip, so copies already
+    // sent keep opening. Null until first locked.
+    public PayslipPasswordRule? PdfPasswordRule { get; set; }
     [MaxLength(512)] public string? PdfPasswordEncrypted { get; set; }
 
     public DateTime CreatedAt { get; set; }

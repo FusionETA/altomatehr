@@ -208,7 +208,7 @@ public class AdminAccessTests
         Assert.Equal(allowed, result is null);
     }
 
-    // Revealing a secret (the company payslip password) is a GET that needs
+    // A read that reveals a secret (e.g. a stored password) is a GET that needs
     // the settings switch all the same.
     [Fact]
     public async Task A_secret_revealing_read_needs_the_settings_switch()

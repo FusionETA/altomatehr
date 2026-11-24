@@ -3424,6 +3424,10 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(512)
                         .HasColumnType("varchar(512)");
 
+                    b.Property<string>("PdfPasswordRule")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
                     b.Property<int>("PeriodMonth")
                         .HasColumnType("int");
 

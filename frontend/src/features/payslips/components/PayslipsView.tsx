@@ -203,12 +203,18 @@ export function PayslipsView() {
                 </button>
               </div>
 
-              {/* This payslip's own PDF password (RANDOM rule), on request. */}
+              {/* This payslip's own PDF password (RANDOM rule), on request. An
+                  older payslip locked another way says how to open it, when
+                  that differs from the note at the top. */}
               {payslip.pdfPasswordOnPage ? (
                 <PayslipPasswordRow
                   load={() => getMyPayslipPdfPassword(payslip.id)}
                   className="mt-3"
                 />
+              ) : payslip.pdfPasswordHint && payslip.pdfPasswordHint !== payslips[0]?.pdfPasswordHint ? (
+                <p className="mt-3 text-xs text-muted-foreground">
+                  This PDF opens with {payslip.pdfPasswordHint}.
+                </p>
               ) : null}
             </div>
           </li>

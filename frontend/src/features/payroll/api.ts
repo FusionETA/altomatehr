@@ -314,6 +314,9 @@ export type Payslip = {
   deductionLines: PayslipDisplayLine[] | null;
   // On the payslip but not in pay: benefits in kind and TP1 reliefs.
   notInPayLines: PayslipDisplayLine[];
+  // The payslip-password rule it was first locked with; null until then.
+  // RANDOM means it has a password of its own to show.
+  pdfPasswordRule: PayslipPasswordRule | null;
 };
 
 export type PayslipOvertimeRow = {

@@ -86,9 +86,12 @@ export function PayrollPayslipsTable({
   const passwordHint = settingsQuery.data?.lockPayslips
     ? ADMIN_PASSWORD_HINT[settingsQuery.data.payslipPasswordRule]
     : null;
-  // Each payslip has its own random password: every row can show it.
-  const randomPasswords =
+  // Rows whose payslip has a random password of its own: locked with one
+  // already (whatever the rule is now), or about to be under today's rule.
+  const randomNow =
     settingsQuery.data?.lockPayslips === true && settingsQuery.data.payslipPasswordRule === "RANDOM";
+  const hasOwnPassword = (payslip: Payslip) =>
+    payslip.pdfPasswordRule === "RANDOM" || (payslip.pdfPasswordRule === null && randomNow);
 
   // Ten rows a page, like the other admin tables — a 19-person run was one
   // very long scroll to reach the totals. The footer and the remittance
@@ -269,7 +272,7 @@ export function PayrollPayslipsTable({
                 tp1Busy={downloading === `tp1-${payslip.id}`}
                 onTp1={canEmail ? () => void getTp1(payslip) : undefined}
                 loadPassword={
-                  randomPasswords
+                  hasOwnPassword(payslip)
                     ? () => getPayslipPdfPassword(runId, payslip.employeeProfileId)
                     : undefined
                 }

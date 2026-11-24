@@ -57,30 +57,35 @@ public class PayslipRepository : IPayslipRepository
         return pair is null ? null : (pair.Payslip, pair.Run);
     }
 
-    public async Task<string?> SetPdfPasswordIfNoneAsync(string payslipId, string encrypted)
+    public async Task<(PayslipPasswordRule? Rule, string? Encrypted)> StampPdfLockIfNoneAsync(
+        string payslipId, PayslipPasswordRule rule, string? encrypted)
     {
         if (_db.Database.IsRelational())
         {
             // One conditional UPDATE: whoever is second changes nothing.
             await _db.Payslips
-                .Where(p => p.Id == payslipId && p.PdfPasswordEncrypted == null)
-                .ExecuteUpdateAsync(s => s.SetProperty(p => p.PdfPasswordEncrypted, encrypted));
+                .Where(p => p.Id == payslipId && p.PdfPasswordRule == null)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(p => p.PdfPasswordRule, rule)
+                    .SetProperty(p => p.PdfPasswordEncrypted, encrypted));
         }
         else
         {
             // The in-memory test provider has no ExecuteUpdate.
             var payslip = await _db.Payslips.FirstOrDefaultAsync(p => p.Id == payslipId);
-            if (payslip is not null && payslip.PdfPasswordEncrypted is null)
+            if (payslip is not null && payslip.PdfPasswordRule is null)
             {
+                payslip.PdfPasswordRule = rule;
                 payslip.PdfPasswordEncrypted = encrypted;
                 await _db.SaveChangesAsync();
             }
         }
 
-        return await _db.Payslips.AsNoTracking()
+        var stamp = await _db.Payslips.AsNoTracking()
             .Where(p => p.Id == payslipId)
-            .Select(p => p.PdfPasswordEncrypted)
+            .Select(p => new { p.PdfPasswordRule, p.PdfPasswordEncrypted })
             .FirstOrDefaultAsync();
+        return (stamp?.PdfPasswordRule, stamp?.PdfPasswordEncrypted);
     }
 
     public Task<List<PayslipLineItem>> GetLineItemsAsync(string payslipId) =>
@@ -125,6 +130,23 @@ public class PayslipRepository : IPayslipRepository
         var existingLineItems = await _db.PayslipLineItems
             .Where(li => existingIds.Contains(li.PayslipId))
             .ToListAsync();
+
+        // How each person's payslip was locked travels to their new one: copies
+        // already handed out (an approved month reverted and re-run, a
+        // re-imported year) must keep opening with the password the portal
+        // shows. A person in at most one run a month, so the profile is the key.
+        var locks = existingPayslips
+            .Where(p => p.PdfPasswordRule is not null)
+            .GroupBy(p => p.EmployeeProfileId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+        foreach (var payslip in payslips)
+        {
+            if (payslip.PdfPasswordRule is null && locks.TryGetValue(payslip.EmployeeProfileId, out var old))
+            {
+                payslip.PdfPasswordRule = old.PdfPasswordRule;
+                payslip.PdfPasswordEncrypted = old.PdfPasswordEncrypted;
+            }
+        }
 
         _db.PayslipLineItems.RemoveRange(existingLineItems);
         _db.Payslips.RemoveRange(existingPayslips);
