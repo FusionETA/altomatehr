@@ -14,6 +14,10 @@ public interface IAttendanceService
     // rather than after a rejected one.
     Task<AttendanceRecordDto?> GetOpenSessionAsync(string employeeId);
     Task<IEnumerable<AttendanceRecordDto>> GetHistoryAsync(string userId, bool isAdmin);
+
+    // Today's records (Malaysia business day) for the whole company — the
+    // date-windowed roll call, so a live board needn't pull all history.
+    Task<IEnumerable<AttendanceRecordDto>> GetOrgTodayAsync();
     Task<IEnumerable<AttendanceRecordDto>> GetTeamApprovalsAsync(string userId);
 
     // Today's attendance for the caller's direct reports — presence, not

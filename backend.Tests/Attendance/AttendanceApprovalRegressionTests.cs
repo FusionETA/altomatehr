@@ -769,6 +769,24 @@ public class AttendanceApprovalRegressionTests
             UpdatedAt = timeIn,
         };
 
+    // The live board's roll call: everyone's record for TODAY (Malaysia business
+    // day), and nothing from earlier days, so a poll never drags in history.
+    [Fact]
+    public async Task OrgToday_ReturnsEveryonesRecordForToday_AndNoOlderDays()
+    {
+        var today = AttendanceTime.StartOfLocalDay(DateTime.UtcNow);
+        var service = BuildService([
+            new AttendanceRecord { Id = "rec-a", EmployeeId = "emp-1", Date = today, TimeIn = DateTime.UtcNow.AddHours(-2) },
+            new AttendanceRecord { Id = "rec-b", EmployeeId = "emp-2", Date = today, TimeIn = DateTime.UtcNow.AddHours(-3), TimeOut = DateTime.UtcNow.AddHours(-1) },
+            new AttendanceRecord { Id = "rec-old", EmployeeId = "emp-1", Date = today.AddDays(-1), TimeIn = DateTime.UtcNow.AddDays(-1) },
+        ]);
+
+        var rows = (await service.GetOrgTodayAsync()).ToList();
+
+        Assert.Equal(["rec-a", "rec-b"], rows.Select(r => r.Id).OrderBy(x => x));
+        Assert.Null(rows.Single(r => r.Id == "rec-a").TimeOut);
+    }
+
     private static AttendanceService BuildService(
         IEnumerable<AttendanceRecord> records,
         FakeAttendanceApprovalRequestRepository? approvals = null,
@@ -854,6 +872,8 @@ public class AttendanceApprovalRegressionTests
         public Task<List<AttendanceRecord>> GetByEmployeeAsync(string employeeId) =>
             Task.FromResult(_records.Where(r => r.EmployeeId == employeeId).ToList());
         public Task<List<AttendanceRecord>> GetAllAsync() => Task.FromResult(_records.ToList());
+        public Task<List<AttendanceRecord>> GetOnDateAsync(DateTime date) =>
+            Task.FromResult(_records.Where(r => r.Date == date).ToList());
         public Task<List<AttendanceRecord>> GetWithPhotosAsync() =>
             Task.FromResult(_records.Where(r => r.ClockInPhotoUrl != null || r.ClockOutPhotoUrl != null).ToList());
         public Task<List<AttendanceRecord>> GetWithPhotosInRangeAsync(DateTime from, DateTime to) =>
