@@ -57,8 +57,8 @@ public static class AuditActions
     public const string PayrollPortalCredentialReveal = "payroll.portal-credential.reveal";
     public const string PayrollPortalCredentialDelete = "payroll.portal-credential.delete";
 
-    // The company's payslip password (PayrollSettings, COMPANY rule): revealing
-    // it discloses the password every payslip opens with.
+    // A payroll admin looked at one payslip's own password (RANDOM payslip-
+    // password rule): it opens that person's payslip.
     public const string PayrollPayslipPasswordReveal = "payroll.payslip-password.reveal";
 
     // Seeding a year of history writes SUBMITTED payslips that every later

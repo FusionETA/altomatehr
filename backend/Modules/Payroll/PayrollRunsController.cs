@@ -294,6 +294,21 @@ public class PayrollRunsController : ControllerBase
     public Task<IActionResult> Payslip(string id, string employeeProfileId) =>
         File(_statutory.RenderPayslipPdfAsync(id, employeeProfileId));
 
+    // That payslip's own password, under the RANDOM payslip-password rule —
+    // so an admin can open what they download and hand it to someone who
+    // doesn't use the portal. 404 under any other rule. Audited; people only
+    // (no integration needs it); the class's EmployeeInScope keeps a
+    // policy-limited admin to their own people.
+    [HumanOnly]
+    [RequireScope("payroll:read")]
+    [HttpGet("{id}/payslips/{employeeProfileId}/pdf-password")]
+    public async Task<IActionResult> PayslipPassword(string id, string employeeProfileId)
+    {
+        var result = await _statutory.GetPayslipPasswordAsync(id, employeeProfileId, byAdmin: true);
+        if (!result.Ok) return result.Error is null ? NotFound() : Conflict(new { error = result.Error });
+        return Ok(new PayslipPdfPasswordDto { Password = result.Password! });
+    }
+
     // Borang PCB/TP1 for one employee: each item's limit, this month and the
     // year to date, as LHDN's form lays it out.
     [RequireScope("payroll:read")]

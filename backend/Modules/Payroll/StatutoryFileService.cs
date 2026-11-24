@@ -26,6 +26,12 @@ public class StatutoryFileService : IStatutoryFileService
     // with none, that export is refused (the app always supplies it).
     private readonly IApiKeyService? _apiKeys;
 
+    // For the RANDOM payslip-password rule: each payslip's own password is
+    // stored encrypted, and an admin's look at it is audited. Optional for the
+    // same reason; with no secrets, RANDOM payslips are refused.
+    private readonly Common.ISecretBox? _secrets;
+    private readonly Audit.IAuditService? _audit;
+
     public StatutoryFileService(
         IPayrollRunRepository runs,
         IPayslipRepository payslips,
@@ -34,9 +40,13 @@ public class StatutoryFileService : IStatutoryFileService
         IOrganizationService organizations,
         Common.ICurrentUser currentUser,
         IPayrollSettingsService settings,
-        IApiKeyService? apiKeys = null)
+        IApiKeyService? apiKeys = null,
+        Common.ISecretBox? secrets = null,
+        Audit.IAuditService? audit = null)
     {
         _apiKeys = apiKeys;
+        _secrets = secrets;
+        _audit = audit;
         _runs = runs;
         _payslips = payslips;
         _companyInfo = companyInfo;
@@ -144,14 +154,11 @@ public class StatutoryFileService : IStatutoryFileService
         var settings = await _settings.GetEffectiveAsync();
         if (settings.LockPayslips)
         {
-            var companyPassword = settings.PayslipPasswordRule == PayslipPasswordRule.COMPANY
-                ? await _settings.GetPayslipCompanyPasswordAsync()
-                : null;
-            if (settings.PayslipPasswordRule == PayslipPasswordRule.COMPANY && companyPassword is null)
-                return StatutoryFileResult.Refused(NoCompanyPassword);
-            var password = PayslipLock.PasswordFor(settings.PayslipPasswordRule, row.IdNumber, row.DateOfBirth, companyPassword);
+            var (password, missingField) = await PayslipPasswordAsync(settings, row);
             if (password is null)
-                return StatutoryFileResult.Refused(NoPayslipPassword(settings.PayslipPasswordRule, [row.EmployeeName]));
+                return StatutoryFileResult.Refused(missingField
+                    ? NoPayslipPassword(settings.PayslipPasswordRule, [row.EmployeeName])
+                    : NoRandomPassword);
             pdf = PayslipLock.Lock(pdf, password);
         }
 
@@ -163,11 +170,67 @@ public class StatutoryFileService : IStatutoryFileService
         };
     }
 
-    // The COMPANY rule with its password unreadable (never saved, or saved
-    // under a key this server no longer has). Saving refuses the first case,
-    // so this is mostly the second.
-    private const string NoCompanyPassword =
-        "Payslips are locked with the company payslip password, but it can't be read. Set it again in Payroll settings → Payslip password.";
+    // The password that locks this row's payslip. Null with `MissingField`
+    // when the rule needs an IC / date of birth the person hasn't got; null
+    // without it when a RANDOM password can't be made or read on this server.
+    //
+    // RANDOM: the payslip's own, made the first time it's needed and kept
+    // (SetPdfPasswordIfNoneAsync), so every copy opens with the same one.
+    private async Task<(string? Password, bool MissingField)> PayslipPasswordAsync(
+        PayrollSettings settings, StatutoryEmployeeRow row)
+    {
+        if (settings.PayslipPasswordRule != PayslipPasswordRule.RANDOM)
+        {
+            var derived = PayslipLock.PasswordFor(settings.PayslipPasswordRule, row.IdNumber, row.DateOfBirth);
+            return (derived, derived is null);
+        }
+
+        if (_secrets is null) return (null, false);
+        if (_secrets.Decrypt(row.Payslip.PdfPasswordEncrypted) is { } existing) return (existing, false);
+
+        var stored = await _payslips.SetPdfPasswordIfNoneAsync(
+            row.Payslip.Id, _secrets.Encrypt(PayslipLock.NewRandomPassword())!);
+        row.Payslip.PdfPasswordEncrypted = stored;
+        return (_secrets.Decrypt(stored), false);
+    }
+
+    // RANDOM with no way to make or read the password (no secrets key, or one
+    // saved under a key this server no longer has).
+    private const string NoRandomPassword =
+        "This payslip's password can't be read on this server, so it can't be locked. Contact support.";
+
+    // A payslip's RANDOM password, for the employee's Payslips page or a
+    // payroll admin on the run page — made now if the payslip hasn't got one
+    // yet, so it matches every file handed out afterwards. Not found unless
+    // the company locks payslips with RANDOM. `byAdmin` records the look in
+    // the audit log: it opens someone else's payslip.
+    public async Task<PayslipPasswordResult> GetPayslipPasswordAsync(
+        string runId, string employeeProfileId, bool byAdmin)
+    {
+        var settings = await _settings.GetEffectiveAsync();
+        if (!settings.LockPayslips || settings.PayslipPasswordRule != PayslipPasswordRule.RANDOM)
+            return PayslipPasswordResult.NotFound;
+
+        var model = await LoadDocumentAsync(runId);
+        var row = model?.Rows.FirstOrDefault(r =>
+            string.Equals(r.Payslip.EmployeeProfileId, employeeProfileId, StringComparison.Ordinal));
+        if (model is null || row is null) return PayslipPasswordResult.NotFound;
+
+        var (password, _) = await PayslipPasswordAsync(settings, row);
+        if (password is null) return new(false, null, NoRandomPassword);
+
+        if (byAdmin && _audit is not null)
+        {
+            await _audit.WriteAsync(new Audit.AuditEvent(
+                Audit.AuditActions.PayrollPayslipPasswordReveal,
+                $"Showed {row.EmployeeName}'s payslip password — {PayrollPeriodLabel.ForRun(model.Run)}",
+                TargetType: "PayrollRun",
+                TargetId: model.Run.Id,
+                Metadata: new { EmployeeName = row.EmployeeName, EmployeeProfileId = employeeProfileId }));
+        }
+
+        return new(true, password, null);
+    }
 
     // Refused rather than guessed: a password nobody can know locks the
     // employee out of their own payslip.
@@ -207,19 +270,13 @@ public class StatutoryFileService : IStatutoryFileService
         var passwords = new Dictionary<string, string>(StringComparer.Ordinal);
         if (settings.LockPayslips)
         {
-            var companyPassword = settings.PayslipPasswordRule == PayslipPasswordRule.COMPANY
-                ? await _settings.GetPayslipCompanyPasswordAsync()
-                : null;
-            if (settings.PayslipPasswordRule == PayslipPasswordRule.COMPANY && companyPassword is null)
-                return StatutoryFileResult.Refused(NoCompanyPassword);
-
             var missing = new List<string>();
             foreach (var row in model.Rows)
             {
-                if (PayslipLock.PasswordFor(settings.PayslipPasswordRule, row.IdNumber, row.DateOfBirth, companyPassword) is { } password)
-                    passwords[row.Payslip.Id] = password;
-                else
-                    missing.Add(row.EmployeeName);
+                var (password, missingField) = await PayslipPasswordAsync(settings, row);
+                if (password is not null) passwords[row.Payslip.Id] = password;
+                else if (missingField) missing.Add(row.EmployeeName);
+                else return StatutoryFileResult.Refused(NoRandomPassword);
             }
             if (missing.Count > 0)
                 return StatutoryFileResult.Refused(NoPayslipPassword(settings.PayslipPasswordRule, missing));

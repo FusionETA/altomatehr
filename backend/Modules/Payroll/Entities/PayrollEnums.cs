@@ -62,5 +62,5 @@ public enum PayslipPasswordRule
     IC_DIGITS,      // IC / passport number, letters and digits only
     IC_LAST6,       // the last 6 of that
     DOB_DDMMYYYY,   // date of birth, e.g. 01011990
-    COMPANY,        // one password the company sets (PayslipCompanyPasswordEncrypted)
+    RANDOM,         // a random password of its own for every payslip (Payslip.PdfPasswordEncrypted)
 }

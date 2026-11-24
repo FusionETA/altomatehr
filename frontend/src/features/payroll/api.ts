@@ -42,9 +42,6 @@ export type PayrollSettings = {
   payslipPasswordRule: PayslipPasswordRule;
   // What employees are told opens the PDF. Never the password itself.
   payslipPasswordHint: string;
-  // A company password is saved (COMPANY rule). The password itself only
-  // comes back from revealPayslipPassword.
-  hasPayslipCompanyPassword: boolean;
   syncClaimsToXeroOnSubmit: boolean;
   syncPayrollToXeroOnSubmit: boolean;
   xeroMappingJson: string | null;
@@ -71,28 +68,18 @@ export type SavePayrollSettings = Omit<
   | "lockPayslips"
   | "payslipPasswordRule"
   | "payslipPasswordHint"
-  | "hasPayslipCompanyPassword"
 >;
 
 // What a password-protected payslip opens with.
-export type PayslipPasswordRule = "IC_DIGITS" | "IC_LAST6" | "DOB_DDMMYYYY" | "COMPANY";
+export type PayslipPasswordRule = "IC_DIGITS" | "IC_LAST6" | "DOB_DDMMYYYY" | "RANDOM";
 
-// `companyPassword`: the COMPANY rule's password. Omit or blank to keep the
-// one already saved.
-export const savePayslipPassword = (
-  lockPayslips: boolean,
-  payslipPasswordRule: PayslipPasswordRule,
-  companyPassword?: string,
-) =>
-  apiPut<PayrollSettings>("/payroll/settings/payslip-password", {
-    lockPayslips,
-    payslipPasswordRule,
-    companyPassword: companyPassword || null,
-  });
+export const savePayslipPassword = (lockPayslips: boolean, payslipPasswordRule: PayslipPasswordRule) =>
+  apiPut<PayrollSettings>("/payroll/settings/payslip-password", { lockPayslips, payslipPasswordRule });
 
-// The company payslip password in clear. Audited on the server.
-export const revealPayslipPassword = () =>
-  apiGet<{ password: string }>("/payroll/settings/payslip-password/reveal");
+// One payslip's own password (RANDOM rule), for a payroll admin. Audited on
+// the server.
+export const getPayslipPdfPassword = (runId: string, employeeProfileId: string) =>
+  apiGet<{ password: string }>(`/payroll/runs/${runId}/payslips/${employeeProfileId}/pdf-password`);
 
 export const getPayrollSettings = () =>
   apiGet<PayrollSettings>("/payroll/settings");

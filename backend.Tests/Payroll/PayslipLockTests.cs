@@ -37,13 +37,28 @@ public class PayslipLockTests
     public void NoIc_IsNoPassword_NotAGuess(PayslipPasswordRule rule, string? id) =>
         Assert.Null(PayslipLock.PasswordFor(rule, id, new DateTime(1990, 6, 15)));
 
+    // RANDOM is the payslip's own, not derived from the employee.
     [Fact]
-    public void TheCompanyRule_IsTheCompanysPassword_WhateverTheEmployeeHas()
+    public void TheRandomRule_IsNotDerivedFromTheEmployee() =>
+        Assert.Null(PayslipLock.PasswordFor(PayslipPasswordRule.RANDOM, "900101-14-5567", new DateTime(1990, 6, 15)));
+
+    // "K7PM-X4QR": four, a dash, four — and never a look-alike character.
+    [Fact]
+    public void ARandomPassword_IsEightReadableCharactersWithADash()
     {
-        Assert.Equal("Globe-2026!",
-            PayslipLock.PasswordFor(PayslipPasswordRule.COMPANY, "900101-14-5567", new DateTime(1990, 6, 15), "Globe-2026!"));
-        Assert.Equal("Globe-2026!", PayslipLock.PasswordFor(PayslipPasswordRule.COMPANY, null, null, "Globe-2026!"));
-        Assert.Null(PayslipLock.PasswordFor(PayslipPasswordRule.COMPANY, "900101-14-5567", null, null));
+        for (var i = 0; i < 200; i++)
+        {
+            var password = PayslipLock.NewRandomPassword();
+            Assert.Matches("^[A-Z2-9]{4}-[A-Z2-9]{4}$", password);
+            Assert.DoesNotMatch("[01OIL]", password);
+        }
+    }
+
+    [Fact]
+    public void RandomPasswords_DontRepeat()
+    {
+        var seen = Enumerable.Range(0, 1000).Select(_ => PayslipLock.NewRandomPassword()).ToHashSet();
+        Assert.Equal(1000, seen.Count);
     }
 
     [Fact]
@@ -89,7 +104,7 @@ public class PayslipLockTests
 
     // Opening a PDF with qpdf, the way a viewer would: true when `password`
     // opens it.
-    private static bool Opens(byte[] pdf, string? password)
+    internal static bool Opens(byte[] pdf, string? password)
     {
         var input = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}.pdf");
         var output = Path.Combine(Path.GetTempPath(), $"test-{Guid.NewGuid():N}-out.pdf");

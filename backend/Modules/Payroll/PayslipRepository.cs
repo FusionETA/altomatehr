@@ -57,6 +57,32 @@ public class PayslipRepository : IPayslipRepository
         return pair is null ? null : (pair.Payslip, pair.Run);
     }
 
+    public async Task<string?> SetPdfPasswordIfNoneAsync(string payslipId, string encrypted)
+    {
+        if (_db.Database.IsRelational())
+        {
+            // One conditional UPDATE: whoever is second changes nothing.
+            await _db.Payslips
+                .Where(p => p.Id == payslipId && p.PdfPasswordEncrypted == null)
+                .ExecuteUpdateAsync(s => s.SetProperty(p => p.PdfPasswordEncrypted, encrypted));
+        }
+        else
+        {
+            // The in-memory test provider has no ExecuteUpdate.
+            var payslip = await _db.Payslips.FirstOrDefaultAsync(p => p.Id == payslipId);
+            if (payslip is not null && payslip.PdfPasswordEncrypted is null)
+            {
+                payslip.PdfPasswordEncrypted = encrypted;
+                await _db.SaveChangesAsync();
+            }
+        }
+
+        return await _db.Payslips.AsNoTracking()
+            .Where(p => p.Id == payslipId)
+            .Select(p => p.PdfPasswordEncrypted)
+            .FirstOrDefaultAsync();
+    }
+
     public Task<List<PayslipLineItem>> GetLineItemsAsync(string payslipId) =>
         _db.PayslipLineItems
             .Where(li => li.PayslipId == payslipId)

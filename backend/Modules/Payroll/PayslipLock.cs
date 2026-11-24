@@ -13,18 +13,19 @@ namespace AltomateHR.Api.Modules.Payroll;
 // Applied to the finished bytes, so PayslipPdf itself never changes.
 public static class PayslipLock
 {
-    // The employee's password under the company's rule. Null when the field
-    // the rule needs is missing — the caller refuses, naming the person,
-    // rather than guessing a password nobody could know.
+    // The employee's password under an employee-detail rule. Null when the
+    // field the rule needs is missing — the caller refuses, naming the
+    // person, rather than guessing a password nobody could know.
     //
-    // `companyPassword` is the COMPANY rule's — the same for everyone.
-    public static string? PasswordFor(
-        PayslipPasswordRule rule, string? idNumber, DateTime? dateOfBirth, string? companyPassword = null)
+    // RANDOM isn't derived from anything: it's the payslip's own
+    // (Payslip.PdfPasswordEncrypted, made by NewRandomPassword), so this
+    // returns null for it and the caller reads the stored one.
+    public static string? PasswordFor(PayslipPasswordRule rule, string? idNumber, DateTime? dateOfBirth)
     {
         switch (rule)
         {
-            case PayslipPasswordRule.COMPANY:
-                return string.IsNullOrEmpty(companyPassword) ? null : companyPassword;
+            case PayslipPasswordRule.RANDOM:
+                return null;
 
             case PayslipPasswordRule.DOB_DDMMYYYY:
                 return dateOfBirth?.ToString("ddMMyyyy");
@@ -47,22 +48,30 @@ public static class PayslipLock
             "the last 6 digits of your IC number (or passport number)",
         PayslipPasswordRule.DOB_DDMMYYYY =>
             "your date of birth as DDMMYYYY (for example 01011990)",
-        PayslipPasswordRule.COMPANY =>
-            "the payslip password your company gave you",
+        PayslipPasswordRule.RANDOM =>
+            "the password shown next to this payslip on your Payslips page in AltomateHR (each payslip has its own)",
         _ => "your IC number with no dashes (or your passport number)",
     };
 
-    // The field an admin must fill in before the rule can work.
-    public static string MissingField(PayslipPasswordRule rule) => rule switch
-    {
-        PayslipPasswordRule.DOB_DDMMYYYY => "date of birth",
-        PayslipPasswordRule.COMPANY => "company payslip password",
-        _ => "IC / passport number",
-    };
+    // The field an admin must fill in before an employee-detail rule can work.
+    public static string MissingField(PayslipPasswordRule rule) =>
+        rule == PayslipPasswordRule.DOB_DDMMYYYY ? "date of birth" : "IC / passport number";
 
-    // The company password: at least 6 characters, at most 64. Payslips
-    // aren't a login, but a 4-digit PIN is guessed in seconds offline.
-    public const int MinCompanyPasswordLength = 6;
+    // ─── Random passwords (the RANDOM rule) ─────────────────────────────
+
+    // No look-alikes: no 0/O, 1/I/L — it's read off a screen and typed.
+    private const string RandomAlphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+
+    // A new random password for one payslip, e.g. "K7PM-X4QR": 8 characters
+    // from 31 (about 40 bits — far beyond guessing one PDF offline in any
+    // useful time), with a dash in the middle so it's easy to read off a
+    // screen. The dash is PART of the password: what the employee sees is
+    // exactly what they type.
+    public static string NewRandomPassword()
+    {
+        var chars = RandomNumberGenerator.GetString(RandomAlphabet, 8);
+        return $"{chars[..4]}-{chars[4..]}";
+    }
 
     // "900101-01-0001" → "900101010001"; a passport keeps its letters,
     // upper-cased: "a1234 5678" → "A12345678". Null when nothing is left.

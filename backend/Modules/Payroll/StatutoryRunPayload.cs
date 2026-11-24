@@ -85,6 +85,13 @@ public sealed record StatutoryEmployeeRow
         && (HasPr || string.Equals(Nationality?.Trim(), "Malaysian", StringComparison.OrdinalIgnoreCase));
 }
 
+// A payslip's RANDOM password (StatutoryFileService.GetPayslipPasswordAsync),
+// or why not. Ok=false with no Error is "not found".
+public sealed record PayslipPasswordResult(bool Ok, string? Password, string? Error)
+{
+    public static readonly PayslipPasswordResult NotFound = new(false, null, null);
+}
+
 // A generated file, or the reason one could not be produced.
 //
 // A missing IC is an admin's data problem with a specific fix, not an

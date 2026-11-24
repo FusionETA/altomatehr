@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
 import { Download, FileText, LoaderCircle, LockKeyhole, Mail, Sliders, TriangleAlert } from "lucide-react";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
+import { PayslipPasswordRow } from "@/shared/components/PayslipPasswordRow";
 import {
   downloadPayslipPdf,
   downloadTp1Form,
   emailPayslip,
   getPayrollSettings,
+  getPayslipPdfPassword,
   type AdjustmentCategory,
   type PayslipPasswordRule,
   type Payslip,
@@ -84,6 +86,9 @@ export function PayrollPayslipsTable({
   const passwordHint = settingsQuery.data?.lockPayslips
     ? ADMIN_PASSWORD_HINT[settingsQuery.data.payslipPasswordRule]
     : null;
+  // Each payslip has its own random password: every row can show it.
+  const randomPasswords =
+    settingsQuery.data?.lockPayslips === true && settingsQuery.data.payslipPasswordRule === "RANDOM";
 
   // Ten rows a page, like the other admin tables — a 19-person run was one
   // very long scroll to reach the totals. The footer and the remittance
@@ -263,6 +268,11 @@ export function PayrollPayslipsTable({
                 // Same gate as emailing: an approved month only.
                 tp1Busy={downloading === `tp1-${payslip.id}`}
                 onTp1={canEmail ? () => void getTp1(payslip) : undefined}
+                loadPassword={
+                  randomPasswords
+                    ? () => getPayslipPdfPassword(runId, payslip.employeeProfileId)
+                    : undefined
+                }
               />
             ))}
           </tbody>
@@ -353,6 +363,7 @@ function Row({
   onTp1,
   emailBusy,
   emailErrorMessage,
+  loadPassword,
 }: {
   payslip: Payslip;
   nonCash: Set<string>;
@@ -366,6 +377,8 @@ function Row({
   onTp1?: () => void;
   emailBusy: boolean;
   emailErrorMessage: string | null;
+  // Under the random-password rule: this payslip's own PDF password.
+  loadPassword?: () => Promise<{ password: string }>;
 }) {
   const hourly = payslip.snapshotSalaryType === "HOURLY";
 
@@ -501,6 +514,8 @@ function Row({
        {emailErrorMessage ? (
          <p className="mt-1 text-[10px] font-medium text-destructive">{emailErrorMessage}</p>
        ) : null}
+
+       {loadPassword ? <PayslipPasswordRow load={loadPassword} className="mt-1.5" /> : null}
       </td>
 
       {/* Days and the OT columns are a MONTHLY concept — an hourly employee
@@ -606,7 +621,7 @@ const ADMIN_PASSWORD_HINT: Record<PayslipPasswordRule, string> = {
   IC_DIGITS: "the employee's IC number with no dashes (or their passport number)",
   IC_LAST6: "the last 6 digits of the employee's IC number (or passport number)",
   DOB_DDMMYYYY: "the employee's date of birth as DDMMYYYY",
-  COMPANY: "the company payslip password (Payroll settings → Payslip password)",
+  RANDOM: "its own random password — press Show on the employee's row",
 };
 
 function sum(payslips: Payslip[]) {

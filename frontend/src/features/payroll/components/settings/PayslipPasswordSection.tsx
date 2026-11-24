@@ -1,22 +1,21 @@
 import { useState } from "react";
-import { Eye, EyeOff, LoaderCircle, LockKeyhole } from "lucide-react";
+import { LoaderCircle, LockKeyhole } from "lucide-react";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import {
   getPayrollEmployees,
-  revealPayslipPassword,
   savePayslipPassword,
   type PayrollEmployee,
   type PayrollSettings,
   type PayslipPasswordRule,
 } from "../../api";
-import { BUTTON, BUTTON_GHOST_SM, CARD, ERROR_PANEL, HINT, INPUT, LABEL, WARN_PANEL } from "../../lib/ui";
+import { BUTTON, CARD, ERROR_PANEL, HINT, LABEL, WARN_PANEL } from "../../lib/ui";
 import { CheckBox } from "../PayrollCheckbox";
 import { PayrollSelect } from "../PayrollSelect";
 
 // Payslip passwords: every payslip PDF that leaves the app — downloaded,
 // zipped, emailed or fetched over the API — is locked with a password under
-// the rule chosen here: one from the employee's own details, or one password
-// the company sets.
+// the rule chosen here: one from the employee's own details, or a random one
+// made for each payslip.
 //
 // Saved on its own button, apart from the rest of the settings: it changes no
 // figure, so it shouldn't ride along on (or wait for) a payroll settings save.
@@ -37,19 +36,18 @@ const RULES: { value: PayslipPasswordRule; label: string; example: string }[] = 
     example: "For example 15 June 1990 → 15061990. Each employee has their own.",
   },
   {
-    value: "COMPANY",
-    label: "A password the company sets",
+    value: "RANDOM",
+    label: "A random password for each payslip",
     example:
-      "One password for every payslip. You tell your staff what it is — it is never put in an email.",
+      "For example K7PM-X4QR — a new one for every payslip. Employees see it next to the payslip on their Payslips page; payroll admins can see it on the run's Payslips table. It is never put in an email.",
   },
 ];
 
-const MIN_COMPANY_PASSWORD = 6;
-
-// Who an employee-based rule has nothing for — their payslip can't be locked,
-// so it's refused until the field is filled in. Passports count as an IC.
+// Who an employee-detail rule has nothing for — their payslip can't be
+// locked, so it's refused until the field is filled in. Passports count as
+// an IC. A random password needs nothing from them.
 function missingFor(rule: PayslipPasswordRule, people: PayrollEmployee[]): PayrollEmployee[] {
-  if (rule === "COMPANY") return [];
+  if (rule === "RANDOM") return [];
   return people.filter((person) =>
     rule === "DOB_DDMMYYYY"
       ? !person.dateOfBirth
@@ -66,12 +64,6 @@ export function PayslipPasswordSection({
 }) {
   const [lock, setLock] = useState(settings.lockPayslips);
   const [rule, setRule] = useState<PayslipPasswordRule>(settings.payslipPasswordRule);
-  // A NEW company password being typed. Blank keeps the saved one.
-  const [password, setPassword] = useState("");
-  const [showTyped, setShowTyped] = useState(false);
-  // The saved one, after an explicit Reveal (audited on the server).
-  const [revealed, setRevealed] = useState<string | null>(null);
-  const [revealing, setRevealing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedNote, setSavedNote] = useState<string | null>(null);
@@ -81,17 +73,7 @@ export function PayslipPasswordSection({
   const people = (employeesQuery.data ?? []).filter((p) => p.hasPayrollProfile && !p.isArchived);
   const missing = missingFor(rule, people);
 
-  const isCompany = rule === "COMPANY";
-  const hasSaved = settings.hasPayslipCompanyPassword;
-  // Whitespace-only counts as blank, as it does on the server.
-  const typed = password.trim().length > 0;
-  const tooShort = typed && password.length < MIN_COMPANY_PASSWORD;
-  const needsPassword = lock && isCompany && !hasSaved && !typed;
-
-  const dirty =
-    lock !== settings.lockPayslips ||
-    rule !== settings.payslipPasswordRule ||
-    (isCompany && typed);
+  const dirty = lock !== settings.lockPayslips || rule !== settings.payslipPasswordRule;
   const field = rule === "DOB_DDMMYYYY" ? "date of birth" : "IC / passport number";
 
   async function save() {
@@ -99,31 +81,13 @@ export function PayslipPasswordSection({
     setError(null);
     setSavedNote(null);
     try {
-      const saved = await savePayslipPassword(lock, rule, isCompany ? password : undefined);
+      const saved = await savePayslipPassword(lock, rule);
       onSaved(saved);
-      setPassword("");
-      setRevealed(null);
       setSavedNote(saved.lockPayslips ? "Payslips are now password-protected." : "Payslip passwords are off.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save the payslip password.");
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function toggleReveal() {
-    if (revealed !== null) {
-      setRevealed(null);
-      return;
-    }
-    setRevealing(true);
-    setError(null);
-    try {
-      setRevealed((await revealPayslipPassword()).password);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not show the payslip password.");
-    } finally {
-      setRevealing(false);
     }
   }
 
@@ -165,61 +129,10 @@ export function PayslipPasswordSection({
           <p className={HINT}>{RULES.find((r) => r.value === rule)?.example}</p>
         </div>
 
-        {isCompany ? (
-          <div>
-            <label className={LABEL} htmlFor="payslipCompanyPassword">
-              {hasSaved ? "Change the company payslip password" : "Company payslip password"}
-            </label>
-            <div className="relative">
-              <input
-                id="payslipCompanyPassword"
-                type={showTyped ? "text" : "password"}
-                autoComplete="new-password"
-                maxLength={64}
-                className={`${INPUT} pr-12`}
-                placeholder={hasSaved ? "Leave blank to keep the current password" : `At least ${MIN_COMPANY_PASSWORD} characters`}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-              <button
-                type="button"
-                onClick={() => setShowTyped((v) => !v)}
-                aria-label={showTyped ? "Hide password" : "Show password"}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showTyped ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </button>
-            </div>
-            {tooShort ? (
-              <p className={`${HINT} text-destructive`}>
-                Use at least {MIN_COMPANY_PASSWORD} characters.
-              </p>
-            ) : (
-              <p className={HINT}>
-                Stored encrypted. Changing it only affects payslips made afterwards — ones already sent
-                keep the old password.
-              </p>
-            )}
-
-            {hasSaved ? (
-              <div className="mt-3 flex flex-wrap items-center gap-3 rounded-2xl border border-border/60 bg-muted/30 px-4 py-2.5 text-sm">
-                <span className="text-muted-foreground">Current password:</span>
-                <span className="font-mono font-semibold text-foreground">
-                  {revealed ?? "••••••••"}
-                </span>
-                <button type="button" className={BUTTON_GHOST_SM} onClick={toggleReveal} disabled={revealing}>
-                  {revealing ? <LoaderCircle aria-hidden className="size-3.5 animate-spin" /> : null}
-                  {revealed !== null ? "Hide" : "Reveal"}
-                </button>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-
-        {lock && isCompany ? (
+        {lock && rule === "RANDOM" ? (
           <div className={WARN_PANEL}>
-            Every employee opens their payslip with the same password, so anyone who has it can open a
-            colleague's payslip if it's forwarded. The employee-based options don't have this problem.
+            Staff who don't sign in to AltomateHR can't see their password. A payroll admin can look it
+            up on the run's Payslips table and pass it on.
           </div>
         ) : null}
 
@@ -240,18 +153,11 @@ export function PayslipPasswordSection({
         {error ? <p className={ERROR_PANEL}>{error}</p> : null}
 
         <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            className={BUTTON}
-            disabled={!dirty || saving || tooShort || needsPassword}
-            onClick={save}
-          >
+          <button type="button" className={BUTTON} disabled={!dirty || saving} onClick={save}>
             {saving ? <LoaderCircle aria-hidden className="size-4 animate-spin" /> : null}
             Save payslip password
           </button>
-          {needsPassword ? (
-            <span className="text-sm text-muted-foreground">Set a password to switch this on.</span>
-          ) : savedNote && !dirty ? (
+          {savedNote && !dirty ? (
             <span className="text-sm text-muted-foreground">{savedNote}</span>
           ) : null}
         </div>

@@ -58,6 +58,13 @@ public interface IPayslipRepository
     // that the run is submitted before returning anything.
     Task<(Payslip Payslip, PayrollRun Run)?> GetWithRunAsync(string payslipId);
 
+    // Store a payslip's random PDF password (Payslip.PdfPasswordEncrypted)
+    // unless it already has one, and return the one stored. Two first
+    // downloads at once then agree on ONE password — the file each hands out
+    // opens with what the portal shows. Default keeps test doubles compiling.
+    Task<string?> SetPdfPasswordIfNoneAsync(string payslipId, string encrypted) =>
+        Task.FromResult<string?>(encrypted);
+
     Task<List<PayslipLineItem>> GetLineItemsAsync(string payslipId);
 
     // Every payslip in this year's months before `beforeMonth`, with its run —

@@ -199,6 +199,14 @@ public class Payslip : ITenantScoped
     // run is filed.
     [MaxLength(300)] public string? StatutoryWarnings { get; set; }
 
+    // This payslip's own PDF password under the RANDOM payslip-password rule
+    // (PayslipLock.NewRandomPassword), encrypted with ISecretBox. Made the
+    // first time the payslip is locked and kept, so every download of it —
+    // portal, admin, ZIP, email, API — opens with the same password. A draft
+    // re-run replaces the payslip, and with it the password; drafts never
+    // reach staff. Null until needed, and under the other rules.
+    [MaxLength(512)] public string? PdfPasswordEncrypted { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 }

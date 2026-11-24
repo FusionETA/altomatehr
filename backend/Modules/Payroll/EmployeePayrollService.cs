@@ -45,6 +45,7 @@ public class EmployeePayrollService : IEmployeePayrollService
         // what opens it, beside the download button.
         var settings = _settings is null ? null : await _settings.GetEffectiveAsync();
         var hint = settings?.LockPayslips == true ? PayslipLock.Hint(settings.PayslipPasswordRule) : null;
+        var passwordOnPage = settings is { LockPayslips: true, PayslipPasswordRule: PayslipPasswordRule.RANDOM };
 
         return [.. rows.Select(row => new EmployeePayslipSummaryDto
         {
@@ -62,6 +63,7 @@ public class EmployeePayrollService : IEmployeePayrollService
             Pcb = row.Payslip.Pcb - row.Payslip.PcbBorneByEmployer + row.Payslip.VoluntaryPcb,
             SubmittedAt = row.Run.SubmittedAt,
             PdfPasswordHint = hint,
+            PdfPasswordOnPage = passwordOnPage,
         })];
     }
 
@@ -81,6 +83,17 @@ public class EmployeePayrollService : IEmployeePayrollService
         if (payslip is null) return new StatutoryFileResult(false, null, null, null, null);
 
         return await _statutory.RenderPayslipPdfAsync(payslip.PayrollRunId, payslip.EmployeeProfileId);
+    }
+
+    public async Task<PayslipPasswordResult> GetMyPayslipPasswordAsync(string payslipId)
+    {
+        var payslip = await MineAsync(payslipId);
+        if (payslip is null) return PayslipPasswordResult.NotFound;
+
+        // Their own payslip, so not audited — it's no more than the PDF they
+        // can already download.
+        return await _statutory.GetPayslipPasswordAsync(
+            payslip.PayrollRunId, payslip.EmployeeProfileId, byAdmin: false);
     }
 
     public async Task<StatutoryFileResult> RenderMyTp1FormAsync(string payslipId)

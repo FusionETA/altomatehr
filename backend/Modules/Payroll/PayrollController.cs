@@ -104,23 +104,6 @@ public class PayrollController : ControllerBase
         return result.Error is null ? Ok(result.Settings) : BadRequest(new { error = result.Error });
     }
 
-    // The company payslip password in clear (COMPANY rule). Its own endpoint
-    // behind an explicit click, like the portal logins, and audited — it opens
-    // every payslip in the company. `payroll:read` like every payroll GET;
-    // RequireSettings WITH reads keeps it to admins who can change payroll
-    // settings (a plain [RequireSettings] lets every GET through), and
-    // HumanOnly keeps API keys and partner tokens out — no integration needs
-    // the password that opens every payslip.
-    [HumanOnly]
-    [RequireScope("payroll:read")]
-    [RequireSettings(IncludeReads = true)]
-    [HttpGet("settings/payslip-password/reveal")]
-    public async Task<IActionResult> RevealPayslipPassword()
-    {
-        var password = await _settings.RevealPayslipPasswordAsync();
-        return password is null ? NotFound() : Ok(new PayslipCompanyPasswordDto { Password = password });
-    }
-
     // Xero sync → AI split. Generate turns the admin's words into rules with
     // AI and tries them on a real run; Check re-tries rules already in hand
     // without AI. Neither saves anything — the rules are saved with the rest

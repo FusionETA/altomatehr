@@ -26,9 +26,17 @@ export type PayslipSummary = {
   /** Set when the company password-protects payslips: what opens the PDF,
    *  e.g. "your IC number with no dashes (or your passport number)". */
   pdfPasswordHint: string | null;
+  /** True when each payslip has its own random password (RANDOM rule),
+   *  shown next to the PDF via getMyPayslipPdfPassword. */
+  pdfPasswordOnPage: boolean;
 };
 
 export const getMyPayslips = () => apiGet<PayslipSummary[]>("/payslips");
+
+// The password that opens one of my payslip PDFs (RANDOM rule). Fetched on
+// request, not with the list.
+export const getMyPayslipPdfPassword = (id: string) =>
+  apiGet<{ password: string }>(`/payslips/${id}/pdf-password`);
 
 // The full breakdown, same shape the admin run detail uses.
 export const getMyPayslip = (id: string) => apiGet<Payslip>(`/payslips/${id}`);

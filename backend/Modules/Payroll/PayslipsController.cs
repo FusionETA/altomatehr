@@ -65,6 +65,20 @@ public class PayslipsController : ControllerBase
         return File(result.Content!, result.ContentType!, result.FileName);
     }
 
+    // The password that opens this payslip's PDF, under the RANDOM
+    // payslip-password rule — shown on the employee's Payslips page on
+    // request, so opening the page doesn't fetch every one. Their own payslip
+    // only; people only.
+    [HumanOnly]
+    [RequireScope("payroll:read")]
+    [HttpGet("{id}/pdf-password")]
+    public async Task<IActionResult> PdfPassword(string id)
+    {
+        var result = await _payroll.GetMyPayslipPasswordAsync(id);
+        if (!result.Ok) return result.Error is null ? NotFound() : Conflict(new { error = result.Error });
+        return Ok(new Dtos.PayslipPdfPasswordDto { Password = result.Password! });
+    }
+
     // The caller's own Borang PCB/TP1 for this payslip's month.
     [RequireScope("payroll:read")]
     [HttpGet("{id}/tp1")]
