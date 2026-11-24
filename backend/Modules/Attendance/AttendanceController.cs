@@ -41,7 +41,7 @@ public class AttendanceController : ControllerBase
     // history. Admins who only see some policies are refused, since it covers
     // every employee.
     [RequireScope("attendance:read")]
-    [AltomateHR.Api.Modules.Organizations.RequireFullEmployeeScope]
+    [AltomateHR.Api.Modules.Organizations.RequireFullEmployeeScope(IncludeReads = true)] // a read, but it IS the whole roll call
     [HttpGet("org/today")]
     [Authorize(Roles = "Admin,Owner")]
     public async Task<IActionResult> GetOrgToday() =>

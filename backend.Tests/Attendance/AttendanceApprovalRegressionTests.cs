@@ -769,6 +769,19 @@ public class AttendanceApprovalRegressionTests
             UpdatedAt = timeIn,
         };
 
+    // The roll call covers every employee, so an admin limited to some policies
+    // must be refused even though it's a GET; without IncludeReads the gate
+    // skips reads and they'd get a silently partial "whole company" list.
+    [Fact]
+    public void OrgToday_RefusesLimitedAdmins_EvenThoughItIsARead()
+    {
+        var gate = typeof(AttendanceController).GetMethod(nameof(AttendanceController.GetOrgToday))!
+            .GetCustomAttributes(typeof(AltomateHR.Api.Modules.Organizations.RequireFullEmployeeScopeAttribute), false)
+            .Cast<AltomateHR.Api.Modules.Organizations.RequireFullEmployeeScopeAttribute>()
+            .Single();
+        Assert.True(gate.IncludeReads);
+    }
+
     // The live board's roll call: everyone's record for TODAY (Malaysia business
     // day), and nothing from earlier days, so a poll never drags in history.
     [Fact]
