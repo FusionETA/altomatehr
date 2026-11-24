@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 5328b6c
+  user-guide-covered-up-to: 0e93e2b
 -->
 <html lang="en">
 <head>
@@ -797,15 +797,18 @@
       <li>Switch on <strong>Password-protect payslips</strong>.</li>
       <li>Under <strong>Password</strong>, choose what opens the payslip: <em>Employee's IC number, digits only</em>,
         <em>Last 6 digits of employee's IC</em>, <em>Employee's date of birth (DDMMYYYY)</em> or
-        <em>A password the company sets</em>.</li>
-      <li>For the company password, type it (at least 6 characters). Once saved it shows masked; press
-        <span class="btn-name">Reveal</span> to see it (only admins allowed to change settings can). Leave the field blank to keep the current one.</li>
+        <em>A random password for each payslip</em>.</li>
+      <li>With the random option, every payslip gets its own password, like <em>K7PM-X4QR</em> (the dash is part of it).
+        Every copy of that payslip — the download, the email attachment, the ZIP — opens with the same password.
+        A note under the option says staff who don't sign in to AltomateHR can't see their password, and that a payroll
+        admin can look it up on the run's Payslips table.</li>
       <li>Press <span class="btn-name">Save payslip password</span>. This tab saves on its own button, not the bar at the bottom.</li>
     </ol>
     <div class="note warn"><span class="nt">Check before you switch it on</span>
-      <p>With the company password, everyone shares one password, and a warning on the tab says so. With an IC or date of
-        birth rule, the tab lists anyone who is missing that detail: their payslips won't download or email until you add it.
-        Changing the password or rule only affects payslips made afterwards; ones already sent keep the old password.</p>
+      <p>With an IC or date of birth rule, the tab lists anyone who is missing that detail: their payslips won't download
+        or email until you add it. The random option needs nothing from the employee. A payslip keeps the password it was
+        first locked with: changing the option later, or running the month again, doesn't change payslips already
+        handed out.</p>
     </div>
     <h3>Credentials</h3>
     <p>Store your KWSP i-Akaun, PERKESO ASSIST and LHDN e-PCB logins so whoever runs payroll has them. They're
@@ -873,7 +876,7 @@
           <p class="shot-cap">Form E (LHDN)</p>
         </div>
         <div class="shot-item">
-          <img src="shots/admin/payroll-settings-payslip-password.png" alt="Payroll → Settings → Payslip password: the company password option, the masked current password with a Reveal button, the shared-password warning and Save payslip password" loading="lazy">
+          <img src="shots/admin/payroll-settings-payslip-password.png" alt="Payroll → Settings → Payslip password: the random password option, its example and note, and Save payslip password" loading="lazy">
           <p class="shot-cap">Payslip password</p>
         </div>
       </div>
@@ -1887,6 +1890,10 @@
           <img src="shots/admin/payroll-payslips-search.png" alt="A run's Payslips list narrowed by the search box to one person, with the Total row still showing all 9 employees" loading="lazy">
           <p class="shot-cap">Searching a run's payslips</p>
         </div>
+        <div class="shot-item">
+          <img src="shots/admin/payroll-payslip-password-row.png" alt="A payslip row in a run's Payslips table with the PDF password line, showing the password with Hide and Copy buttons" loading="lazy">
+          <p class="shot-cap">A payslip's own password</p>
+        </div>
       </div>
       <p class="shot-cap shot-cap-main">A payroll run</p>
     </figure>
@@ -2147,6 +2154,11 @@
     <p>When <a href="#payroll-settings">payslip passwords</a> are on, a note above the Payslips table says what the PDFs
       open with. If a payslip can't be produced — for example the employee has no IC or date of birth on file for the
       rule you chose — the download shows an error on that person's row.</p>
+    <p>Under the random password option, each row in the Payslips table has a line
+      <em>PDF password ••••-••••</em> with <span class="btn-name">Show</span> and, once shown,
+      <span class="btn-name">Copy</span> (<span class="btn-name">Hide</span> hides it again). Use it to pass a password to
+      someone who doesn't sign in to AltomateHR. The password is only fetched when you press <span class="btn-name">Show</span>,
+      and each look is recorded in the activity log.</p>
     
     <figure class="shot" data-place="Files">
       <div class="shot-grid" data-orient="screen">

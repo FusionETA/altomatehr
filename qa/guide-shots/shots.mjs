@@ -735,6 +735,24 @@ const admin = {
     await page.evaluate(() => window.scrollBy(0, -160));
     await shoot(page, "admin", "payroll-payslips-search");
   },
+  // Needs the RANDOM payslip password rule on (Payroll -> Settings -> Payslip password).
+  // A run's Payslips table: one row's "PDF password" line after pressing Show.
+  "payroll-payslip-password-row": async (page) => {
+    await inDemoCo(page);
+    await go(page, "payroll");
+    await clickText(page, "Payroll runs");
+    await clickText(page, "September 2026");
+    const box = page.getByPlaceholder("Search name, employee ID, or job title").filter({ visible: true }).first();
+    await box.waitFor({ timeout: 20000 });
+    await box.fill("evan");
+    await page.getByText("PDF password").first().waitFor({ timeout: 15000 });
+    await page.getByRole("button", { name: "Show", exact: true }).first().click();
+    await page.getByRole("button", { name: "Copy the PDF password" }).first().waitFor({ timeout: 15000 });
+    await box.evaluate((el) => el.scrollIntoView({ block: "start" }));
+    await settle(page, 500);
+    await page.evaluate(() => window.scrollBy(0, -120));
+    await shoot(page, "admin", "payroll-payslip-password-row");
+  },
   // AB Test Co A's November 2026 draft (not stale, so the computed HRDF levy
   // shows greyed): one monthly employee's adjustments drawer, scrolled to the
   // Unpaid leave / Employer HRDF levy / Overtime boxes. Nothing is saved.
@@ -872,6 +890,7 @@ const admin = {
     await page.getByText("Save payslip password").first().waitFor({ timeout: 15000 });
     await settle(page, 800);
     await scrollTo(page, "Password-protect payslips", 60);
+    await page.getByText(/Staff who don't sign in/).first().waitFor({ timeout: 10000 });
     await shoot(page, "admin", "payroll-settings-payslip-password");
   },
   "payroll-settings-unpaid-leave": async (page) => {
@@ -1221,6 +1240,13 @@ const evan = {
   "payslips-password-note": async (page) => {
     await go(page, "payslips");
     await page.getByText(/Payslip PDFs are password-protected/).first().waitFor({ timeout: 15000 });
+    // Random rule: open the newest card's own password so the row shows.
+    await page.getByRole("button", { name: "Show", exact: true }).first().click();
+    await page.getByRole("button", { name: "Copy the PDF password" }).first().waitFor({ timeout: 15000 });
+    await settle(page, 400);
+    // Scroll so the note is at the top with the first card's password row below it.
+    await page.evaluate(() => { document.body.style.zoom = "0.7"; window.scrollTo(0, 0); });
+    await settle(page, 400);
     await shoot(page, "employee", "payslips-password-note");
   },
   "payslip-breakdown": async (page) => {
