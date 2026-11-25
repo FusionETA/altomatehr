@@ -177,10 +177,35 @@
         <p><strong>Module gate:</strong> <code>attendance</code>. No query parameters.</p>
         <h3>Response <code>200</code> — array of <a href="#records">attendance records</a></h3>
         <div class="callout warn">
-          Unfiltered and unpaged: it returns all history. For a date window, use the hours
-          summaries or <code>GET /attendance/export/summary</code> instead.
+          Unfiltered and unpaged: it returns all history. For today only, use
+          <a href="#org-today"><code>GET /attendance/org/today</code></a>. For any other date window,
+          use the hours summaries or <code>GET /attendance/export/summary</code> instead.
         </div>
 <pre><code>curl https://&lt;api-host&gt;/attendance \
+  -H "Authorization: Bearer wp_live_xxx"</code></pre>
+      </section>
+
+      <section class="endpoint" id="org-today">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/attendance/org/today</span>
+          <span class="tag scope">attendance:read</span>
+        </div>
+        <p>Every attendance record in the company for today, with sessions and approvals. The date-windowed alternative to <code>GET /attendance</code>, meant for live boards that poll.</p>
+        <p><strong>Module gate:</strong> <code>attendance</code>. No query parameters. Needs Admin or Owner, which a key always is.</p>
+        <h3>Response <code>200</code> &mdash; array of <a href="#records">attendance records</a></h3>
+        <p>The same object shape as <code>GET /attendance</code>, including <code>offSite</code> and each record's <code>approvals</code> and <code>sessions</code>. Empty array when nobody has a record yet today.</p>
+        <div class="callout warn">
+          <strong>"Today" is the Malaysia business day</strong>, not the caller's or UTC's. Around
+          midnight UTC+8 the board flips to a new, empty day, so poll with that in mind. Only records
+          whose <code>date</code> is today are returned; there is no way to ask for another day here.
+        </div>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>403</code> <code>{ "error": { "status": 403, "message": "…" } }</code> &mdash; missing <code>attendance:read</code>, or the plan lacks the <code>attendance</code> module.</li>
+          <li><code>403</code> (same shape) &mdash; the caller is an admin limited to some policies, because this covers every employee. An API key is never limited, so you will not meet this one.</li>
+        </ul>
+<pre><code>curl https://&lt;api-host&gt;/attendance/org/today \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
       </section>
 

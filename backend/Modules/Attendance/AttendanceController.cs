@@ -35,6 +35,18 @@ public class AttendanceController : ControllerBase
     public async Task<IActionResult> GetAll() =>
         Ok(await _attendance.GetHistoryAsync(GetUserId(), User.IsAdministrative()));
 
+    // GET /attendance/org/today — the whole company's records for today
+    // (Malaysia business day), with sessions and approvals. The date-windowed
+    // roll call: a live board polls this instead of GET /attendance's full
+    // history. Admins who only see some policies are refused, since it covers
+    // every employee.
+    [RequireScope("attendance:read")]
+    [AltomateHR.Api.Modules.Organizations.RequireFullEmployeeScope(IncludeReads = true)] // a read, but it IS the whole roll call
+    [HttpGet("org/today")]
+    [Authorize(Roles = "Admin,Owner")]
+    public async Task<IActionResult> GetOrgToday() =>
+        Ok(await _attendance.GetOrgTodayAsync());
+
     // GET /attendance/team — records awaiting the caller as current-step approver.
     [RequireScope("attendance:read")]
     [HttpGet("team")]

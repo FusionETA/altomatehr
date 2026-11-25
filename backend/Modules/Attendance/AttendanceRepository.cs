@@ -54,6 +54,9 @@ public class AttendanceRepository : IAttendanceRepository
     public Task<List<AttendanceRecord>> GetAllAsync() =>
         _db.AttendanceRecords.OrderByDescending(r => r.Date).ToListAsync();
 
+    public Task<List<AttendanceRecord>> GetOnDateAsync(DateTime date) =>
+        _db.AttendanceRecords.Where(r => r.Date == date).ToListAsync();
+
     public Task<List<AttendanceRecord>> GetWithPhotosAsync() =>
         _db.AttendanceRecords
             .Where(r => r.ClockInPhotoUrl != null || r.ClockOutPhotoUrl != null)
