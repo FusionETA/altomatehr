@@ -158,6 +158,25 @@ public class AuthController : ControllerBase
         return Ok(ToResponse(result));
     }
 
+    // POST /auth/switch-portal — an Employee & admin moves between the admin
+    // portal and their own employee portal in the same company. Re-mints the
+    // token with the other role; 403 for anyone who isn't both.
+    [Authorize]
+    [HumanOnly]
+    [HttpPost("switch-portal")]
+    public async Task<ActionResult<AuthResponseDto>> SwitchPortal()
+    {
+        if (_currentUser.UserId is not { } userId || _currentUser.OrganizationId is not { } orgId)
+            return Unauthorized();
+        if (_currentUser.IsSupport) return Forbid();
+
+        var result = await _auth.SwitchPortalAsync(userId, orgId, _currentUser.Role, sso: _currentUser.IsSso);
+        if (result is null) return Forbid();
+
+        SetRefreshCookie(result);
+        return Ok(ToResponse(result));
+    }
+
     // POST /auth/support/enter/{organizationId} — Fusioneta support: act as an
     // Admin inside ANY org. Superadmins only (SUPERADMIN_EMAILS).
     [Authorize(Policy = AuthPolicies.Superadmin)]
@@ -260,5 +279,6 @@ public class AuthController : ControllerBase
             SupportMode = result.SupportMode,
             ViaSso = result.ViaSso,
             FormerEmployee = result.FormerEmployee,
+            CanSwitchPortal = result.CanSwitchPortal,
         };
 }

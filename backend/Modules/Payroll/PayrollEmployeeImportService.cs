@@ -56,7 +56,7 @@ public class PayrollEmployeeImportService : IPayrollEmployeeImportService
         // with no way to fix them in bulk.
         // Employees and Supervisors only, like the roster it fills in.
         var memberships = (await _directory.GetMembershipsForCurrentOrgAsync())
-            .Where(m => OrgRoles.IsOnPayroll(m.Role))
+            .Where(m => m.IsEmployed())
             .ToList();
 
         foreach (var membership in memberships
@@ -175,8 +175,8 @@ public class PayrollEmployeeImportService : IPayrollEmployeeImportService
             if (notOnPayroll.Contains(userId))
             {
                 result.Fail(rowNumber,
-                    $"'{(email.Length > 0 ? email : name)}' is an Admin or Owner, and payroll is for "
-                    + "employees and supervisors only.");
+                    $"'{(email.Length > 0 ? email : name)}' is admin only, and payroll is for the staff. "
+                    + "To pay them, give them an employee record from their Admin access tab.");
                 continue;
             }
 

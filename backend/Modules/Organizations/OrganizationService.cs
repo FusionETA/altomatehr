@@ -105,6 +105,7 @@ public class OrganizationService : IOrganizationService
             Name = name ?? string.Empty,
             Email = email ?? string.Empty,
             Role = m.Role,
+            EmploymentRole = m.EmploymentRole(),
             Modules = isOwner || m.Modules is null ? null : OrgModules.Split(m.Modules).ToList(),
             Levels = isOwner || m.Modules is null ? null : OrgModules.ParseGrant(m.Modules).ToDictionary(kv => kv.Key, kv => kv.Value),
             PolicyIds = isOwner || m.PolicyScope is null ? null : OrgModules.Split(m.PolicyScope).ToList(),
@@ -124,9 +125,30 @@ public class OrganizationService : IOrganizationService
         if (userId == _currentUser?.UserId)
             return (false, "You can't remove yourself.");
 
+        var user = (await _directory.GetUsersAsync()).FirstOrDefault(u => u.Id == userId);
+
+        // Employee & admin: only the admin access goes. They stay on the
+        // staff — paid, on their teams, with their employee portal — and the
+        // grant is reset, so giving admin access again starts from scratch.
+        if (membership.EmploymentRole() is { } employment)
+        {
+            membership.SetRole(employment);
+            membership.Modules = null;
+            membership.PolicyScope = null;
+            membership.CanChangeSettings = true;
+            membership.UpdatedAt = DateTime.UtcNow;
+            await _memberships.UpdateAsync(membership);
+            await _audit.WriteAsync(new AuditEvent(
+                AuditActions.SettingsOrgUpdate,
+                $"Removed admin access from {user?.Email ?? userId} (still on the staff as {employment})",
+                TargetType: "OrganizationMembership",
+                TargetId: membership.Id,
+                Metadata: new { membership.UserId, StillEmployed = employment }));
+            return (false, null);
+        }
+
         await _memberships.DeleteAsync(membership);
 
-        var user = (await _directory.GetUsersAsync()).FirstOrDefault(u => u.Id == userId);
         await _audit.WriteAsync(new AuditEvent(
             AuditActions.SettingsOrgUpdate,
             $"Removed admin {user?.Email ?? userId}",

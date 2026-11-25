@@ -1,8 +1,12 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, Copy, LoaderCircle, Sparkles, X } from "lucide-react";
+import { Briefcase, Check, Copy, LoaderCircle, ShieldCheck, Sparkles, UserCog, X } from "lucide-react";
 import { createEmployee, getNextEmployeeNumber, STAFF_ROLES, type Employee } from "@/features/employees/api";
 import type { Policy } from "@/features/policies/api";
+import { getAdmins, getModuleAccess, type AdminAccess } from "../api";
+import { AccessDialog, AddAdminForm } from "./AdminsSettings";
+import { USER_KIND_LABEL, type UserKind } from "@/features/employees/lib/user-kind";
+import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { DefaultPolicyTag } from "@/features/policies/components/DefaultPolicyTag";
 import {
   Select,
@@ -26,18 +30,36 @@ function generatePassword() {
   return out;
 }
 
-// Mirrors the monolith's "Add employee" dialog, mapped to what our slim account model
-// supports: email + initial password + role + policy. If the email already
-// belongs to a user, the backend reuses that identity (the multi-org case).
+// What each kind of user gets, for the Owner's first question.
+const KIND_CHOICES: { kind: UserKind; icon: typeof Briefcase; hint: string }[] = [
+  { kind: "employee", icon: Briefcase, hint: "On the staff: paid by payroll, with a policy, leave, claims and their own portal. Fill in the employee form." },
+  { kind: "both", icon: UserCog, hint: "On the staff AND runs the admin portal — e.g. HR. Two steps: the employee form, then their admin access. One login." },
+  { kind: "admin", icon: ShieldCheck, hint: "Runs the admin portal only — e.g. an outside accountant. Not on payroll. Name, email and their admin access." },
+];
+
+// Add user. Mirrors the monolith's "Add employee" dialog, mapped to what our
+// slim account model supports: email + initial password + role + policy. If
+// the email already belongs to a user, the backend reuses that identity (the
+// multi-org case).
+//
+// The Owner is asked first what the person is — Employee only, Employee &
+// admin, or Admin only — because admin access is the Owner's to give. Anyone
+// else goes straight to the employee form.
 export function AddEmployeeModal({
   policies,
   onClose,
   onCreated,
+  isOwner = false,
 }: {
   policies: Policy[];
   onClose: () => void;
   onCreated: (created: Employee) => void;
+  isOwner?: boolean;
 }) {
+  const [kind, setKind] = useState<UserKind | null>(isOwner ? null : "employee");
+  // Step 2 for an admin: their access, set on the account just created.
+  const [accessFor, setAccessFor] = useState<{ admin: AdminAccess; created: Employee } | null>(null);
+  const modulesQuery = useCachedQuery(isOwner ? "/organizations/modules" : null, getModuleAccess);
   const [name, setName] = useState("");
   const [employeeNumber, setEmployeeNumber] = useState("");
   // What a blank ID will be assigned — shown as the placeholder so the admin
@@ -76,6 +98,7 @@ export function AddEmployeeModal({
     setSaving(true);
     setError(null);
     try {
+      const asAdmin = kind === "both";
       const created = await createEmployee({
         email: email.trim(),
         password: password.trim() || undefined,
@@ -88,14 +111,27 @@ export function AddEmployeeModal({
         joinDate: joinDate || undefined,
         dateOfBirth: dateOfBirth || undefined,
         sendWelcomeEmail: sendWelcome,
-        role,
+        // Employee & admin: an Admin who is also on the staff in this role.
+        ...(asAdmin ? { role: "Admin", employmentRole: role } : { role }),
         policyId: chosenPolicyId === NONE ? null : chosenPolicyId,
       });
-      onCreated(created);
+      if (asAdmin) {
+        await openAccess(created);
+      } else {
+        onCreated(created);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add the employee.");
       setSaving(false); // keep the modal open so they can fix it
     }
+  }
+
+  // Their access next, on the Owner's Manage access form — as Settings ›
+  // Admins does. They start with full access until it's saved.
+  async function openAccess(created: Employee) {
+    const admin = (await getAdmins()).find((a) => a.userId === created.id);
+    if (admin) setAccessFor({ admin, created });
+    else onCreated(created);
   }
 
   function copyPassword() {
@@ -110,16 +146,111 @@ export function AddEmployeeModal({
   // backdrop-filter — any ancestor with a filter becomes the containing block for
   // position:fixed, so inset-0/90vh would resolve against the card and hang the
   // dialog off both edges of the screen instead of centring it.
+  if (accessFor) {
+    return (
+      <AccessDialog
+        admin={accessFor.admin}
+        allModules={modulesQuery.data?.all ?? []}
+        onClose={() => onCreated(accessFor.created)}
+        onSaved={() => onCreated(accessFor.created)}
+      />
+    );
+  }
+
+  if (kind === null || kind === "admin") {
+    return createPortal(
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
+        <div className="nice-scrollbar max-h-[90vh] w-full max-w-[620px] overflow-y-auto rounded-[32px] border border-white/40 bg-card/95 p-6 shadow-panel backdrop-blur-xl sm:p-8">
+          <div className="mb-5 flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-black text-foreground">
+                {kind === "admin" ? "Add admin only" : "Add user"}
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {kind === "admin"
+                  ? "They run the admin portal and aren't on the staff. You'll choose their access next."
+                  : "What is this person in your company?"}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {kind === null ? (
+            <div className="space-y-3">
+              {KIND_CHOICES.map(({ kind: k, icon: Icon, hint }) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setKind(k)}
+                  className="flex w-full items-start gap-3 rounded-2xl border border-border/70 bg-card p-4 text-left transition hover:border-primary hover:bg-primary/5"
+                >
+                  <Icon className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden />
+                  <span>
+                    <span className="block font-bold text-foreground">{USER_KIND_LABEL[k]}</span>
+                    <span className="mt-0.5 block text-sm text-muted-foreground">{hint}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <>
+              <AddAdminForm
+                onCreated={(admin) =>
+                  setAccessFor({
+                    admin,
+                    created: {
+                      id: admin.userId,
+                      email: admin.email,
+                      name: admin.name,
+                      avatarUrl: null,
+                      role: admin.role,
+                      employmentRole: null,
+                      employeeNumber: null,
+                      jobTitle: null,
+                      joinDate: null,
+                      otTimeBalanceMin: 0,
+                      policyId: null,
+                      shiftId: null,
+                      modules: null,
+                    },
+                  })
+                }
+              />
+              <button
+                type="button"
+                onClick={() => setKind(null)}
+                className="mt-4 text-sm font-semibold text-muted-foreground hover:text-foreground"
+              >
+                ← Back
+              </button>
+            </>
+          )}
+        </div>
+      </div>,
+      document.body,
+    );
+  }
+
   return createPortal(
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
       <div className="flex max-h-[90vh] w-full max-w-[620px] flex-col overflow-hidden rounded-[32px] border border-white/40 bg-card/95 shadow-panel backdrop-blur-xl">
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border/60 px-6 py-5 sm:px-8">
             <div>
-              <h2 className="text-2xl font-black text-foreground">Add employee</h2>
+              <h2 className="text-2xl font-black text-foreground">
+                {kind === "both" ? "Add employee & admin" : "Add user"}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Add a member to this company. If the email already exists, that person is reused —
-                no password needed.
+                {kind === "both"
+                  ? "Step 1 of 2 — their employee details. Their admin access is next."
+                  : "Add a member to this company. If the email already exists, that person is reused — no password needed."}
               </p>
             </div>
             <button
@@ -349,10 +480,10 @@ export function AddEmployeeModal({
           <div className="flex shrink-0 justify-end gap-3 border-t border-border/60 px-6 py-4 sm:px-8">
             <button
               type="button"
-              onClick={onClose}
+              onClick={isOwner ? () => setKind(null) : onClose}
               className="rounded-2xl bg-muted px-4 py-3 text-sm font-semibold text-muted-foreground transition hover:text-foreground"
             >
-              Cancel
+              {isOwner ? "Back" : "Cancel"}
             </button>
             <button
               type="submit"
@@ -360,7 +491,7 @@ export function AddEmployeeModal({
               className="inline-flex items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_rgba(76,26,134,0.18)] transition hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
             >
               {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-              Add employee
+              {kind === "both" ? "Next: admin access" : "Add user"}
             </button>
           </div>
         </form>

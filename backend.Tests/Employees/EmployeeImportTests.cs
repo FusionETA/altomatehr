@@ -121,6 +121,69 @@ public class EmployeeImportTests
     private static Task<EmployeeImportResult> Erase(EmployeeImportService service, byte[] file) =>
         service.ImportAsync(file, TabularFormat.Csv, EmployeeImportBlankCells.Erase);
 
+    // ─── Role: the staff role only ──────────────────────────────────────
+
+    // Admin access is the owner's to give from the Admin access tab, never
+    // the spreadsheet's — whoever runs the import.
+    [Theory]
+    [InlineData("Admin")]
+    [InlineData("Owner")]
+    public async Task A_new_person_cannot_be_imported_as_an_admin(string role)
+    {
+        var h = Make();
+
+        var result = await h.Service.ImportAsync(
+            Csv(Row("boss@example.com", "Boss", role, "EMP-900")), TabularFormat.Csv);
+
+        Assert.Empty(h.Employees.Created);
+        Assert.Contains("Admin access tab", Assert.Single(result.Errors).Message);
+    }
+
+    // Re-importing an Employee & admin as "Employee" sets their staff role and
+    // keeps their admin access — it used to overwrite their only role.
+    [Fact]
+    public async Task Re_importing_an_employee_and_admin_keeps_their_admin_access()
+    {
+        var hr = Member("usr-hr", "hr@example.com", role: "Admin");
+        hr.EmploymentRole = "Employee";
+        var h = Make([hr], [Profile("usr-hr")]);
+
+        var result = await h.Service.ImportAsync(
+            Csv(Row("hr@example.com", "Aminah", "Supervisor", "E-001")), TabularFormat.Csv);
+
+        Assert.True(result.Ok, result.Message);
+        var (_, dto) = Assert.Single(h.Employees.Updated);
+        Assert.Equal("Admin", dto.Role);
+        Assert.Equal("Supervisor", dto.EmploymentRole);
+    }
+
+    // An admin-only row exports with their own Admin/Owner, which must read
+    // back as "no change" so an export imports back cleanly.
+    [Fact]
+    public async Task An_admin_only_row_with_their_own_role_changes_nothing()
+    {
+        var h = Make([Member("usr-acc", "acc@example.com", role: "Admin")], [Profile("usr-acc")]);
+
+        var result = await h.Service.ImportAsync(
+            Csv(Row("acc@example.com", "Kelvin", "Admin", "E-001")), TabularFormat.Csv);
+
+        Assert.True(result.Ok, result.Message);
+        Assert.Empty(result.Errors);
+        Assert.All(h.Employees.Updated, u => Assert.Equal("Admin", u.Dto.Role));
+    }
+
+    [Fact]
+    public async Task A_row_cannot_turn_staff_into_an_admin()
+    {
+        var h = Make([Member("usr-emp", "emp@example.com")], [Profile("usr-emp")]);
+
+        var result = await h.Service.ImportAsync(
+            Csv(Row("emp@example.com", "Ali", "Admin", "E-001")), TabularFormat.Csv);
+
+        Assert.Empty(h.Employees.Updated);
+        Assert.Contains("Admin access tab", Assert.Single(result.Errors).Message);
+    }
+
     // ─── Creating ───────────────────────────────────────────────────────
 
     [Fact]

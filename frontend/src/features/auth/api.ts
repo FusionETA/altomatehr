@@ -14,6 +14,7 @@ export const toSignedInUser = (res: AuthResponse): SignedInUser => ({
   viaSso: res.viaSso ?? false,
   activeOrganizationName: res.activeOrganizationName ?? null,
   formerEmployee: res.formerEmployee ?? false,
+  canSwitchPortal: res.canSwitchPortal ?? false,
 });
 
 export const login = (body: LoginRequest) => apiPost<AuthResponse>("/auth/login", body);
@@ -32,6 +33,10 @@ export const getOrgs = () => apiGet<UserOrg[]>("/auth/orgs");
 // Re-mint the session for another company. The server also rotates the httpOnly
 // refresh cookie to the new org, so a full reload afterwards lands there with
 // every screen re-fetching against it.
+// Employee & admin: from the admin portal to their own employee portal, or
+// back. The refresh cookie then holds the new portal, so a reload boots into it.
+export const switchPortal = () => apiPost<AuthResponse>("/auth/switch-portal");
+
 export const switchOrg = (organizationId: string) =>
   apiPost<AuthResponse>(`/auth/switch-org/${organizationId}`);
 

@@ -84,7 +84,12 @@ public class EmployeeService : IEmployeeService
         if (role is null)
             return new EmployeeSaveResult(false, null, $"Role must be one of: {string.Join(", ", AllowedRoles)}.");
 
-        if (await AdminLimitErrorAsync(fromRole: null, toRole: role, dto.Modules, policyId: dto.PolicyId) is { } limit)
+        var (employmentOk, employment) = ParseEmploymentRole(dto.EmploymentRole);
+        if (!employmentOk)
+            return new EmployeeSaveResult(false, null, "Employment must be Employee, Supervisor, or empty for admin only.");
+
+        if (await AdminLimitErrorAsync(fromRole: null, toRole: role, dto.Modules, policyId: dto.PolicyId,
+                employmentChange: OrgRoles.IsAdministrative(role) && employment is not null) is { } limit)
             return new EmployeeSaveResult(false, null, limit);
 
         var email = dto.Email.Trim();
@@ -147,13 +152,17 @@ public class EmployeeService : IEmployeeService
         {
             UserId = user.Id,
             Role = role,
+            // Only an Admin or Owner carries it: Employee & admin, or admin only.
+            EmploymentRole = OrgRoles.IsAdministrative(role) ? employment : null,
             JoinDate = dto.JoinDate?.Date,
             PolicyId = string.IsNullOrWhiteSpace(dto.PolicyId) ? null : dto.PolicyId,
             ShiftId = string.IsNullOrWhiteSpace(dto.ShiftId) ? null : dto.ShiftId,
             Modules = modulesCsv,
             EmployeeNumber = !string.IsNullOrWhiteSpace(dto.EmployeeNumber)
                 ? dto.EmployeeNumber.Trim()
-                : OrgRoles.IsOnPayroll(role) ? await NextEmployeeNumberAsync() : null,
+                : OrgRoles.IsOnPayroll(role) || (OrgRoles.IsAdministrative(role) && employment is not null)
+                    ? await NextEmployeeNumberAsync()
+                    : null,
             JobTitle = string.IsNullOrWhiteSpace(dto.JobTitle) ? null : dto.JobTitle.Trim(),
             Nickname = string.IsNullOrWhiteSpace(dto.Nickname) ? null : dto.Nickname.Trim(),
         };
@@ -267,13 +276,26 @@ public class EmployeeService : IEmployeeService
         if (!modulesOk)
             return new EmployeeSaveResult(false, null, modulesError);
 
+        var (employmentOk, employment) = ParseEmploymentRole(dto.EmploymentRole);
+        if (!employmentOk)
+            return new EmployeeSaveResult(false, null, "Employment must be Employee, Supervisor, or empty for admin only.");
+
+        // What their employment will be after this save — worked out on a
+        // copy, so a refusal below leaves the membership untouched.
+        var after = new OrganizationMembership { Role = membership.Role, EmploymentRole = membership.EmploymentRole };
+        after.SetRole(role);
+        if (OrgRoles.IsAdministrative(role) && dto.EmploymentRole is not null) after.EmploymentRole = employment;
+        var employmentChanging = OrgRoles.IsAdministrative(role)
+            && !string.Equals(after.EmploymentRole(), membership.EmploymentRole(), StringComparison.Ordinal);
+
         var policyChanging = !string.Equals(
             string.IsNullOrWhiteSpace(dto.PolicyId) ? null : dto.PolicyId, membership.PolicyId, StringComparison.Ordinal);
         if (await AdminLimitErrorAsync(
                 membership.Role, role,
                 ModulesChanged(membership.Modules, modulesCsv) ? dto.Modules : null,
                 policyChanging ? dto.PolicyId : null,
-                checkPolicy: policyChanging) is { } limit)
+                checkPolicy: policyChanging,
+                employmentChange: employmentChanging) is { } limit)
             return new EmployeeSaveResult(false, null, limit);
 
         // The other half of the rule Teams enforces on placement. Without this
@@ -355,8 +377,10 @@ public class EmployeeService : IEmployeeService
         // form that alters who can approve whom, and "what was it before" is
         // the question that gets asked afterwards.
         var previousRole = membership.Role;
+        var previousEmployment = membership.EmploymentRole();
 
-        membership.Role = role;
+        membership.Role = after.Role;
+        membership.EmploymentRole = after.EmploymentRole;
         membership.PolicyId = string.IsNullOrWhiteSpace(dto.PolicyId) ? null : dto.PolicyId;
         membership.ShiftId = string.IsNullOrWhiteSpace(dto.ShiftId) ? null : dto.ShiftId;
         membership.Modules = modulesCsv;
@@ -373,6 +397,10 @@ public class EmployeeService : IEmployeeService
                 ? number
                 : null;
         }
+        // Joining the staff (an admin given an employee record) gets a number,
+        // as anyone added as an employee does — unless one was given.
+        if (previousEmployment is null && membership.IsEmployed() && string.IsNullOrWhiteSpace(membership.EmployeeNumber))
+            membership.EmployeeNumber = await NextEmployeeNumberAsync();
 
         if (dto.JobTitle is not null)
         {
@@ -423,6 +451,7 @@ public class EmployeeService : IEmployeeService
             Metadata: new
             {
                 Role = new { From = previousRole, To = membership.Role, Changed = roleChanged },
+                Employment = new { From = previousEmployment, To = membership.EmploymentRole() },
                 membership.PolicyId,
                 membership.ShiftId,
             }));
@@ -507,6 +536,7 @@ public class EmployeeService : IEmployeeService
         Name = user?.Name ?? "",
         AvatarUrl = user?.AvatarUrl,
         Role = m.Role,
+        EmploymentRole = m.EmploymentRole(),
         EmployeeNumber = m.EmployeeNumber,
         JobTitle = m.JobTitle,
         Nickname = m.Nickname,
@@ -531,10 +561,24 @@ public class EmployeeService : IEmployeeService
     //     policies (or left on the default when it is one of them).
     // Owners (and support, and callers with no limits) pass untouched.
     private async Task<string?> AdminLimitErrorAsync(
-        string? fromRole, string toRole, List<string>? modulesChange, string? policyId, bool checkPolicy = true)
+        string? fromRole, string toRole, List<string>? modulesChange, string? policyId, bool checkPolicy = true,
+        bool employmentChange = false)
     {
-        if (_access is null || !string.Equals(_currentUser.Role, OrgRoles.Admin, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(_currentUser.Role, OrgRoles.Admin, StringComparison.OrdinalIgnoreCase)
+            || _currentUser.IsSupport)
             return null;
+
+        // Admin access is the Owner's to give, whatever access the calling
+        // admin has: making someone an Admin or Owner, changing an admin's
+        // role or module access, or whether an admin also works here. A
+        // full-access admin used to pass — and could make a second Owner.
+        var roleTouchesAdmin = !string.Equals(fromRole, toRole, StringComparison.OrdinalIgnoreCase)
+            && (OrgRoles.IsAdministrative(toRole) || (fromRole is not null && OrgRoles.IsAdministrative(fromRole)));
+        var adminModules = modulesChange is not null && OrgRoles.IsAdministrative(toRole);
+        if (roleTouchesAdmin || adminModules || employmentChange)
+            return "Only the organization's owner can add admins or change an admin's role and access.";
+
+        if (_access is null) return null;
         var access = await _access.GetAccessAsync();
         if (!access.Restricted) return null;
 
@@ -553,6 +597,16 @@ public class EmployeeService : IEmployeeService
         }
 
         return null;
+    }
+
+    // "" or blank → admin only (null); Employee / Supervisor → that; null →
+    // not given. Anything else is refused.
+    private static (bool Ok, string? Role) ParseEmploymentRole(string? raw)
+    {
+        if (raw is null || raw.Trim().Length == 0) return (true, null);
+        var match = new[] { OrgRoles.Employee, OrgRoles.Supervisor }
+            .FirstOrDefault(r => string.Equals(r, raw.Trim(), StringComparison.OrdinalIgnoreCase));
+        return match is null ? (false, null) : (true, match);
     }
 
     private static bool ModulesChanged(string? before, string? after) =>

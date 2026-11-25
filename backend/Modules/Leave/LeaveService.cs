@@ -173,7 +173,7 @@ public class LeaveService : ILeaveService
         // its leave roster (as on payroll). In scope: a policy-limited admin's
         // grid is their people.
         var members = (await _directory.GetMembershipsInScopeAsync())
-            .Where(m => OrgRoles.IsOnPayroll(m.Role))
+            .Where(m => m.IsEmployed())
             .ToList();
         if (members.Count == 0) return Array.Empty<EmployeeLeaveBalancesDto>();
 
@@ -577,7 +577,7 @@ public class LeaveService : ILeaveService
         int year, IReadOnlyList<string>? employeeIds)
     {
         var members = (await _directory.GetMembershipsInScopeAsync())
-            .Where(m => OrgRoles.IsOnPayroll(m.Role))
+            .Where(m => m.IsEmployed())
             .ToList();
         var wanted = employeeIds is { Count: > 0 } ? employeeIds.ToHashSet() : null;
         var targets = members

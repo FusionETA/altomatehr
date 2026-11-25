@@ -25,7 +25,8 @@ import { isMalaysianNationality, isSocsoCovered, socsoSchemeNeedsManualChoice } 
 // (LHDN issues the TIN later), and bank details (needed to disburse, not to
 // calculate).
 
-export type SectionId = "personal" | "employment" | "statutory" | "company" | "documents";
+// "access" is the Owner-only Admin access tab — no profile fields of its own.
+export type SectionId = "personal" | "employment" | "statutory" | "company" | "documents" | "access";
 
 /** null / undefined / "" / "   " are blank; 0 and false are real answers. */
 function present(value: unknown): boolean {
@@ -106,6 +107,7 @@ const RULES: Record<SectionId, Rule[]> = {
     { label: "Employee number", applies: always, filled: (_p, ctx) => present(ctx.employeeNumber) },
   ],
   documents: [],
+  access: [],
 };
 
 /** Which fields this section requires right now, given the rest of the profile. */

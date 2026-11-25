@@ -60,6 +60,8 @@ builder.Services.AddControllers(o =>
         o.Filters.Add<PartnerAccessFilter>();   // deny-by-default for partner tokens
         // A policy-limited admin reaches no employee outside their scope by id.
         o.Filters.Add<AltomateHR.Api.Modules.Organizations.EmployeeScopeRouteFilter>();
+        // An Employee & admin can't change their own record from the admin portal.
+        o.Filters.Add<AltomateHR.Api.Modules.Employees.OwnRecordRouteFilter>();
     })
     .AddJsonOptions(o =>
         o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));

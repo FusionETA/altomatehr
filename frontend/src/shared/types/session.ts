@@ -17,4 +17,7 @@ export type SignedInUser = {
    *  out). View-only: the portal shows their payslips there and nothing else,
    *  and the server refuses writes. */
   formerEmployee?: boolean;
+  /** Employee & admin: can move between the admin portal and their own
+   *  employee portal in this company. `role` says which one they're in. */
+  canSwitchPortal?: boolean;
 };

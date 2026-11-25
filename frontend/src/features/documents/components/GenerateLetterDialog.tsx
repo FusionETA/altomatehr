@@ -1,3 +1,4 @@
+import { staffRole } from "@/features/employees/lib/user-kind";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle, CheckCircle2, ExternalLink, FileDown, LoaderCircle, PencilLine, Undo2, X } from "lucide-react";
@@ -11,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/components/ui/select";
-import { getEmployees, STAFF_ROLES } from "@/features/employees/api";
+import { getEmployees } from "@/features/employees/api";
 import {
   generateLetter,
   getTemplates,
@@ -81,7 +82,7 @@ export function GenerateLetterDialog({
   const employees = useMemo(
     () =>
       (employeesQuery.data ?? [])
-        .filter((e) => (STAFF_ROLES as readonly string[]).includes(e.role) || e.id === presetEmployee)
+        .filter((e) => staffRole(e) !== null || e.id === presetEmployee)
         .sort((a, b) => a.name.localeCompare(b.name)),
     [employeesQuery.data, presetEmployee],
   );

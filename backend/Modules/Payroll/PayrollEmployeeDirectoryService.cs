@@ -32,7 +32,7 @@ public class PayrollEmployeeDirectoryService : IPayrollEmployeeDirectoryService
         // Employees and Supervisors only — an Admin or Owner is not on payroll.
         // In scope only: a policy-limited admin's list is their people.
         var memberships = (await _directory.GetMembershipsInScopeAsync())
-            .Where(m => OrgRoles.IsOnPayroll(m.Role))
+            .Where(m => m.IsEmployed())
             .ToList();
 
         return
