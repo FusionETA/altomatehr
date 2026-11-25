@@ -9,7 +9,7 @@
 
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, statSync } from "node:fs";
 
-const API = "http://localhost:5001";
+const API = process.env.GUIDE_API ?? "http://localhost:5001"; // GUIDE_API: another localhost port
 const PASSWORD = "password123"; // backend/Data/DbSeeder.cs
 if (!/^http:\/\/(localhost|127\.0\.0\.1)[:/]/.test(API)) throw new Error("local demo stack only");
 
@@ -571,6 +571,17 @@ const steps = {
       copyPayrollInfo: false,
     });
     console.log("transfer Nadia out:", r.status, r.data?.executedImmediately);
+  },
+  // One demo API token in the demo company so Settings → API integrations has a
+  // row with an "Edit access" button. Needs admin@altomate.com on SUPERADMIN_EMAILS.
+  "api-token": async () => {
+    const t = await demoAdmin();
+    const list = (await call(t, "GET", "/api-keys")).data ?? [];
+    if (list.some((k) => k.name === "Altomate Accounting" && k.active)) { console.log("token already there"); return; }
+    const r = await call(t, "POST", "/api-keys", {
+      name: "Altomate Accounting", scopes: ["employees:read", "claims:read", "leave:read"],
+    });
+    console.log("create demo token:", r.status);
   },
 };
 

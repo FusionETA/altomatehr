@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 64d4fb8
+// whats-new-covered-up-to: 3a6d47a
 
 // A line is for everyone, or — wrapped in admins(…) — for admins and owners
 // only. Employees and supervisors never see an admins line, so it doesn't
@@ -28,6 +28,18 @@ export type WhatsNewEntry = {
 };
 
 export const WHATS_NEW: WhatsNewEntry[] = [
+  {
+    date: "2026-11-25",
+    title: "A main project for staff on several projects",
+    new: [
+      admins("Employees on teams in more than one project can now have a main project, in Employee → Company → Main project. Their pay posts to Xero under it."),
+      admins("Payroll settings → Xero sync lists anyone on several projects with no main project. Their pay posts under \"(No project)\" until one is set."),
+    ],
+    improved: [
+      admins("The AI split's project rules now match on an employee's main project."),
+      admins("With \"Sum by project\", split lines stay separate for each project and carry that project's tag."),
+    ],
+  },
   {
     date: "2026-11-24",
     title: "Random payslip passwords",
