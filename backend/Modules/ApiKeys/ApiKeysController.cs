@@ -39,6 +39,26 @@ public class ApiKeysController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await _service.GetAllAsync());
 
+    // PUT /api-keys/{id} — change a key's name and scopes. The token is unchanged,
+    // so the partner app holding it needs no reconfiguring.
+    [HttpPut("{id}")]
+    public async Task<IActionResult> Update(string id, UpdateApiKeyDto dto)
+    {
+        try
+        {
+            var updated = await _service.UpdateAsync(id, dto);
+            return updated is null ? NotFound() : Ok(updated);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = new { status = 400, message = ex.Message } });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { error = new { status = 409, message = ex.Message } });
+        }
+    }
+
     // DELETE /api-keys/{id} — revoke (soft). Idempotent.
     [HttpDelete("{id}")]
     public async Task<IActionResult> Revoke(string id) =>

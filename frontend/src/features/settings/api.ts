@@ -469,6 +469,9 @@ export type CreatedApiKey = ApiKey & { token: string };
 export const getApiKeys = () => apiGet<ApiKey[]>("/api-keys");
 export const createApiKey = (body: { name: string; scopes: string[] }) =>
   apiPost<CreatedApiKey>("/api-keys", body);
+// Same token, new name/scopes — the partner app holding it needs no change.
+export const updateApiKey = (id: string, body: { name: string; scopes: string[] }) =>
+  apiPut<ApiKey>(`/api-keys/${id}`, body);
 export const revokeApiKey = (id: string) => apiDelete<void>(`/api-keys/${id}`);
 
 // ─── Settings → Notifications ────────────────────────────────────────────

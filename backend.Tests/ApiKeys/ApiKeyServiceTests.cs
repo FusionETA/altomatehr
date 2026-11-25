@@ -1,6 +1,8 @@
 using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Modules.ApiKeys.Dtos;
 using AltomateHR.Api.Modules.ApiKeys.Entities;
+using AltomateHR.Api.Modules.Audit;
+using AltomateHR.Api.Tests.Audit;
 
 namespace AltomateHR.Api.Tests.ApiKeys;
 
@@ -60,6 +62,90 @@ public class ApiKeyServiceTests
 
         Assert.True(ok);
         Assert.False(repo.Keys.Single().Active);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ChangesScopesAndName_KeepsTheToken_AndAudits()
+    {
+        var repo = new FakeApiKeyRepository();
+        var audit = new FakeAuditService();
+        var service = new ApiKeyService(repo, audit);
+        var created = await service.CreateAsync(new CreateApiKeyDto
+        {
+            Name = "3D Floor",
+            Scopes = ["employees:read", "organizations:write"],
+        });
+        var hashBefore = repo.Keys.Single().TokenHash;
+
+        var updated = await service.UpdateAsync(created.Id, new UpdateApiKeyDto
+        {
+            Name = " 3D Floor app ",
+            Scopes = ["employees:read", "attendance:read"],
+        });
+
+        Assert.NotNull(updated);
+        Assert.Equal("3D Floor app", updated!.Name);
+        Assert.Equal(["employees:read", "attendance:read"], updated.Scopes);
+        var stored = repo.Keys.Single();
+        Assert.Equal("employees:read,attendance:read", stored.Scopes);
+        Assert.Equal(hashBefore, stored.TokenHash);                  // same token keeps working
+        Assert.IsType<ApiKeyDto>(updated, exactMatch: true);         // no token in the reply
+
+        var entry = Assert.Single(audit.Written);
+        Assert.Equal(AuditActions.ApiKeyUpdate, entry.Action);
+        Assert.Contains("added attendance:read", entry.Summary);
+        Assert.Contains("removed organizations:write", entry.Summary);
+        Assert.Contains("renamed from \"3D Floor\"", entry.Summary);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_NoChange_WritesNoAuditEntry()
+    {
+        var repo = new FakeApiKeyRepository();
+        var audit = new FakeAuditService();
+        var service = new ApiKeyService(repo, audit);
+        var created = await service.CreateAsync(new CreateApiKeyDto { Name = "k", Scopes = ["leave:read"] });
+
+        await service.UpdateAsync(created.Id, new UpdateApiKeyDto { Name = "k", Scopes = ["leave:read"] });
+
+        Assert.Empty(audit.Written);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_RejectsUnknownScopes_AndLeavesTheKeyAlone()
+    {
+        var repo = new FakeApiKeyRepository();
+        var service = new ApiKeyService(repo);
+        var created = await service.CreateAsync(new CreateApiKeyDto { Name = "k", Scopes = ["leave:read"] });
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.UpdateAsync(created.Id, new UpdateApiKeyDto { Name = "k", Scopes = ["leave:read", "root:all"] }));
+        Assert.Equal("leave:read", repo.Keys.Single().Scopes);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_RefusesARevokedKey()
+    {
+        var repo = new FakeApiKeyRepository();
+        var service = new ApiKeyService(repo);
+        var created = await service.CreateAsync(new CreateApiKeyDto { Name = "k", Scopes = ["leave:read"] });
+        await service.RevokeAsync(created.Id);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.UpdateAsync(created.Id, new UpdateApiKeyDto { Name = "k", Scopes = ["payroll:write"] }));
+        Assert.Equal("leave:read", repo.Keys.Single().Scopes);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ReturnsNullForUnknownOrAssistantKey()
+    {
+        var repo = new FakeApiKeyRepository();
+        repo.Keys.Add(new ApiKey { Id = "fah", Name = "assistant", Scopes = "leave:read", Active = true, ActingUserId = "u1" });
+        var service = new ApiKeyService(repo);
+
+        Assert.Null(await service.UpdateAsync("does-not-exist", new UpdateApiKeyDto { Name = "x", Scopes = [] }));
+        Assert.Null(await service.UpdateAsync("fah", new UpdateApiKeyDto { Name = "x", Scopes = ["payroll:write"] }));
+        Assert.Equal("leave:read", repo.Keys.Single().Scopes);
     }
 
     [Fact]

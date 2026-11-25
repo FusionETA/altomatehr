@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Check, Copy, KeyRound, LoaderCircle, Plus, X } from "lucide-react";
-import { createApiKey, getApiKeys, revokeApiKey, type ApiKey, type CreatedApiKey } from "../api";
+import { Check, Copy, KeyRound, LoaderCircle, Pencil, Plus, X } from "lucide-react";
+import { createApiKey, getApiKeys, revokeApiKey, updateApiKey, type ApiKey, type CreatedApiKey } from "../api";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import { useConfirm } from "@/shared/components/ConfirmDialog";
 import { SkeletonPanel } from "@/shared/components/Skeleton";
@@ -54,6 +54,7 @@ export function ApiIntegrationsSettings({ organizationName }: { organizationName
   const keysQuery = useCachedQuery("/api-keys", getApiKeys);
   const [creating, setCreating] = useState(false);
   const [created, setCreated] = useState<CreatedApiKey | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirm, confirmDialog] = useConfirm();
 
@@ -87,7 +88,7 @@ export function ApiIntegrationsSettings({ organizationName }: { organizationName
           </p>
         </div>
         {!creating ? (
-          <button type="button" className={BUTTON} onClick={() => { setCreated(null); setCreating(true); }}>
+          <button type="button" className={BUTTON} onClick={() => { setCreated(null); setEditingId(null); setCreating(true); }}>
             <Plus className="h-4 w-4" /> New token
           </button>
         ) : null}
@@ -98,9 +99,10 @@ export function ApiIntegrationsSettings({ organizationName }: { organizationName
       {created ? <CreatedToken token={created} onDone={() => setCreated(null)} /> : null}
 
       {creating ? (
-        <CreateTokenForm
+        <TokenForm
           onCancel={() => setCreating(false)}
-          onCreated={async (key) => {
+          onSubmit={async (body) => {
+            const key = await createApiKey(body);
             setCreating(false);
             setCreated(key);
             await keysQuery.refresh();
@@ -116,7 +118,19 @@ export function ApiIntegrationsSettings({ organizationName }: { organizationName
         </p>
       ) : (
         <ul className="divide-y divide-border/60 rounded-2xl border border-border/70">
-          {keys.map((key) => (
+          {keys.map((key) => editingId === key.id ? (
+            <li key={key.id} className="px-4 py-3">
+              <TokenForm
+                existing={key}
+                onCancel={() => setEditingId(null)}
+                onSubmit={async (body) => {
+                  await updateApiKey(key.id, body);
+                  setEditingId(null);
+                  await keysQuery.refresh();
+                }}
+              />
+            </li>
+          ) : (
             <li key={key.id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
               <div className="min-w-0 space-y-1.5">
                 <p className="flex items-center gap-2 text-sm font-bold text-foreground">
@@ -141,9 +155,18 @@ export function ApiIntegrationsSettings({ organizationName }: { organizationName
                 </p>
               </div>
               {key.active ? (
-                <button type="button" className={BUTTON_GHOST} onClick={() => void onRevoke(key)}>
-                  Revoke
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className={BUTTON_GHOST}
+                    onClick={() => { setCreating(false); setCreated(null); setEditingId(key.id); }}
+                  >
+                    <Pencil className="h-3.5 w-3.5" /> Edit access
+                  </button>
+                  <button type="button" className={BUTTON_GHOST} onClick={() => void onRevoke(key)}>
+                    Revoke
+                  </button>
+                </div>
               ) : null}
             </li>
           ))}
@@ -153,15 +176,19 @@ export function ApiIntegrationsSettings({ organizationName }: { organizationName
   );
 }
 
-function CreateTokenForm({
+// New token, or an existing one's name and scopes. Editing keeps the token
+// itself, so whatever already holds it gets the new access on its next call.
+function TokenForm({
+  existing,
   onCancel,
-  onCreated,
+  onSubmit,
 }: {
+  existing?: ApiKey;
   onCancel: () => void;
-  onCreated: (key: CreatedApiKey) => void | Promise<void>;
+  onSubmit: (body: { name: string; scopes: string[] }) => Promise<void>;
 }) {
-  const [name, setName] = useState("");
-  const [scopes, setScopes] = useState<Set<string>>(new Set());
+  const [name, setName] = useState(existing?.name ?? "");
+  const [scopes, setScopes] = useState<Set<string>>(new Set(existing?.scopes ?? []));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const allSelected = scopes.size === SCOPES.length;
@@ -178,9 +205,10 @@ function CreateTokenForm({
     setPending(true);
     setError(null);
     try {
-      await onCreated(await createApiKey({ name: name.trim(), scopes: [...scopes] }));
+      // Kept in the catalogue's order, so the chips read the same as the list.
+      await onSubmit({ name: name.trim(), scopes: SCOPES.map((s) => s.scope).filter((s) => scopes.has(s)) });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't create the token.");
+      setError(err instanceof Error ? err.message : existing ? "Couldn't save the token." : "Couldn't create the token.");
     } finally {
       setPending(false);
     }
@@ -189,15 +217,17 @@ function CreateTokenForm({
   return (
     <div className="space-y-4 rounded-2xl border border-border/70 bg-muted/30 p-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-bold text-foreground">New API token</p>
+        <p className="text-sm font-bold text-foreground">
+          {existing ? <>Edit access — <span className="font-mono text-xs">{existing.tokenPrefix}…</span></> : "New API token"}
+        </p>
         <button type="button" onClick={onCancel} className="rounded-full p-1.5 text-muted-foreground hover:bg-muted" aria-label="Cancel">
           <X className="h-4 w-4" />
         </button>
       </div>
       <div>
-        <label htmlFor="apiTokenName" className="mb-1.5 block text-sm font-semibold text-foreground">Name</label>
+        <label htmlFor={existing ? `apiTokenName-${existing.id}` : "apiTokenName"} className="mb-1.5 block text-sm font-semibold text-foreground">Name</label>
         <input
-          id="apiTokenName"
+          id={existing ? `apiTokenName-${existing.id}` : "apiTokenName"}
           className={INPUT}
           maxLength={120}
           placeholder="e.g. Altomate Accounting"
@@ -218,7 +248,9 @@ function CreateTokenForm({
           </button>
         </div>
         <p className="mb-2 text-xs text-muted-foreground">
-          A token gets exactly what you tick — nothing more. Scopes can't be edited later; revoke and create a new token instead.
+          {existing
+            ? "The token stays the same — the app using it gets this access from its next request, with nothing to change on its side."
+            : "A token gets exactly what you tick — nothing more. You can change this later with Edit access."}
         </p>
         <div className="grid max-h-72 gap-1 overflow-y-auto rounded-xl border border-border/60 bg-card p-2 sm:grid-cols-2">
           {SCOPES.map(({ scope, description }) => (
@@ -237,7 +269,7 @@ function CreateTokenForm({
         <button type="button" className={BUTTON_GHOST} onClick={onCancel}>Cancel</button>
         <button type="button" className={BUTTON} disabled={pending || !name.trim() || scopes.size === 0} onClick={() => void submit()}>
           {pending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-          Create token
+          {existing ? "Save access" : "Create token"}
         </button>
       </div>
     </div>

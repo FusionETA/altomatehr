@@ -9,6 +9,13 @@ public interface IApiKeyService
 
     Task<IReadOnlyList<ApiKeyDto>> GetAllAsync();
 
+    // Change a key's label and scopes in place — the token stays the same, and
+    // the new scopes apply from its next request. Null if the key isn't in this
+    // org (or is an assistant's FAH key, which isn't managed here). Throws
+    // ArgumentException for an unknown scope, InvalidOperationException for a
+    // revoked key.
+    Task<ApiKeyDto?> UpdateAsync(string id, UpdateApiKeyDto dto);
+
     // Soft-revoke (Active=false). True if the key exists in this org, false if not.
     Task<bool> RevokeAsync(string id);
 
