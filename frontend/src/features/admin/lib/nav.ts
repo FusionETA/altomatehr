@@ -48,12 +48,12 @@ export const adminNav: AdminNavItem[] = [
   { id: "leave", label: "Leave", icon: CalendarDays, module: "leave" },
   {
     id: "company",
-    label: "Company/Employee",
+    label: "Company/User",
     icon: Network,
     built: true,
     children: [
       { id: "company-structure", label: "Company Structure", module: "teams" },
-      { id: "manage-employee", label: "Manage Employee", module: "employees" },
+      { id: "manage-employee", label: "Manage User", module: "employees" },
     ],
   },
   {

@@ -1,3 +1,4 @@
+using AltomateHR.Api.Common;
 using System.Globalization;
 using AltomateHR.Api.Common.Tabular;
 using AltomateHR.Api.Modules.Employees.Dtos;
@@ -34,6 +35,9 @@ public class EmployeeImportService : IEmployeeImportService
     private readonly Organizations.IOrganizationService? _organizations;
     private readonly Common.ICurrentUser? _currentUser;
 
+    // An Employee & admin's own row is refused: not their own record, from the admin portal.
+    private readonly IOwnRecordRule? _ownRecord;
+
     public EmployeeImportService(
         IEmployeeService employees,
         IEmployeeProfileService profiles,
@@ -42,8 +46,10 @@ public class EmployeeImportService : IEmployeeImportService
         IShiftService shifts,
         Organizations.IModuleAccessService access,
         Organizations.IOrganizationService? organizations = null,
-        Common.ICurrentUser? currentUser = null)
+        Common.ICurrentUser? currentUser = null,
+        IOwnRecordRule? ownRecord = null)
     {
+        _ownRecord = ownRecord;
         _employees = employees;
         _profiles = profiles;
         _directory = directory;
@@ -142,7 +148,9 @@ public class EmployeeImportService : IEmployeeImportService
             {
                 [EmployeeImportSheet.EmailKey] = employee.Email,
                 [EmployeeImportSheet.NameKey] = employee.Name,
-                [EmployeeImportSheet.RoleKey] = employee.Role,
+                // Their role on the staff; an admin only shows as Admin/Owner,
+                // which reads back as "no change".
+                [EmployeeImportSheet.RoleKey] = employee.EmploymentRole ?? employee.Role,
                 [EmployeeImportSheet.EmployeeNumberKey] = employee.EmployeeNumber,
                 [EmployeeImportSheet.JobTitleKey] = employee.JobTitle,
                 [EmployeeImportSheet.NicknameKey] = employee.Nickname,
@@ -314,6 +322,12 @@ public class EmployeeImportService : IEmployeeImportService
 
             if (existing.TryGetValue(email, out var member))
             {
+                if (_ownRecord is not null && await _ownRecord.IsCallersOwnAsync(member.Id))
+                {
+                    errors.Add(new TabularImportError(rowNumber, OwnRecordRule.Refusal));
+                    continue;
+                }
+
                 var profile = await _profiles.GetAsync(member.Id);
                 if (profile is null)
                 {
@@ -372,6 +386,9 @@ public class EmployeeImportService : IEmployeeImportService
             var policyId = adding.Lookup(EmployeeImportSheet.PolicyKey, policies, "policy");
             var shiftId = adding.Lookup(EmployeeImportSheet.ShiftKey, shifts, "shift");
 
+            var newRole = adding.Text(EmployeeImportSheet.RoleKey, 20) ?? OrgRoles.Employee;
+            if (OrgRoles.IsAdministrative(newRole))
+                adding.Problems.Add(AdminRoleProblem);
             if (name is null) adding.Problems.Add($"\"{email}\" is new, so Name is required.");
             if (number is null) adding.Problems.Add($"\"{email}\" is new, so Employee No is required.");
             var password = DefaultPassword.For(email, dateOfBirth);
@@ -402,7 +419,7 @@ public class EmployeeImportService : IEmployeeImportService
                 Email = email,
                 Name = name,
                 Password = password,
-                Role = adding.Text(EmployeeImportSheet.RoleKey, 20) ?? "Employee",
+                Role = newRole,
                 EmployeeNumber = number,
                 JobTitle = adding.Text(EmployeeImportSheet.JobTitleKey, 120),
                 Nickname = adding.Text(EmployeeImportSheet.NicknameKey, 60),
@@ -456,6 +473,10 @@ public class EmployeeImportService : IEmployeeImportService
         };
     }
 
+    private const string AdminRoleProblem =
+        "Role can only be Employee or Supervisor here. Admin access is given by the owner from the "
+        + "user's Admin access tab.";
+
     // The membership half of an existing person's row. Starts from what they
     // have — UpdateEmployeeDto overwrites policy, shift, role and modules
     // unconditionally — and changes only the columns in the file.
@@ -479,7 +500,26 @@ public class EmployeeImportService : IEmployeeImportService
         };
 
         cells.Required(EmployeeImportSheet.NameKey, "Name", 160, v => save.Name = v);
-        cells.Required(EmployeeImportSheet.RoleKey, "Role", 20, v => save.Role = v);
+        // The Role column is their role on the STAFF. An admin's admin access
+        // isn't the file's to change: "Employee"/"Supervisor" on an admin's
+        // row sets their employment and keeps them an admin; their own
+        // Admin/Owner (what an admin-only row exports as) is no change.
+        cells.Required(EmployeeImportSheet.RoleKey, "Role", 20, v =>
+        {
+            if (OrgRoles.IsAdministrative(v))
+            {
+                if (!string.Equals(v, member.Role, StringComparison.OrdinalIgnoreCase))
+                    cells.Problems.Add(AdminRoleProblem);
+            }
+            else if (OrgRoles.IsAdministrative(member.Role))
+            {
+                save.EmploymentRole = v;
+            }
+            else
+            {
+                save.Role = v;
+            }
+        });
         cells.Required(EmployeeImportSheet.EmployeeNumberKey, "Employee No", 40, v => save.EmployeeNumber = v);
         // The service reads "" as "clear" for these two, null as "unchanged".
         cells.Text(EmployeeImportSheet.JobTitleKey, 120, v => save.JobTitle = v ?? string.Empty);

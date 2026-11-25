@@ -70,7 +70,7 @@ public class HoursSummaryService : IHoursSummaryService
     {
         // In scope: a policy-limited admin's report covers their people.
         var members = await _directory.GetMembershipsInScopeAsync();
-        var staff = members.Where(m => m.Role is "Employee" or "Supervisor").ToList();
+        var staff = members.Where(m => m.IsEmployed()).ToList();
 
         // Narrowed through the same resolver the other admin reports use, so a
         // filter means the same people here as it does on Today or Performance.

@@ -26,4 +26,8 @@ public class AuthResponseDto
     // The active company is one they no longer work at (archived there after
     // leaving or a transfer). The portal shows payslips only; writes are refused.
     public bool FormerEmployee { get; set; }
+
+    // Employee & admin: show the portal switch. Role is the portal they are
+    // in — Admin/Owner for the admin portal, Employee/Supervisor for theirs.
+    public bool CanSwitchPortal { get; set; }
 }

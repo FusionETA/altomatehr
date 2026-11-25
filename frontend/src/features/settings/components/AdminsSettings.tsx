@@ -56,8 +56,9 @@ export function AdminsSettings() {
     const who = admin.name || admin.email;
     const ok = await confirm({
       title: `Remove ${who} as an admin?`,
-      message:
-        "They lose access to this company straight away. Their login isn't deleted — if they administer another company, that stays. You can add them again later.",
+      message: admin.employmentRole
+        ? `They lose admin access straight away, but stay on the staff as ${admin.employmentRole.toLowerCase()} — still paid, with their own employee portal. You can give admin access again later.`
+        : "They lose access to this company straight away. Their login isn't deleted — if they administer another company, that stays. You can add them again later.",
       confirmLabel: "Remove admin",
       destructive: true,
     });
@@ -373,7 +374,7 @@ function DetailsDialog({
 }
 
 // One line per admin: what they can reach, at a glance.
-function describeAccess(admin: AdminAccess): string {
+export function describeAccess(admin: AdminAccess): string {
   const levels = admin.levels;
   const parts: string[] = [];
   if (levels === null) {
@@ -401,7 +402,7 @@ function describeAccess(admin: AdminAccess): string {
 // Manage access straight after, where the Owner sets their limits.
 // Mirrors the monolith's "Add admin" form (POST /employees with role Admin),
 // which reuses the identity when the email already exists.
-function AddAdminForm({ onCreated }: { onCreated: (admin: AdminAccess) => void }) {
+export function AddAdminForm({ onCreated }: { onCreated: (admin: AdminAccess) => void }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -524,7 +525,7 @@ const LEVELS: { value: ModuleLevel; label: string }[] = [
 ];
 
 // The Owner's three limits for one admin, one tab each.
-function AccessDialog({
+export function AccessDialog({
   admin,
   allModules,
   onClose,

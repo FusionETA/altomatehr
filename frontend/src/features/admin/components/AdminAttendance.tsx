@@ -1,3 +1,4 @@
+import { staffRole } from "@/features/employees/lib/user-kind";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import {
   ChevronDown,
@@ -36,7 +37,7 @@ import { AttendancePhotoButton } from "@/features/attendance/components/Attendan
 import { displayStatus } from "@/features/attendance/lib/attendance-status";
 import { dayOffsetLabel } from "@/features/attendance/lib/attendance-time";
 import { OvertimeStatusBadge } from "@/features/overtime/components/OvertimeStatusBadge";
-import { getEmployees, STAFF_ROLES, type Employee } from "@/features/employees/api";
+import { getEmployees, type Employee } from "@/features/employees/api";
 import { exportEmployeeLeaveSummaryPdf } from "@/features/leave/api";
 import { getProjects } from "@/features/settings/api";
 import { getTeams, type TeamMember } from "@/features/teams/api";
@@ -319,7 +320,7 @@ export function AdminAttendance() {
     // administer the company; listing them made every new company's roll call
     // open on its owner as "No clock-in". (Names below still cover everyone,
     // so an admin who approved something is labelled.)
-    setRoster(employees.filter((e) => (STAFF_ROLES as readonly string[]).includes(e.role)));
+    setRoster(employees.filter((e) => staffRole(e) !== null));
   }, [employeesQuery.data]);
   useEffect(() => {
     const projectList = projectsQuery.data ?? [];

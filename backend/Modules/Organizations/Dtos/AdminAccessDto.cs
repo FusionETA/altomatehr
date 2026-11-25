@@ -11,6 +11,10 @@ public class AdminAccessDto
     public string Email { get; set; } = string.Empty;
     public string Role { get; set; } = string.Empty;
 
+    // "Employee" / "Supervisor" when this admin also works here (Employee &
+    // admin); null when they are admin only.
+    public string? EmploymentRole { get; set; }
+
     // The admin's module grant: null = full access (everything the org's plan
     // enables); a list narrows them to those modules; an empty list locks them
     // out. This is OrganizationMembership.Modules, surfaced for the Owner UI.

@@ -289,6 +289,25 @@ public class AdminAccessTests
         Assert.Equal(2, unlimited.Claims.Count());
     }
 
+    // An Employee & admin in their OWN employee portal (session role
+    // Supervisor) approves for their team like any supervisor: the limits on
+    // their admin access must not reach that session.
+    [Fact]
+    public async Task An_employee_and_admin_s_limits_stay_in_the_admin_portal()
+    {
+        using var db = Db();
+        AddOrg(db);
+        db.OrganizationMemberships.Add(new OrganizationMembership
+        {
+            OrganizationId = "org-1", UserId = "usr-admin", Role = "Admin", EmploymentRole = "Supervisor",
+            Modules = "payroll",
+        });
+        db.SaveChanges();
+
+        Assert.Equal(ModuleLevel.Manage, await Service(db, role: "Supervisor").GetModuleLevelAsync("leave"));
+        Assert.Equal(ModuleLevel.None, await Service(db, role: "Admin").GetModuleLevelAsync("leave"));
+    }
+
     // ─── Helpers ────────────────────────────────────────────────────────
 
     private static AppDbContext Db(string? name = null, IEmployeeScope? scope = null) =>

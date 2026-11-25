@@ -15,6 +15,8 @@ public class PayrollAdjustmentImportService : IPayrollAdjustmentImportService
     private readonly IPayrollRunAdjustmentRepository _adjustmentRows;
     private readonly IEmployeeProfileRepository _profiles;
     private readonly IDirectoryService _directory;
+    // An Employee & admin's own row is refused: not their own pay, from the admin portal.
+    private readonly IOwnRecordRule? _ownRecord;
     private readonly ISalaryChangeService _salaryChanges;
 
     public PayrollAdjustmentImportService(
@@ -24,8 +26,10 @@ public class PayrollAdjustmentImportService : IPayrollAdjustmentImportService
         IPayrollRunAdjustmentRepository adjustmentRows,
         IEmployeeProfileRepository profiles,
         IDirectoryService directory,
-        ISalaryChangeService salaryChanges)
+        ISalaryChangeService salaryChanges,
+        IOwnRecordRule? ownRecord = null)
     {
+        _ownRecord = ownRecord;
         _runs = runs;
         _members = members;
         _adjustments = adjustments;
@@ -144,6 +148,12 @@ public class PayrollAdjustmentImportService : IPayrollAdjustmentImportService
                 errors.Add(new TabularImportError(
                     rowNumber,
                     $"\"{name}\" matches {matches.Count} employees. Rename one, or use the editor."));
+                continue;
+            }
+
+            if (_ownRecord is not null && await _ownRecord.IsCallersOwnAsync(matches[0].UserId, matches[0].Id))
+            {
+                errors.Add(new TabularImportError(rowNumber, OwnRecordRule.Refusal));
                 continue;
             }
 

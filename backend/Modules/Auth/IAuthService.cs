@@ -24,6 +24,10 @@ public interface IAuthService
     // the caller's current one.
     Task<AuthResult?> SwitchOrgAsync(string userId, string organizationId, bool sso = false, string? signInVia = null);
 
+    // An Employee & admin: from the admin portal to their employee portal or
+    // back, in the same company. Null when they aren't both.
+    Task<AuthResult?> SwitchPortalAsync(string userId, string organizationId, string? currentRole, bool sso = false);
+
     // Support mode (Fusioneta superadmins only). Enter: null when the caller is
     // not on SUPERADMIN_EMAILS or the org does not exist. Exit: back to the
     // caller's own org; null when they have none.

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { PortalSwitchMenuItem } from "@/features/auth/components/PortalSwitchMenuItem";
 import { useUrlNav, type UrlNav } from "@/shared/lib/use-url-nav";
 import { usePageTracking } from "@/features/activity/lib/use-page-tracking";
 import { ExternalLink, KeyRound, LifeBuoy, LogOut, MoreVertical } from "lucide-react";
@@ -281,6 +282,8 @@ export function AdminShell({
                       <p className="truncate text-xs text-muted-foreground">{user.email}</p>
                     </div>
 
+                    {user.canSwitchPortal ? <PortalSwitchMenuItem toAdmin={false} /> : null}
+
                     {/* No password here for an Altomate (SSO) account — same as
                         the employee portal's menu. */}
                     {user.viaSso ? null : (
@@ -473,7 +476,7 @@ function AdminContent({
 
     // Company / Employee
     case "manage-employee":
-      return <EmployeesSettings />;
+      return <EmployeesSettings isOwner={user.role === "Owner"} />;
     case "company-structure":
       return <CompanyStructure />;
 

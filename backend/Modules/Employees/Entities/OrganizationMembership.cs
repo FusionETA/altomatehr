@@ -11,7 +11,11 @@ namespace AltomateHR.Api.Modules.Employees.Entities;
 //
 // Role is per membership, not global: a person can be a Supervisor in one org and
 // a plain Employee in another — they're only a supervisor where they've been
-// assigned. Admins are separate accounts, so an employee never becomes an admin.
+// assigned.
+//
+// An Admin or Owner can ALSO work here (EmploymentRole): HR staff who run the
+// company's admin portal and are paid by its payroll, with one login. See
+// MembershipRoles for how the two are read.
 public class OrganizationMembership : ITenantScoped
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -25,6 +29,14 @@ public class OrganizationMembership : ITenantScoped
     // Employee | Supervisor | Admin | Owner — the role IN THIS org. Default Employee.
     [MaxLength(20)]
     public string Role { get; set; } = "Employee";
+
+    // For an Admin or Owner who also WORKS here: "Employee" or "Supervisor" —
+    // on payroll, in teams, with a policy, and able to switch to the employee
+    // portal. Null = admin only (an outside accountant, an owner who isn't on
+    // the payroll). Ignored for an Employee or Supervisor, whose employment IS
+    // their Role. Read it through MembershipRoles.EmploymentRole, never raw.
+    [MaxLength(20)]
+    public string? EmploymentRole { get; set; }
 
     // ---- Per-org employment profile (the .NET home of the monolith's EmployeeProfile) ----
 

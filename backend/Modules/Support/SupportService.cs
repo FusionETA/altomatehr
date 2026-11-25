@@ -69,7 +69,7 @@ public class SupportService : ISupportService
                 Addons = [.. org.Addons.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)],
                 OwnerName = owner?.Name,
                 OwnerEmail = owner?.Email,
-                EmployeeCount = members.Count(m => OrgRoles.IsOnPayroll(m.Role)),
+                EmployeeCount = members.Count(m => m.IsEmployed()),
                 CreatedAt = org.CreatedAt,
                 DeactivatedAt = org.DeactivatedAt,
                 DeactivatedReason = org.DeactivatedReason,

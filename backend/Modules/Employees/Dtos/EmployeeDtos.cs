@@ -11,6 +11,12 @@ public class EmployeeDto
     public string? AvatarUrl { get; set; }
     public string Role { get; set; } = string.Empty;
 
+    // Does this person work here — "Employee", "Supervisor", or null for an
+    // admin who is admin only. For an Employee or Supervisor it equals Role;
+    // for an Admin or Owner it says whether they are ALSO on the staff
+    // ("Employee & admin"). See MembershipRoles.
+    public string? EmploymentRole { get; set; }
+
     // Per-org employment profile.
     public string? EmployeeNumber { get; set; }
     public string? JobTitle { get; set; }
@@ -58,6 +64,14 @@ public class UpdateEmployeeDto
 
     [Required, MaxLength(20)]
     public string Role { get; set; } = "Employee";
+
+    // For an Admin or Owner only: do they also work here? "Employee" or
+    // "Supervisor" = Employee & admin (paid, on teams, has a policy and the
+    // employee portal); "" = admin only. Null leaves it as it is. Ignored for
+    // an Employee or Supervisor, whose employment is their Role. Changing it
+    // is the Owner's call, like any change to an admin.
+    [MaxLength(20)]
+    public string? EmploymentRole { get; set; }
 
     [MaxLength(40)]
     public string? PolicyId { get; set; }        // null → falls back to the org default policy
@@ -117,6 +131,14 @@ public class CreateEmployeeDto
 
     [Required, MaxLength(20)]
     public string Role { get; set; } = "Employee";
+
+    // For an Admin or Owner only: do they also work here? "Employee" or
+    // "Supervisor" = Employee & admin (paid, on teams, has a policy and the
+    // employee portal); "" = admin only. Null leaves it as it is. Ignored for
+    // an Employee or Supervisor, whose employment is their Role. Changing it
+    // is the Owner's call, like any change to an admin.
+    [MaxLength(20)]
+    public string? EmploymentRole { get; set; }
 
     [MaxLength(40)]
     public string? PolicyId { get; set; }

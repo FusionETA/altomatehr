@@ -244,6 +244,10 @@ export type AdminAccess = {
   name: string;
   email: string;
   role: string;
+  /** "Employee"/"Supervisor" when this admin also works here (Employee &
+   *  admin); null when admin only. Removing such an admin keeps them on the
+   *  staff. */
+  employmentRole?: string | null;
   /** Raw grant entries ("payroll", "payroll:view"); null = full access. */
   modules: string[] | null;
   levels: Record<string, ModuleLevel> | null;

@@ -4,7 +4,8 @@ using AltomateHR.Api.Modules.Employees.Entities;
 
 namespace AltomateHR.Api.Modules.Payroll;
 
-// Payroll is for Employees and Supervisors (OrgRoles.IsOnPayroll), as it was
+// Payroll is for the staff (MembershipRoles.IsEmployed: Employees, Supervisors
+// and admins who also work here), as it was
 // in the previous system. Every place that picks people for payroll — the
 // roster, the run picker, generation, the imports, loans — reads the org's
 // profiles through this rather than on their own, so an admin cannot creep
@@ -22,7 +23,7 @@ public static class PayrollMembers
 
     public static async Task<IReadOnlySet<string>> NotOnPayrollUserIdsAsync(this IDirectoryService directory) =>
         (await directory.GetMembershipsForCurrentOrgAsync())
-            .Where(m => !OrgRoles.IsOnPayroll(m.Role))
+            .Where(m => !m.IsEmployed())
             .Select(m => m.UserId)
             .ToHashSet(StringComparer.Ordinal);
 }

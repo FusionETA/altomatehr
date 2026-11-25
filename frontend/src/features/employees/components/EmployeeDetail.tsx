@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AdminAccessPanel } from "@/features/settings/components/AdminAccessPanel";
+import { isAdminRole, staffRole } from "../lib/user-kind";
 import { ArrowRightLeft, Copy, KeyRound, Mail } from "lucide-react";
 import { SetPasswordDialog } from "./SetPasswordDialog";
 import { TransferDialog } from "./TransferDialog";
@@ -192,9 +194,15 @@ export function EmployeeDetail({
   focusField,
   onBack,
   onSaved,
+  isOwner = false,
+  onRemoved,
 }: {
   employee: Employee;
   policies: Policy[];
+  /** The Owner sees the Admin access tab: who administers the company is theirs to decide. */
+  isOwner?: boolean;
+  /** Removed from the company from the Admin access tab (an admin who was admin only). */
+  onRemoved?: () => void;
   /** Open on this section — a link to one field (see lib/profile-link.ts). */
   initialSection?: SectionId;
   /** Scroll to and focus this field (its Field label) once the profile loads. */
@@ -286,7 +294,9 @@ export function EmployeeDetail({
   const [savingLayer, setSavingLayer] = useState<{ teamId: string; layer: number } | null>(null);
 
   const initialPlacement: Placement = {
-    role: employee.role,
+    // Their role on the STAFF: an Employee & admin's admin access lives on
+    // the Admin access tab, not in this field.
+    role: staffRole(employee) ?? employee.role,
     policyId: employee.policyId ?? NONE,
     name: employee.name,
     email: employee.email,
@@ -869,7 +879,10 @@ export function EmployeeDetail({
       // would be written as null.
       const updated = await updateEmployee(employee.id, {
         ...toUpdateEmployee(employee),
-        role: placement.role,
+        // An admin keeps their admin role; the field here is their staff role.
+        ...(isAdminRole(employee.role)
+          ? { role: employee.role, employmentRole: placement.role }
+          : { role: placement.role }),
         policyId: placement.policyId === NONE ? null : placement.policyId,
         // The endpoint patches these: an empty string clears the field, which
         // is exactly what an admin emptying the box means. Sending null (or
@@ -961,7 +974,7 @@ export function EmployeeDetail({
         className="inline-flex items-center gap-1.5 text-sm font-semibold text-muted-foreground transition hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" />
-        All employees
+        All users
       </button>
 
       {/* Identity header. Kept separate from the form so it stays readable
@@ -985,6 +998,11 @@ export function EmployeeDetail({
               <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground">
                 {placement.role}
               </span>
+              {isAdminRole(employee.role) ? (
+                <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary">
+                  {employee.role}
+                </span>
+              ) : null}
             </div>
             <p className="truncate text-sm text-muted-foreground">
               {[placement.jobTitle.trim(), employee.email].filter(Boolean).join(" · ")}
@@ -1141,7 +1159,7 @@ export function EmployeeDetail({
           {/* The count is what's still missing in that section; a finished one
               carries no badge at all. */}
           <OverflowTabList<SectionId>
-            items={SECTIONS.map((sec) => ({
+            items={(isOwner ? [...SECTIONS, { id: "access" as const, label: "Admin access" }] : SECTIONS).map((sec) => ({
               id: sec.id,
               label: sec.label,
               badge: missingFields(profile, sec.id, profileContext).length,
@@ -1172,7 +1190,13 @@ export function EmployeeDetail({
               </p>
             ) : null}
 
-            {section === "personal" ? (
+            {section === "access" ? (
+              <AdminAccessPanel
+                employee={employee}
+                onChanged={onSaved}
+                onRemoved={onRemoved}
+              />
+            ) : section === "personal" ? (
               <>
                 <Group title="Contact">
                   <Field label="Full name">
