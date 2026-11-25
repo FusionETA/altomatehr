@@ -18,6 +18,10 @@ public interface IApiRequestLogRepository
     // Failed calls (status >= 400) in [from, to), newest first.
     Task<List<ApiRequestLog>> GetErrorsAsync(
         DateTime from, DateTime to, string? organizationId, string? method, string? route, int? status, int limit);
+
+    // One signed-in person's failed calls in [from, to), oldest first — the
+    // red lines in a session's activity timeline (Modules/Activity).
+    Task<List<ApiRequestLog>> GetErrorsForCallerAsync(string callerId, DateTime from, DateTime to, int limit);
 }
 
 public record ApiOrganizationCalls(string OrganizationId, int Calls);

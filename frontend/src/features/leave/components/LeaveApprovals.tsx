@@ -218,6 +218,7 @@ export function LeaveApprovals() {
             event.stopPropagation();
             processIds([a.id], isCancellationUnderReview(a) ? approveLeaveCancellation : approveLeave);
           }}
+          data-track={isCancellationUnderReview(a) ? "leave.approve-cancellation" : "leave.approve"}
           className={
             isDetail
               ? "inline-flex h-12 items-center justify-center gap-2 rounded-[18px] bg-secondary px-6 text-sm font-bold text-secondary-foreground shadow-sm transition hover:opacity-90 disabled:opacity-50"
@@ -234,6 +235,7 @@ export function LeaveApprovals() {
             event.stopPropagation();
             openReject(a);
           }}
+          data-track={isCancellationUnderReview(a) ? "leave.decline-cancellation" : "leave.reject"}
           className={
             isDetail
               ? "inline-flex h-12 items-center justify-center rounded-[18px] bg-destructive/10 px-6 text-sm font-bold text-destructive shadow-sm transition hover:bg-destructive/20 disabled:opacity-50"

@@ -185,7 +185,7 @@ public class InboundSsoTests
         public Task<AuthResult?> EnterSupportAsync(string userId, string organizationId, bool sso = false) => throw new NotSupportedException();
         public Task<AuthResult?> ExitSupportAsync(string userId, bool sso = false) => throw new NotSupportedException();
 
-        public Task<AuthResult?> SwitchOrgAsync(string userId, string organizationId, bool sso = false) =>
+        public Task<AuthResult?> SwitchOrgAsync(string userId, string organizationId, bool sso = false, string? signInVia = null) =>
             Task.FromResult<AuthResult?>(new AuthResult(
                 "access", "admin@acme.com", "Admin", organizationId,
                 "refresh", DateTime.UtcNow.AddDays(7), ViaSso: sso));

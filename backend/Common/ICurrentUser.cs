@@ -35,6 +35,14 @@ public interface ICurrentUser
     // FormerEmployeeReadOnlyMiddleware.
     bool IsFormer => false;
 
+    // The activity session this token belongs to (claim "asid", minted at
+    // sign-in — see Modules/Activity). Null for a machine caller, and for a
+    // token minted before activity tracking existed.
+    string? SessionId => null;
+
+    // The caller's browser user agent, for the device on a sign-in record.
+    string? UserAgent => null;
+
     // A machine caller narrowed by scopes: a wp_live_ key or a partner app.
     // People (JWT) are never scoped.
     bool IsScopedMachine => false;

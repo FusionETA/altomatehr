@@ -92,7 +92,8 @@ public class InboundSsoService : IInboundSsoService
 
         // Mints the same access + refresh pair a login does, for that org —
         // marked as SSO, so the app hides what Altomate manages instead.
-        var result = await _auth.SwitchOrgAsync(data.UserId, data.OrganizationId, sso: true);
+        var result = await _auth.SwitchOrgAsync(
+            data.UserId, data.OrganizationId, sso: true, signInVia: Activity.Entities.SessionVia.AltomateSso);
         if (result is not null && _teamChat is not null)
             await _teamChat.SignedInAsync(data.UserId, membership.Role, data.OrganizationId, "Altomate SSO");
         return result;

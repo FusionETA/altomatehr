@@ -12,9 +12,11 @@ namespace AltomateHR.Api.Modules.Auth;
 // Reads stay open (the portal only shows Payslips in this state anyway). So do
 // the account's own plumbing: /auth (switch back, refresh, log out, password),
 // and marking notifications read / push subscriptions, which touch no company data.
+// So does /activity: the usage tracker's batches record what they look at, and
+// change nothing in the company.
 public class FormerEmployeeReadOnlyMiddleware
 {
-    private static readonly string[] AllowedWritePrefixes = ["/auth", "/notifications", "/push"];
+    private static readonly string[] AllowedWritePrefixes = ["/auth", "/notifications", "/push", "/activity"];
 
     private readonly RequestDelegate _next;
 

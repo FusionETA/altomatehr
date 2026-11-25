@@ -41,6 +41,12 @@ public class CurrentUser : ICurrentUser
 
     public bool IsFormer => Principal?.FindFirstValue("former") == "1";
 
+    // "asid", not the registered "sid": the JWT handler's default inbound
+    // mapping would rename "sid" to ClaimTypes.Sid. See TokenService.SessionClaim.
+    public string? SessionId => Principal?.FindFirstValue("asid");
+
+    public string? UserAgent => _http.HttpContext?.Request.Headers.UserAgent.ToString() is { Length: > 0 } ua ? ua : null;
+
     // Same test as [RequireScope]: a wp_live_ key carries apikey_id, a partner
     // app partner_client (PartnerAuthenticationDefaults.ClientIdClaim, kept as
     // a literal so Common doesn't depend on Partners). Both hold their granted

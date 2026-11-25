@@ -12,6 +12,7 @@ using System.Text.RegularExpressions;
 using BC = BCrypt.Net.BCrypt;
 
 using AltomateHR.Api.Tests.Audit;
+using AltomateHR.Api.Tests.Activity;
 
 namespace AltomateHR.Api.Tests.Auth;
 
@@ -641,6 +642,82 @@ public class AuthServiceTests
         Assert.True(refreshed.ViaSso);
     }
 
+    // --- activity sessions (Modules/Activity) ---
+
+    [Fact]
+    public async Task LoginAsync_StartsAnActivitySession_AndStoresItOnTheRefreshToken()
+    {
+        var activity = new RecordingActivityService();
+        var service = CreateService([CreateUser("Password123!")], out var refreshTokens, activity: activity);
+
+        var result = await service.LoginAsync("admin@altomate.com", "Password123!");
+
+        Assert.NotNull(result);
+        var started = Assert.Single(activity.Started);
+        Assert.Equal("password", started.Via);
+        Assert.Equal("usr-admin", started.UserId);
+        Assert.Equal("org-1", started.OrganizationId);
+        Assert.Equal(activity.LastId, Assert.Single(refreshTokens.Tokens).SessionId);
+    }
+
+    [Fact]
+    public async Task RefreshAsync_CarriesTheSameSession_WithoutStartingANewOne()
+    {
+        var activity = new RecordingActivityService();
+        var service = CreateService(
+            [CreateUser("Password123!")], out var refreshTokens,
+            existingRefreshTokens: [ActiveRefreshToken("old-refresh", sessionId: "sess-1")],
+            activity: activity);
+
+        var result = await service.RefreshAsync("old-refresh");
+
+        Assert.NotNull(result);
+        Assert.Empty(activity.Started);
+        Assert.Equal(["sess-1"], activity.Touched);
+        Assert.Equal("sess-1", refreshTokens.Tokens.Single(t => t.Token != "old-refresh").SessionId);
+    }
+
+    [Fact]
+    public async Task RefreshAsync_OfATokenFromBeforeTracking_StartsAResumedSession()
+    {
+        var activity = new RecordingActivityService();
+        var service = CreateService(
+            [CreateUser("Password123!")], out var refreshTokens,
+            existingRefreshTokens: [ActiveRefreshToken("old-refresh", sessionId: null)],
+            activity: activity);
+
+        await service.RefreshAsync("old-refresh");
+
+        Assert.Equal("resumed", Assert.Single(activity.Started).Via);
+        Assert.Equal(activity.LastId, refreshTokens.Tokens.Single(t => t.Token != "old-refresh").SessionId);
+    }
+
+    [Fact]
+    public async Task LogoutAsync_EndsTheSession()
+    {
+        var activity = new RecordingActivityService();
+        var service = CreateService(
+            [CreateUser("Password123!")], out _,
+            existingRefreshTokens: [ActiveRefreshToken("live", sessionId: "sess-9")],
+            activity: activity);
+
+        await service.LogoutAsync("live");
+
+        Assert.Equal(["sess-9"], activity.Ended);
+    }
+
+    private static RefreshToken ActiveRefreshToken(string token, string? sessionId) => new()
+    {
+        Token = token,
+        UserId = "usr-admin",
+        Email = "admin@altomate.com",
+        Role = "Admin",
+        OrganizationId = "org-1",
+        SessionId = sessionId,
+        CreatedAt = DateTime.UtcNow.AddMinutes(-5),
+        ExpiresAt = DateTime.UtcNow.AddDays(1),
+    };
+
     // --- helpers ---
 
     private static AuthService CreateService(
@@ -650,7 +727,8 @@ public class AuthServiceTests
         IEnumerable<OrganizationMembership>? memberships = null,
         string? superadminEmails = null,
         ILoginGuard? guard = null,
-        AltomateHR.Api.Modules.TeamChat.ITeamChatAlerts? teamChat = null)
+        AltomateHR.Api.Modules.TeamChat.ITeamChatAlerts? teamChat = null,
+        AltomateHR.Api.Modules.Activity.IActivityService? activity = null)
     {
         refreshTokens = new FakeRefreshTokenRepository(existingRefreshTokens ?? []);
 
@@ -678,7 +756,8 @@ public class AuthServiceTests
                 })
                 .Build()),
             teamChat: teamChat,
-            guard: guard);
+            guard: guard,
+            activity: activity);
     }
 
     private static User CreateUser(string password) => new()

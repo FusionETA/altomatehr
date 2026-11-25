@@ -90,6 +90,13 @@ public class AppDbContext : DbContext
     // background worker saves it with no current org to stamp.
     public DbSet<Modules.ApiMonitoring.Entities.ApiRequestLog> ApiRequestLogs =>
         Set<Modules.ApiMonitoring.Entities.ApiRequestLog>();
+    // User activity (Modules/Activity): not tenant-scoped either, for the same
+    // reasons — Fusioneta superadmins read it across companies, and the writer
+    // saves it with no current org. OrganizationId is set explicitly instead.
+    public DbSet<Modules.Activity.Entities.UserSession> UserSessions =>
+        Set<Modules.Activity.Entities.UserSession>();
+    public DbSet<Modules.Activity.Entities.UserActivityEvent> UserActivityEvents =>
+        Set<Modules.Activity.Entities.UserActivityEvent>();
     public DbSet<ApiClient> ApiClients => Set<ApiClient>();
     public DbSet<EmployeeProfile> EmployeeProfiles => Set<EmployeeProfile>();
     public DbSet<EmployeeTransfer> EmployeeTransfers => Set<EmployeeTransfer>();
@@ -278,6 +285,19 @@ public class AppDbContext : DbContext
         requestLog.HasIndex(l => new { l.Route, l.CreatedAt });
         requestLog.HasIndex(l => new { l.OrganizationId, l.CreatedAt });
         requestLog.HasIndex(l => new { l.StatusCode, l.CreatedAt });
+
+        // User activity. Sessions: newest-first list, per person, per company,
+        // "online now" off LastSeenAt (also the purge). Events: a session's
+        // timeline, and CreatedAt for the purge.
+        var userSession = modelBuilder.Entity<Modules.Activity.Entities.UserSession>();
+        userSession.HasIndex(s => s.StartedAt);
+        userSession.HasIndex(s => new { s.UserId, s.StartedAt });
+        userSession.HasIndex(s => new { s.OrganizationId, s.StartedAt });
+        userSession.HasIndex(s => s.LastSeenAt);
+        var activityEvent = modelBuilder.Entity<Modules.Activity.Entities.UserActivityEvent>();
+        activityEvent.Property(e => e.Kind).HasConversion<string>().HasMaxLength(10);
+        activityEvent.HasIndex(e => new { e.SessionId, e.CreatedAt });
+        activityEvent.HasIndex(e => e.CreatedAt);
 
         // ApiClient (partner-app registry) is GLOBAL config — not tenant-scoped, so no
         // query filter. Name is the launch slug (unique); SecretHash is the per-request

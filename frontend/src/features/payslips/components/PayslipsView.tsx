@@ -177,6 +177,7 @@ export function PayslipsView() {
                 <button
                   type="button"
                   onClick={() => void download(payslip)}
+                  data-track="payslips.download"
                   disabled={downloading === payslip.id}
                   className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-4 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
                 >
@@ -191,6 +192,7 @@ export function PayslipsView() {
                 <button
                   type="button"
                   onClick={() => void downloadTp1(payslip)}
+                  data-track="payslips.tp1-download"
                   disabled={downloading === `tp1-${payslip.id}`}
                   className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-4 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
                 >

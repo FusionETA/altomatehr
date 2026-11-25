@@ -12,6 +12,10 @@ public class TokenService : ITokenService
     public const string SsoClaim = "sso";
     public const string FormerClaim = "former";
 
+    // The activity session (Modules/Activity) — read back by ICurrentUser.SessionId.
+    // Not the registered "sid": the JWT handler's default inbound mapping renames it.
+    public const string SessionClaim = "asid";
+
     private readonly IConfiguration _config;
 
     public TokenService(IConfiguration config) => _config = config;
@@ -21,7 +25,11 @@ public class TokenService : ITokenService
         CreateToken(userId, email, role, organizationId, support: false);
 
     public string CreateToken(
-        string userId, string email, string role, string organizationId, bool support, bool sso = false, bool former = false)
+        string userId, string email, string role, string organizationId, bool support, bool sso = false, bool former = false) =>
+        CreateToken(userId, email, role, organizationId, support, sso, former, sessionId: null);
+
+    public string CreateToken(
+        string userId, string email, string role, string organizationId, bool support, bool sso, bool former, string? sessionId)
     {
         var jwt = _config.GetSection("Jwt");
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt["Key"]!));
@@ -50,6 +58,10 @@ public class TokenService : ITokenService
         // transferred out). Kept so they can still read their payslips; the
         // FormerEmployeeReadOnlyMiddleware refuses every write on it.
         if (former) claims.Add(new Claim(FormerClaim, "1"));
+
+        // Which sign-in this token belongs to, so what the person does can be
+        // tied back to it. Carried across refreshes on the RefreshToken.
+        if (!string.IsNullOrEmpty(sessionId)) claims.Add(new Claim(SessionClaim, sessionId));
 
         var token = new JwtSecurityToken(
             issuer: jwt["Issuer"],

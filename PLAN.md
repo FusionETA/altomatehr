@@ -317,6 +317,21 @@ tests for `/auth/login` + `/auth/refresh` using `WebApplicationFactory` + EF InM
 `dotnet test backend.Tests/AltomateHR.Api.Tests.csproj`.
 Next: frontend polish. Optional: registration endpoint · role-aware frontend · create-claim form.
 
+**User activity (Fusioneta only) ✅** — `backend/Modules/Activity` + `frontend/src/features/activity`.
+Every sign-in (the same ones the "🔑 Sign-in" team-chat alerts post) is a `UserSession`, started in
+`AuthService` (password login; Altomate SSO via `SwitchOrgAsync(signInVia:)`), id carried in the JWT
+as claim `asid` and on `RefreshToken.SessionId` so refresh / company switch / support mode stay one
+session; logout ends it. Inside a session, `UserActivityEvent` rows: **pages** (shell view ids via
+`usePageTracking`), **clicks** (only elements with `data-track="area.thing"`), **actions** (every
+POST/PUT/PATCH/DELETE by a person, recorded server-side by `UserActivityMiddleware` → queue → batch
+writer). Nothing typed, no bodies, no screen content. Both tables are **deliberately not
+tenant-scoped** (like `ApiRequestLog`) — read only through superadmin-gated
+`PlatformActivityController` (`/platform/activity/...`), shown in **Support → User activity**.
+Retention `Activity:RetentionDays` (90). Migration `UserActivity`.
+Later options: "View activity" link on the Bitrix sign-in alert · per-company / feature-usage views ·
+"Last active" column on Support → Companies · more `data-track` buttons · PDPA notice in the
+customer terms (a business decision, not code).
+
 Locked choices:
 - Folder = **/Users/chenzirong/Documents/altomatehr** (frontend/ + backend/ inside it)
 - Frontend = **Vite + React** (:5173) · Backend = **ASP.NET Core / C#** (:5001)

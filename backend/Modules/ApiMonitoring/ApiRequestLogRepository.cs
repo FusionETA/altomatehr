@@ -66,6 +66,14 @@ public class ApiRequestLogRepository : IApiRequestLogRepository
         return query.OrderByDescending(r => r.CreatedAt).Take(limit).ToListAsync();
     }
 
+    public Task<List<ApiRequestLog>> GetErrorsForCallerAsync(string callerId, DateTime from, DateTime to, int limit) =>
+        _db.ApiRequestLogs.AsNoTracking()
+            .Where(r => r.CallerType == ApiCallerTypes.User && r.CallerId == callerId
+                        && r.CreatedAt >= from && r.CreatedAt < to && r.StatusCode >= 400)
+            .OrderBy(r => r.CreatedAt)
+            .Take(limit)
+            .ToListAsync();
+
     private IQueryable<ApiRequestLog> InRange(DateTime from, DateTime to, string? organizationId)
     {
         var query = _db.ApiRequestLogs.Where(r => r.CreatedAt >= from && r.CreatedAt < to);

@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, LifeBuoy, LoaderCircle } from "lucide-react";
 import { enterSupport } from "@/features/auth/api";
+import { UserActivityCard } from "@/features/activity/components/UserActivityCard";
+import { trackPage } from "@/features/activity/lib/tracker";
 import { OverflowTabList } from "@/shared/components/OverflowTabList";
 import { SearchInput } from "@/shared/components/SearchInput";
 import { TablePager } from "@/shared/components/TablePager";
@@ -14,13 +16,14 @@ import { LoginBlocksCard } from "./LoginBlocksCard";
 import { ManagePlanDialog } from "./ManagePlanDialog";
 import { XeroAppsCard } from "./XeroAppsCard";
 
-type SupportTab = "companies" | "create" | "xero" | "blocks";
+type SupportTab = "companies" | "create" | "xero" | "blocks" | "activity";
 
 const TABS: { id: SupportTab; label: string }[] = [
   { id: "companies", label: "Companies" },
   { id: "create", label: "Create company" },
   { id: "xero", label: "Xero apps" },
   { id: "blocks", label: "Blocked sign-ins" },
+  { id: "activity", label: "User activity" },
 ];
 
 // Fusioneta support: every company on the platform, to step into as support,
@@ -38,6 +41,15 @@ export function SupportPage({ onBack }: { onBack: () => void }) {
   const all = useMemo(() => query.data ?? [], [query.data]);
   const filtered = useMemo(() => all.filter((o) => matchesSearch(o, search)), [all, search]);
   const paged = usePaged(filtered, 10);
+  const activityCompanies = useMemo(
+    () => [...all].sort((a, b) => a.name.localeCompare(b.name)).map((o) => ({ id: o.id, name: o.name })),
+    [all],
+  );
+
+  // The support page is outside both shells, so it reports its own views.
+  useEffect(() => {
+    trackPage(`support/${tab}`);
+  }, [tab]);
 
   async function enter(org: SupportOrganization) {
     setEnteringId(org.id);
@@ -209,6 +221,8 @@ export function SupportPage({ onBack }: { onBack: () => void }) {
         {tab === "xero" ? <XeroAppsCard /> : null}
 
         {tab === "blocks" ? <LoginBlocksCard /> : null}
+
+        {tab === "activity" ? <UserActivityCard companies={activityCompanies} /> : null}
       </main>
 
       {statusOf ? (

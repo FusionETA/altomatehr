@@ -157,6 +157,7 @@ export function PayrollRunActions({
             <button
               type="button"
               className={`${BUTTON_DANGER} max-sm:order-last max-sm:w-full`}
+              data-track="payroll.run-delete"
               disabled={busy !== null}
               onClick={() =>
                 void run_("delete", () => deletePayrollRun(run.id)).then(() => onDeleted())
@@ -172,6 +173,7 @@ export function PayrollRunActions({
                 className={BUTTON_GHOST}
                 disabled={busy !== null}
                 onClick={() => void handleGenerate()}
+                data-track="payroll.run-generate"
               >
                 {spinner("generate")}
                 {/* The previous system's words: the admin runs payroll, and
@@ -191,6 +193,7 @@ export function PayrollRunActions({
                   className={BUTTON}
                   disabled={busy !== null || submitBlocker !== null}
                   aria-describedby={submitBlocker ? "submit-blocker" : undefined}
+                  data-track="payroll.run-submit"
                   onClick={() =>
                     void run_("submit", () => submitPayrollRun(run.id)).then(
                       (r) => r && onChanged(),
@@ -212,6 +215,7 @@ export function PayrollRunActions({
               className={BUTTON_GHOST}
               disabled={busy !== null}
               onClick={() => setRejecting(true)}
+              data-track="payroll.run-send-back"
             >
               Send back to draft
             </button>
@@ -225,6 +229,7 @@ export function PayrollRunActions({
                   (r) => r && onChanged(),
                 )
               }
+              data-track="payroll.run-approve"
             >
               {spinner("approve")}
               Approve and file
@@ -240,6 +245,7 @@ export function PayrollRunActions({
             className={BUTTON_DANGER}
             disabled={busy !== null}
             onClick={() => void askRevert()}
+            data-track="payroll.run-revert"
           >
             {spinner("revert-impact")}
             Revert to draft

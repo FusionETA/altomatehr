@@ -6,6 +6,8 @@ using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Organizations;
 using BC = BCrypt.Net.BCrypt;
 
+using AltomateHR.Api.Modules.Activity;
+using AltomateHR.Api.Modules.Activity.Entities;
 using AltomateHR.Api.Modules.Audit;
 using AltomateHR.Api.Modules.Audit.Entities;
 namespace AltomateHR.Api.Modules.Auth;
@@ -29,6 +31,8 @@ public class AuthService : IAuthService
     private readonly TeamChat.ITeamChatAlerts? _teamChat;
     private readonly IOrganizationStatus? _status;
     private readonly ILoginGuard? _guard;
+    private readonly IActivityService? _activity;
+    private readonly ICurrentUser? _currentUser;
 
     public AuthService(
         ITokenService tokens,
@@ -44,9 +48,13 @@ public class AuthService : IAuthService
         ISuperadminRegistry? superadmins = null,
         TeamChat.ITeamChatAlerts? teamChat = null,
         IOrganizationStatus? status = null,
-        ILoginGuard? guard = null)
+        ILoginGuard? guard = null,
+        IActivityService? activity = null,
+        ICurrentUser? currentUser = null)
     {
         _guard = guard;
+        _activity = activity;
+        _currentUser = currentUser;
         _superadmins = superadmins;
         _teamChat = teamChat;
         _status = status;
@@ -183,7 +191,8 @@ public class AuthService : IAuthService
             ActorEmail: user.Email,
             ActorName: user.Email));
 
-        var result = await IssueTokensAsync(user.Id, user.Email, active.Role, active.OrganizationId);
+        var result = await IssueTokensAsync(
+            user.Id, user.Email, active.Role, active.OrganizationId, startSessionVia: SessionVia.Password);
         if (_teamChat is not null) await _teamChat.SignedInAsync(user.Id, active.Role, active.OrganizationId, "password");
         return result;
     }
@@ -204,7 +213,8 @@ public class AuthService : IAuthService
         var org = await _organizations.GetByIdAsync(organizationId);
         if (org is null) return null;
 
-        var result = await IssueTokensAsync(userId, user.Email, OrgRoles.Admin, org.Id, support: true, sso: sso);
+        var result = await IssueTokensAsync(
+            userId, user.Email, OrgRoles.Admin, org.Id, support: true, sso: sso, sessionId: _currentUser?.SessionId);
 
         // Written into the CUSTOMER's log — masked, like every support action —
         // so a company can see that support was in, and when.
@@ -221,7 +231,12 @@ public class AuthService : IAuthService
 
     // Back to the superadmin's own org (their first membership), as a normal
     // session. Null when they belong to none — the caller signs them out.
-    public async Task<AuthResult?> ExitSupportAsync(string userId, bool sso = false)
+    public Task<AuthResult?> ExitSupportAsync(string userId, bool sso = false) =>
+        ExitSupportAsync(userId, sso, _currentUser?.SessionId);
+
+    // sessionId: the activity session to carry back out — the caller's own on
+    // an explicit exit, the refresh token's when a refresh ends support access.
+    private async Task<AuthResult?> ExitSupportAsync(string userId, bool sso, string? sessionId)
     {
         var user = await _userRepo.GetByIdAsync(userId);
         if (user is null) return null;
@@ -229,10 +244,11 @@ public class AuthService : IAuthService
         var home = await PickHomeAsync(userId);
         if (home is null) return null;
 
-        return await IssueTokensAsync(userId, user.Email, home.Role, home.OrganizationId, sso: sso);
+        return await IssueTokensAsync(userId, user.Email, home.Role, home.OrganizationId, sso: sso, sessionId: sessionId);
     }
 
-    public async Task<AuthResult?> SwitchOrgAsync(string userId, string organizationId, bool sso = false)
+    public async Task<AuthResult?> SwitchOrgAsync(
+        string userId, string organizationId, bool sso = false, string? signInVia = null)
     {
         // Only if the account is actually a member of the target org — and
         // hasn't removed it from their account as a former employee.
@@ -243,7 +259,11 @@ public class AuthService : IAuthService
         var user = await _userRepo.GetByIdAsync(userId);
         if (user is null) return null;
 
-        return await IssueTokensAsync(userId, user.Email, membership.Role, organizationId, sso: sso);
+        // A switch inside the app stays in the same activity session; the SSO
+        // hand-off, which mints through here too, is a sign-in of its own.
+        return signInVia is not null
+            ? await IssueTokensAsync(userId, user.Email, membership.Role, organizationId, sso: sso, startSessionVia: signInVia)
+            : await IssueTokensAsync(userId, user.Email, membership.Role, organizationId, sso: sso, sessionId: _currentUser?.SessionId);
     }
 
     public async Task<IReadOnlyList<UserOrgDto>> GetOrgsAsync(string userId)
@@ -290,10 +310,11 @@ public class AuthService : IAuthService
             if (_superadmins?.IsSuperadmin(stored.Email) == true)
             {
                 return await IssueTokensAsync(
-                    stored.UserId, stored.Email, stored.Role, stored.OrganizationId, support: true, sso: stored.IsSso);
+                    stored.UserId, stored.Email, stored.Role, stored.OrganizationId, support: true, sso: stored.IsSso,
+                    sessionId: stored.SessionId);
             }
 
-            return await ExitSupportAsync(stored.UserId, stored.IsSso);
+            return await ExitSupportAsync(stored.UserId, stored.IsSso, stored.SessionId);
         }
 
         // A company they removed from their account no longer refreshes into
@@ -310,11 +331,12 @@ public class AuthService : IAuthService
             var home = await PickHomeAsync(stored.UserId);
             return home is null
                 ? null
-                : await IssueTokensAsync(stored.UserId, stored.Email, home.Role, home.OrganizationId, sso: stored.IsSso);
+                : await IssueTokensAsync(
+                    stored.UserId, stored.Email, home.Role, home.OrganizationId, sso: stored.IsSso, sessionId: stored.SessionId);
         }
 
         return await IssueTokensAsync(
-            stored.UserId, stored.Email, stored.Role, stored.OrganizationId, sso: stored.IsSso);
+            stored.UserId, stored.Email, stored.Role, stored.OrganizationId, sso: stored.IsSso, sessionId: stored.SessionId);
     }
 
     public async Task<LeaveOrgResult> LeaveFormerOrgAsync(
@@ -348,7 +370,8 @@ public class AuthService : IAuthService
         if (home is null || user is null) return new LeaveOrgResult(null, SignOut: true);
 
         return new LeaveOrgResult(
-            null, await IssueTokensAsync(userId, user.Email, home.Role, home.OrganizationId, sso: sso));
+            null, await IssueTokensAsync(
+                userId, user.Email, home.Role, home.OrganizationId, sso: sso, sessionId: _currentUser?.SessionId));
     }
 
     public async Task LogoutAsync(string refreshToken)
@@ -358,6 +381,7 @@ public class AuthService : IAuthService
         {
             stored.RevokedAt = DateTime.UtcNow;
             await _refreshRepo.UpdateAsync(stored);
+            if (_activity is not null) await _activity.EndSessionAsync(stored.SessionId);
         }
     }
 
@@ -571,8 +595,13 @@ public class AuthService : IAuthService
             .ToHashSet(StringComparer.Ordinal);
     }
 
+    // sessionId: the activity session this token continues (refresh, company
+    // switch, support mode). startSessionVia: this is a sign-in — start a new
+    // one. With neither (a session from before activity tracking existed), a
+    // session is started as "resumed", so it is tracked from here on.
     private async Task<AuthResult> IssueTokensAsync(
-        string userId, string email, string role, string organizationId, bool support = false, bool sso = false)
+        string userId, string email, string role, string organizationId, bool support = false, bool sso = false,
+        string? sessionId = null, string? startSessionVia = null)
     {
         // Re-checked on every mint, refresh included: archive or restore
         // someone and their next refresh carries the change.
@@ -586,7 +615,26 @@ public class AuthService : IAuthService
         // read their old team's attendance, leave and overtime. The REFRESH
         // token keeps the real role, so a restore gives it back on refresh.
         var sessionRole = former ? OrgRoles.Employee : role;
-        var accessToken = _tokens.CreateToken(userId, email, sessionRole, organizationId, support, sso, former);
+
+        // The real name for the header and greeting, which used to guess one
+        // from the email — "admin@…" read as a person called "Admin".
+        var name = (await _userRepo.GetByIdAsync(userId))?.Name;
+        var orgName = (await _organizations.GetByIdAsync(organizationId))?.Name;
+
+        if (_activity is not null)
+        {
+            if (startSessionVia is not null || string.IsNullOrEmpty(sessionId))
+            {
+                sessionId = await _activity.StartSessionAsync(new SessionStart(
+                    userId, email, name, organizationId, orgName, role, startSessionVia ?? SessionVia.Resumed));
+            }
+            else
+            {
+                await _activity.TouchSessionAsync(sessionId);
+            }
+        }
+
+        var accessToken = _tokens.CreateToken(userId, email, sessionRole, organizationId, support, sso, former, sessionId);
 
         var refresh = new RefreshToken
         {
@@ -597,15 +645,11 @@ public class AuthService : IAuthService
             OrganizationId = organizationId,
             IsSupport = support,
             IsSso = sso,
+            SessionId = sessionId,
             ExpiresAt = DateTime.UtcNow.AddDays(_refreshDays),
             CreatedAt = DateTime.UtcNow,
         };
         await _refreshRepo.AddAsync(refresh);
-
-        // The real name for the header and greeting, which used to guess one
-        // from the email — "admin@…" read as a person called "Admin".
-        var name = (await _userRepo.GetByIdAsync(userId))?.Name;
-        var orgName = (await _organizations.GetByIdAsync(organizationId))?.Name;
         return new AuthResult(accessToken, email, sessionRole, organizationId, refresh.Token, refresh.ExpiresAt,
             string.IsNullOrWhiteSpace(name) ? null : name.Trim(),
             IsSuperadmin: _superadmins?.IsSuperadmin(email) == true,
