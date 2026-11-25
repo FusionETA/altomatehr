@@ -160,7 +160,7 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
             $"{names.Count} on more than one project with no main project",
             true,
             $"Their pay posts under \"{PayrollJournal.NoProject}\" with no project tag: {string.Join(", ", names)}. "
-            + "Set a main project on each one's employee profile (Employment).",
+            + "Set a main project on each one's employee profile (Company → Main project).",
             Warning: true);
     }
 
@@ -235,6 +235,28 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
                 .Where(a => !a.IsArchived && !string.IsNullOrWhiteSpace(a.Code))
                 .OrderBy(a => a.Code, StringComparer.Ordinal)
                 .Select(a => new PayrollXeroSplitAccount(a.Code, a.Name, a.XeroType ?? a.Type))]);
+    }
+
+    public async Task<IReadOnlyList<string>> GetPeopleNeedingMainProjectAsync()
+    {
+        var people = await PeopleAsync();
+        var waiting = (await _profiles.GetAllForCurrentOrgAsync())
+            .Where(p => !p.IsArchived
+                        && people.TryGetValue(p.Id, out var person)
+                        && person.Projects.Count > 1
+                        && person.MainProject is null)
+            .ToList();
+        if (waiting.Count == 0 || _directory is null) return [];
+
+        // One look-up per person still waiting, not the whole user table:
+        // users aren't tenant-scoped, and this list is short.
+        var names = new List<string>(waiting.Count);
+        foreach (var profile in waiting)
+        {
+            var user = await _directory.GetUserAsync(profile.UserId);
+            if (user is not null) names.Add(string.IsNullOrWhiteSpace(user.Name) ? user.Email : user.Name);
+        }
+        return [.. names.Distinct(StringComparer.Ordinal).OrderBy(n => n, StringComparer.OrdinalIgnoreCase)];
     }
 
     private async Task<string?> LatestRunWithPayslipsAsync()

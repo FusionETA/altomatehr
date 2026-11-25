@@ -1,6 +1,8 @@
 using AltomateHR.Api.Data;
 using AltomateHR.Api.Modules.Accounts;
 using AltomateHR.Api.Modules.Accounts.Entities;
+using AltomateHR.Api.Modules.Auth;
+using AltomateHR.Api.Modules.Auth.Entities;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Employees.Entities;
 using AltomateHR.Api.Modules.Payroll;
@@ -167,6 +169,36 @@ public class PayrollJournalMainProjectTests : IDisposable
         Assert.Contains("Person 4", warning.Detail);   // a main project they aren't on is ignored
         Assert.DoesNotContain("Person 2", warning.Detail);
         Assert.DoesNotContain("Person 5", warning.Detail);
+    }
+
+    [Fact]
+    public async Task Settings_list_names_current_staff_still_needing_a_main_project()
+    {
+        await SeedAsync();
+        foreach (var n in new[] { 1, 2, 3, 4, 5 })
+            _db.Users.Add(new User { Id = $"usr-{n}", Name = $"Person {n}", Email = $"p{n}@example.test" });
+        // Archived: on both projects with no main, but no longer paid — not listed.
+        _db.EmployeeProfiles.Add(new EmployeeProfile
+        {
+            Id = "emp-6", OrganizationId = "org-1", UserId = "usr-6", IsArchived = true,
+        });
+        _db.TeamMemberships.AddRange(
+            new TeamMembership { OrganizationId = "org-1", TeamId = "t-a", EmployeeId = "usr-6" },
+            new TeamMembership { OrganizationId = "org-1", TeamId = "t-b", EmployeeId = "usr-6" });
+        _db.Users.Add(new User { Id = "usr-6", Name = "Person 6", Email = "p6@example.test" });
+        await _db.SaveChangesAsync();
+
+        var audit = new FakeAuditService();
+        var service = new PayrollXeroSyncService(
+            new PayrollRunRepository(_db), new PayslipRepository(_db),
+            new PayrollSettingsService(new PayrollSettingsRepository(_db), audit),
+            new ChartOfAccountRepository(_db), new FakeClaimsService(), new NoTrackingXero(), audit,
+            new EmployeeProfileRepository(_db), NullLogger<PayrollXeroSyncService>.Instance,
+            new TeamRepository(_db), new TeamMembershipRepository(_db), new ProjectRepository(_db),
+            new DirectoryService(
+                new OrganizationMembershipRepository(_db), new EmployeeProfileRepository(_db), new UserRepository(_db)));
+
+        Assert.Equal(["Person 3", "Person 4"], await service.GetPeopleNeedingMainProjectAsync());
     }
 
     // ─── The AI split ───────────────────────────────────────────────────

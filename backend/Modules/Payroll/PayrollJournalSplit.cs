@@ -316,7 +316,7 @@ public static class PayrollJournalSplit
                 true,
                 $"No main project is set for them, so their whole pay goes to the first project rule that "
                 + $"matches: {string.Join("; ", multiProject)}. Set a main project on their employee profile "
-                + "(Employment) to choose.",
+                + "(Company → Main project) to choose.",
                 Warning: true));
         }
 

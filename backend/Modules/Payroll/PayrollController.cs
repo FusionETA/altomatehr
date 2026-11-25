@@ -19,14 +19,16 @@ public class PayrollController : ControllerBase
     private readonly IPayrollSettingsService _settings;
     private readonly IPayrollCompanyInfoService _companyInfo;
     private readonly IPayrollJournalSplitService _split;
+    private readonly IPayrollXeroSyncService _xero;
 
     public PayrollController(
         IPayrollSettingsService settings, IPayrollCompanyInfoService companyInfo,
-        IPayrollJournalSplitService split)
+        IPayrollJournalSplitService split, IPayrollXeroSyncService xero)
     {
         _settings = settings;
         _companyInfo = companyInfo;
         _split = split;
+        _xero = xero;
     }
 
     // The bank register the bank-file generators match employees against.
@@ -122,6 +124,15 @@ public class PayrollController : ControllerBase
     [HttpPost("settings/xero/split/check")]
     public async Task<IActionResult> CheckXeroSplit(CheckXeroSplitDto dto) =>
         Ok(await _split.CheckAsync(dto));
+
+    // Xero sync settings: who on several projects still has no main project,
+    // so their pay would post untagged. Names every current employee, so it
+    // carries the settings gate rather than the plain read.
+    [RequireScope("payroll:read")]
+    [RequireSettings]
+    [HttpGet("settings/xero/needs-main-project")]
+    public async Task<IActionResult> PeopleNeedingMainProject() =>
+        Ok(await _xero.GetPeopleNeedingMainProjectAsync());
 
     [RequireScope("payroll:read")]
     [HttpGet("company-info")]

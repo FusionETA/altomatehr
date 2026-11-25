@@ -1,6 +1,7 @@
 import { useState, type Dispatch, type SetStateAction } from "react";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
 import {
+  getPeopleNeedingMainProject,
   getXeroTrackingCategories,
   XERO_ACCRUAL_SLOTS,
   XERO_EXPENSE_SLOTS,
@@ -100,8 +101,13 @@ function StandardMapping({
     getXeroTrackingCategories().catch(() => [] as XeroTrackingCategory[]),
   );
 
+  const needsMainQuery = useCachedQuery("/payroll/settings/xero/needs-main-project", () =>
+    getPeopleNeedingMainProject().catch(() => [] as string[]),
+  );
+
   const accounts = accountsQuery.data ?? [];
   const categories = categoriesQuery.data ?? [];
+  const needsMain = needsMainQuery.data ?? [];
   const loading = accountsQuery.loading || categoriesQuery.loading;
 
   const setAccount = (slot: string, value: string | null) =>
@@ -183,6 +189,8 @@ function StandardMapping({
         </div>
       </section>
 
+      {needsMain.length > 0 ? <NeedsMainProject names={needsMain} /> : null}
+
       <AccountGroup
         title="Expense accounts"
         subtitle="The debit side. Charged to the P&L when a run posts."
@@ -202,6 +210,37 @@ function StandardMapping({
         accounts={accounts}
         onPick={setAccount}
       />
+    </div>
+  );
+}
+
+// Staff on teams in several projects with no main project chosen. The
+// journal can't tell which project to charge, so their pay posts under
+// "(No project)" with no tracking tag.
+function NeedsMainProject({ names }: { names: string[] }) {
+  const [open, setOpen] = useState(false);
+  const shown = open ? names : names.slice(0, 8);
+  return (
+    <div className={WARN_PANEL}>
+      <p className="font-semibold">
+        {names.length} {names.length === 1 ? "person is" : "people are"} on more than one project with no main
+        project
+      </p>
+      <p className="mt-1">
+        Their pay posts under “(No project)” with no project tag. Set a main project on each one's employee
+        profile (Company → Main project).
+      </p>
+      <p className="mt-2">
+        {shown.join(", ")}
+        {names.length > shown.length ? (
+          <>
+            {" "}
+            <button type="button" className="font-semibold underline" onClick={() => setOpen(true)}>
+              and {names.length - shown.length} more
+            </button>
+          </>
+        ) : null}
+      </p>
     </div>
   );
 }

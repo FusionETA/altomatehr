@@ -28,6 +28,12 @@ public interface IPayrollXeroSyncService
     // check. With no run yet, only the checks that need none.
     Task<PayrollXeroSplitPreview> PreviewSplitAsync(string? runId, IReadOnlyList<PayrollJournalSplitRule> rules);
 
+    // Current staff on teams in more than one project with no main project
+    // chosen (or one they have since left), by name. Their pay posts under
+    // "(No project)" with no tracking tag until one is set. Reads nothing
+    // from Xero.
+    Task<IReadOnlyList<string>> GetPeopleNeedingMainProjectAsync();
+
     // What a split prompt may name: the org's active accounts, tracking
     // categories, departments and staff.
     Task<PayrollXeroSplitOrgContext> GetSplitOrgContextAsync();
