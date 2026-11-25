@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { PortalSwitchMenuItem } from "@/features/auth/components/PortalSwitchMenuItem";
 import { useUrlNav } from "@/shared/lib/use-url-nav";
 import { ExternalLink, LifeBuoy, KeyRound, LoaderCircle, LogOut, MoreVertical } from "lucide-react";
 import { leaveOrg } from "@/features/auth/api";
@@ -339,6 +340,8 @@ export function EmployeeShell({
                         <p className="mt-1 truncate text-xs font-medium text-primary">{organizationName}</p>
                       ) : null}
                     </div>
+
+                    {user.canSwitchPortal ? <PortalSwitchMenuItem toAdmin={true} /> : null}
 
                     {/* No password here for an Altomate (SSO) account. */}
                     {user.viaSso ? null : (

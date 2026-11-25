@@ -28,7 +28,7 @@ public class EmployeeScopeResolver : IEmployeeScopeResolver
         // Staff only: a scope covers the people on those policies, never the
         // company's admins or owner (who resolve to the default policy).
         var userIds = members
-            .Where(m => OrgRoles.IsOnPayroll(m.Role))
+            .Where(m => m.IsEmployed())
             .Where(m => effective.TryGetValue(m.UserId, out var p) && allowed.Contains(p.Id))
             .Select(m => m.UserId)
             .Append(adminUserId)

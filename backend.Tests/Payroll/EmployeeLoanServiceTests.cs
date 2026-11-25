@@ -103,6 +103,29 @@ public class EmployeeLoanServiceTests : IDisposable
         Assert.Equal(1, loan.PaidInstallments);
     }
 
+    // An Employee & admin can't lend themselves money from the admin portal:
+    // a loan names its borrower in the body, where no route guard looks.
+    [Fact]
+    public async Task An_employee_and_admin_cannot_record_their_own_loan()
+    {
+        _db.OrganizationMemberships.Add(new OrganizationMembership
+        {
+            OrganizationId = "org-1", UserId = "usr-1", Role = "Admin", EmploymentRole = "Employee",
+        });
+        await _db.SaveChangesAsync();
+        _currentUser.UserId = "usr-1";
+        var directory = TestDirectory.Over(
+            new OrganizationMembershipRepository(_db), new UserRepository(_db), new EmployeeProfileRepository(_db));
+        var service = new EmployeeLoanService(
+            new EmployeeLoanRepository(_db), new PayrollRunRepository(_db), directory, _audit,
+            ownRecord: new OwnRecordRule(_currentUser, directory));
+
+        var ex = await Assert.ThrowsAsync<PayrollLoanException>(() => service.CreateAsync(Save()));
+
+        Assert.Contains("your own employee record", ex.Message);
+        Assert.Empty(_db.EmployeeLoans);
+    }
+
     private static SaveEmployeeLoanDto Save(
         decimal principal = 1200m,
         LoanRepaymentMode mode = LoanRepaymentMode.FIXED,

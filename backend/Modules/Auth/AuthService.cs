@@ -246,6 +246,21 @@ public class AuthService : IAuthService
         return await IssueTokensAsync(userId, user.Email, membership.Role, organizationId, sso: sso);
     }
 
+    public async Task<AuthResult?> SwitchPortalAsync(
+        string userId, string organizationId, string? currentRole, bool sso = false)
+    {
+        var membership = await _directory.GetMembershipAsync(organizationId, userId);
+        if (membership is null || membership.HiddenByEmployeeAt is not null || !membership.IsEmployeeAndAdmin())
+            return null;
+        if (await IsDeactivatedAsync(organizationId)) return null;
+
+        var user = await _userRepo.GetByIdAsync(userId);
+        if (user is null) return null;
+
+        var target = OrgRoles.IsAdministrative(currentRole) ? membership.EmploymentRole()! : membership.Role;
+        return await IssueTokensAsync(userId, user.Email, target, organizationId, sso: sso);
+    }
+
     public async Task<IReadOnlyList<UserOrgDto>> GetOrgsAsync(string userId)
     {
         // Resolve each membership's org name so the switcher can list companies
@@ -313,8 +328,20 @@ public class AuthService : IAuthService
                 : await IssueTokensAsync(stored.UserId, stored.Email, home.Role, home.OrganizationId, sso: stored.IsSso);
         }
 
+        // The portal they were in, while it is still theirs: an Employee &
+        // admin keeps whichever side they were on, but someone whose admin
+        // access was removed (or who was made admin only) carries on in the
+        // role they actually have now.
+        // Someone in their employee portal whose staff role changed (Employee
+        // → Supervisor) stays in their employee portal, in the new role.
+        var role = string.Equals(stored.Role, membership.Role, StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(stored.Role, membership.EmploymentRole(), StringComparison.OrdinalIgnoreCase)
+            ? stored.Role
+            : OrgRoles.IsOnPayroll(stored.Role) && membership.EmploymentRole() is { } staffRole
+                ? staffRole
+                : membership.Role;
         return await IssueTokensAsync(
-            stored.UserId, stored.Email, stored.Role, stored.OrganizationId, sso: stored.IsSso);
+            stored.UserId, stored.Email, role, stored.OrganizationId, sso: stored.IsSso);
     }
 
     public async Task<LeaveOrgResult> LeaveFormerOrgAsync(
@@ -606,12 +633,17 @@ public class AuthService : IAuthService
         // from the email — "admin@…" read as a person called "Admin".
         var name = (await _userRepo.GetByIdAsync(userId))?.Name;
         var orgName = (await _organizations.GetByIdAsync(organizationId))?.Name;
+        // Not in support mode: a superadmin acting inside a customer has no
+        // employee portal there.
+        var canSwitch = !support
+                        && (await _directory.GetMembershipAsync(organizationId, userId))?.IsEmployeeAndAdmin() == true;
         return new AuthResult(accessToken, email, sessionRole, organizationId, refresh.Token, refresh.ExpiresAt,
             string.IsNullOrWhiteSpace(name) ? null : name.Trim(),
             IsSuperadmin: _superadmins?.IsSuperadmin(email) == true,
             SupportMode: support,
             OrganizationName: orgName,
             ViaSso: sso,
-            FormerEmployee: former);
+            FormerEmployee: former,
+            CanSwitchPortal: canSwitch);
     }
 }

@@ -9,6 +9,12 @@ export type Employee = {
   name: string;
   avatarUrl: string | null;
   role: string;
+  /**
+   * Do they work here: "Employee" / "Supervisor", or null for an admin who
+   * is admin only. Equals role for staff; for an Admin or Owner it says
+   * whether they are ALSO on the staff (Employee & admin). See user-kind.ts.
+   */
+  employmentRole?: string | null;
   employeeNumber: string | null;
   jobTitle: string | null;
   /** What colleagues call them here; shown beside the name, never instead of it. */
@@ -33,6 +39,9 @@ export type Employee = {
 // rather than by hand.
 export type UpdateEmployee = {
   role: string;
+  /** Admin/Owner only: "Employee"/"Supervisor" = also on the staff, "" =
+   *  admin only, omitted = unchanged. Owner's call. */
+  employmentRole?: string;
   name?: string;
   email?: string;
   employeeNumber?: string;
@@ -68,9 +77,8 @@ export const toUpdateEmployee = (employee: Employee): UpdateEmployee => ({
 
 export const ROLES = ["Employee", "Supervisor", "Admin", "Owner"] as const;
 
-// The roles Manage Employee deals in. Admin and Owner are administrative
-// access rather than employment: they hold no approval-chain place and no
-// payroll profile, so they are neither listed nor assignable there.
+// The staff roles Manage User assigns. Admin and Owner are admin ACCESS,
+// given from a user's Admin access tab — never picked from this list.
 export const STAFF_ROLES = ["Employee", "Supervisor"] as const;
 
 export const getEmployees = () => apiGet<Employee[]>("/employees");
@@ -94,6 +102,9 @@ export type CreateEmployee = {
   nickname?: string;
   joinDate?: string | null;
   role: string;
+  /** With role Admin/Owner: "Employee"/"Supervisor" makes them Employee &
+   *  admin; omitted = admin only. */
+  employmentRole?: string;
   policyId?: string | null;
   // Per-admin module grant, set at creation. null/omitted = full access (within
   // the org's plan). Only meaningful for Admin accounts.

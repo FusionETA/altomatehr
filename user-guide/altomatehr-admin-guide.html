@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 3a6d47a
+  user-guide-covered-up-to: 5550c52
 -->
 <html lang="en">
 <head>
@@ -402,7 +402,7 @@
       <li>The company switcher — if you look after several companies, switch here. <span class="btn-name">New
         company</span> creates one with you as its owner.</li>
       <li>The bell — requests and decisions as they happen, with <span class="btn-name">Mark all read</span></li>
-      <li>The ⋮ menu — <span class="btn-name">Change password</span> (not shown if you signed in through Altomate), push notifications (if your browser supports them), <span class="btn-name">What's new</span> (our release notes, with a dot on
+      <li>The ⋮ menu — <span class="btn-name">Switch to my portal</span> (only if you are also on the staff as an Employee &amp; admin — see <a href="#employees">Users</a>), <span class="btn-name">Change password</span> (not shown if you signed in through Altomate), push notifications (if your browser supports them), <span class="btn-name">What's new</span> (our release notes, with a dot on
         the menu until you've read the latest; admins and owners also see the lines meant only for admins), <span class="btn-name">Guide</span> (opens this guide in a new tab),
         <span class="btn-name">Launch Appraisify</span> (opens Appraisify in a new tab, so AltomateHR stays open; if your
         browser blocks the new tab, or AltomateHR is installed as a home-screen app, it opens in the same tab instead), and <span class="btn-name">Log out</span></li>
@@ -422,6 +422,10 @@
           <img src="shots/admin/layout-menu.png" alt="The ⋮ account menu: Change password, What&#x27;s new, Guide, Launch Appraisify, Log out" loading="lazy">
           <p class="shot-cap">⋮ menu</p>
         </div>
+        <div class="shot-item">
+          <img src="shots/admin/layout-menu-switch.png" alt="The admin portal's ⋮ menu for someone who is also on the staff, with Switch to my portal at the top" loading="lazy">
+          <p class="shot-cap">⋮ menu for an Employee &amp; admin</p>
+        </div>
       </div>
       <p class="shot-cap shot-cap-main">The admin portal — sidebar, company switcher, bell and account menu</p>
     </figure>
@@ -438,7 +442,7 @@
     <div class="topic-body">
     <p class="topic-lede">Where you land. Built around what needs a decision, not vanity totals.</p>
     <ul>
-      <li><strong>Quick actions</strong> — straight to Manage Employee, Company Structure, Organization, Policies,
+      <li><strong>Quick actions</strong> — straight to Manage User, Company Structure, Organization, Policies,
         Claim item types (Chart of accounts once Xero is connected) and Projects.</li>
       <li><strong>Documents expiring</strong> — shown first, and only when it applies: foreign workers whose work
         permit or passport has expired or runs out soon, soonest first, with which document it is, its number and how
@@ -648,9 +652,11 @@
                 connection. Claim item types and Projects follow their own module level.</li>
             </ul></li>
           <li><span class="btn-name">Remove</span> — takes the person off as an admin straight away (you confirm
-            first). Their login isn't deleted, and you can add them again later.</li>
+            first). Their login isn't deleted, and you can add them again later. If they are also on the staff
+            (Employee &amp; admin), they stay on the staff as an employee or supervisor — still paid, with their own
+            portal — and only lose admin access.</li>
         </ul>
-        <p>To add someone, open the <strong>Add admin</strong> tab, enter their name and email (and a temporary password
+        <p>Only the owner can add admins or change admin access. To add someone, open the <strong>Add admin</strong> tab, enter their name and email (and a temporary password
           for a new account), and press <span class="btn-name">Add admin</span>. <strong>Manage access</strong> opens
           straight away so you can set their limits — a new admin starts with full access until you do.</p></li>
     </ol>
@@ -892,17 +898,24 @@
   </details>
 
   <details class="topic" id="employees" open>
-    <summary><h2>Employees</h2></summary>
+    <summary><h2>Users</h2></summary>
     <div class="topic-body">
-    <p class="topic-lede"><strong>Company/Employee → Manage Employee.</strong> Everyone you pay, and everything
-      payroll needs to know about them.</p>
+    <p class="topic-lede"><strong>Company/User → Manage User.</strong> Everyone you pay, and everything
+      payroll needs to know about them. (It used to be called Manage Employee.) The page is headed <strong>Users</strong>.</p>
+    <p>There are three kinds of user: <strong>Employee only</strong> (on the staff, with their own employee portal),
+      <strong>Employee &amp; admin</strong> (on the staff <em>and</em> runs the admin portal — for example HR — with one
+      login) and <strong>Admin only</strong> (runs the admin portal but isn't on the staff or payroll — for example an
+      outside accountant). Only the owner can give or change admin access, and only the owner sees who is admin only.</p>
     <h3>The list</h3>
     <ul>
-      <li>Search, filter by <strong>role</strong>, and by <strong>status</strong> — <em>Active</em> (the default),
-        <em>Archived</em> or <em>All statuses</em>.</li>
+      <li><span class="btn-name">Search users</span>, filter by <strong>role</strong>, and by <strong>status</strong> — <em>Active</em> (the default),
+        <em>Archived</em> or <em>All statuses</em>. The owner also gets <strong>All types</strong>, to show <em>Employee only</em>,
+        <em>Employee &amp; admin</em> or <em>Admin only</em>.</li>
+      <li>An Employee &amp; admin shows their staff role (Employee or Supervisor) plus an <strong>Admin</strong> chip.</li>
       <li>People are split into three boxes: <strong>need payroll setup</strong> (something's missing),
         <strong>ready for payroll</strong> (who a run will include), and <strong>archived</strong> (left the company —
-        kept for their records, left out of runs after their last month).</li>
+        kept for their records, left out of runs after their last month). The owner also sees an
+        <strong>N admin only</strong> box, marked <em>Not on payroll</em>: no policy, leave or claims.</li>
       <li>Someone with a transfer queued has a tag under their name — <em>Transfer → Demo Transfer Co on 2026-11-01</em>
         (or <em>Transfer failed</em> if it didn't go through).</li>
       <li>Anyone with no salary on file is named in a warning — they'd get a zero payslip, which stops the run
@@ -910,7 +923,15 @@
     </ul>
     <h3>Adding people</h3>
     <ul>
-      <li><span class="btn-name">Add employee</span> — name, an optional <strong>Nickname</strong>, employee ID (optional — leave it blank and the next number in your company's pattern is assigned; the field shows it, for example <em>D-908 (auto)</em>), job title, join date, email, date
+      <li><span class="btn-name">Add user</span> — if you're the owner you're first asked what the person is:
+        <ul>
+          <li><strong>Employee only</strong> — the employee form below.</li>
+          <li><strong>Employee &amp; admin</strong> — the employee form as <em>step 1 of 2</em>, then press
+            <span class="btn-name">Next: admin access</span> and set their access in the Manage access dialog.</li>
+          <li><strong>Admin only</strong> — name, email and a temporary password for a new account, then Manage access.
+            Use <span class="btn-name">Back</span> to change your mind.</li>
+        </ul>
+        Anyone who isn't the owner goes straight to the employee form, which has: name, an optional <strong>Nickname</strong>, employee ID (optional — leave it blank and the next number in your company's pattern is assigned; the field shows it, for example <em>D-908 (auto)</em>), job title, join date, email, date
         of birth, role and policy. The policy starts on your default one (or, if you're an admin who can't see the default, on your own first policy). Their <strong>starting password</strong> is
         their email followed by their birth month and day (e.g. <code>ali@company.com1123</code>), or one you type.
         Tick <em>Send a welcome email</em> to have it sent to them.</li>
@@ -919,7 +940,9 @@
         <ol>
           <li><strong>Step 1</strong> — <span class="btn-name">Blank template</span> for new hires, or
             <span class="btn-name">Export current</span> to update people already here. The file's
-            <strong>READ ME</strong> sheet explains every column.</li>
+            <strong>READ ME</strong> sheet explains every column. The <strong>Role</strong> column is
+            <em>Employee</em> or <em>Supervisor</em> only — admin access is given by the owner from the person's
+            record, not by import.</li>
           <li><strong>Step 2</strong> — choose what a blank cell does: <em>Keep existing values</em> (the safe default —
             a partly filled file can't wipe anything) or <em>Erase existing values</em> (use only when the file is the
             full, up-to-date record; you're asked to confirm, and Name, Role, Employee No, Salary Type and EPF/EIS can't
@@ -946,19 +969,31 @@
     <figure class="shot" data-place="Employees">
       <div class="shot-grid" data-orient="screen">
         <div class="shot-item">
-          <img src="shots/admin/manage-employee.png" alt="Manage Employee with Import, Export, Salary adjustments and Add employee, the search and filters, and the need-payroll-setup box" loading="lazy">
-          <p class="shot-cap">Manage Employee</p>
+          <img src="shots/admin/manage-employee.png" alt="Manage User with the Users heading, Import, Export, Salary adjustments and Add user, the search, All types, All roles and status filters, and the need-payroll-setup box showing an Employee and Admin chip" loading="lazy">
+          <p class="shot-cap">Manage User</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/add-user-kind.png" alt="The Add user dialog asking what the person is: Employee only, Employee and admin, or Admin only" loading="lazy">
+          <p class="shot-cap">Add user (owner)</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/add-user-both.png" alt="Add employee and admin, step 1 of 2, with the employee form and the Next: admin access button" loading="lazy">
+          <p class="shot-cap">Employee &amp; admin, step 1 of 2</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/user-admin-only-list.png" alt="Manage User filtered to Admin only, showing the 2 admin only box with Admin and Owner access and Not on payroll" loading="lazy">
+          <p class="shot-cap">Admin only filter</p>
         </div>
         <div class="shot-item">
           <img src="shots/admin/employee-import.png" alt="The Import employees dialog: Step 1 templates, Step 2 Keep or Erase existing values for blank cells, Step 3 upload" loading="lazy">
           <p class="shot-cap">Import</p>
         </div>
       </div>
-      <p class="shot-cap shot-cap-main">Manage Employee</p>
+      <p class="shot-cap shot-cap-main">Manage User</p>
     </figure>
 
-    <h3>An employee's record</h3>
-    <p>Click anyone to open their record. Five tabs, each showing how many required fields are still empty
+    <h3>A user's record</h3>
+    <p>Click anyone to open their record (<span class="btn-name">All users</span> takes you back to the list). Five tabs, each showing how many required fields are still empty
       (outlined in red):</p>
     <div class="tbl-scroll"><table>
       <thead><tr><th>Tab</th><th>What's in it</th></tr></thead>
@@ -979,8 +1014,37 @@
           teams and approval level they sit in. For someone on more than one project, a <strong>Main project</strong> section appears too</td></tr>
         <tr><td><strong>Documents</strong></td><td>ID scans, contracts, certificates — and, below them, the
           <strong>Letters</strong> card with the <a href="#letters">HR letters</a> kept for this person</td></tr>
+        <tr><td><strong>Admin access</strong> <span class="badge owner">Owner only</span></td><td>Shown only to the owner.
+          <span class="btn-name">Give admin access</span> makes an employee an Employee &amp; admin (then set their limits);
+          <span class="btn-name">Edit access</span> changes them; <span class="btn-name">Remove admin access</span>
+          takes the admin side away and keeps them on the staff</td></tr>
       </tbody>
     </table></div>
+    <h3>Admin access, and admin-only people</h3>
+    <ul>
+      <li>Open an <strong>Admin only</strong> person (the owner sees them in the <em>admin only</em> box) and you get a
+        simpler page: their access, with <span class="btn-name">Edit access</span> and
+        <span class="btn-name">Remove admin access</span> (for them it removes them from the company; their login isn't deleted),
+        and an <strong>Employee record</strong> card. Pick <em>Employee</em> or <em>Supervisor</em> and press
+        <span class="btn-name">Create employee record</span> to put them on the staff as well.</li>
+      <li><strong>Your own record.</strong> If you are an Employee &amp; admin, you can't change your own salary, payroll
+        adjustments, loans, leave or your own rows in an import from the admin portal. Ask another admin or the owner.
+        Your own leave, claims and payslips are in your employee portal — use <span class="btn-name">Switch to my portal</span>
+        in the ⋮ menu.</li>
+    </ul>
+    <figure class="shot" data-place="Users">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/user-admin-access.png" alt="An Employee and admin's record on the Admin access tab, with Edit access, Remove admin access and the note about their own record" loading="lazy">
+          <p class="shot-cap">Admin access tab</p>
+        </div>
+        <div class="shot-item">
+          <img src="shots/admin/user-admin-only.png" alt="An admin-only person's page with their access and the Create employee record card" loading="lazy">
+          <p class="shot-cap">Admin only person</p>
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">Admin access</p>
+    </figure>
     <h3>Nicknames</h3>
     <p>Some people are known by a shorter name. Give them a <strong>Nickname</strong> and supervisors and
       admins see it beside the full name wherever the app shows who someone is, for example
@@ -2533,7 +2597,7 @@
       name. Use the employee list at the top to see one person's. Click a letter, or its
       download button, to open the PDF; the bin button deletes it for good after you confirm. The same list for one
       person is on the <strong>Letters</strong> card at the bottom of their <strong>Documents</strong> tab in
-      <a href="#employees">Manage Employee</a> — separate from the ID scans and contracts above it, which the employee
+      <a href="#employees">Manage User</a> — separate from the ID scans and contracts above it, which the employee
       <em>can</em> see.</p>
     <p>Probation and confirmation details for the letters live on the <strong>Employment</strong> tab of the record:
       <strong>Probation (months)</strong> and <strong>Confirmation date</strong>.</p>

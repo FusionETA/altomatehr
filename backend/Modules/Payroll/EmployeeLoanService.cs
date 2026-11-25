@@ -21,14 +21,26 @@ public class EmployeeLoanService : IEmployeeLoanService
     // always does. See FiledPeriodsAsync for the fallback.
     private readonly IPayslipRepository? _payslips;
 
+    // A loan is money to the borrower: an Employee & admin can't record or
+    // change their own from the admin portal.
+    private readonly IOwnRecordRule? _ownRecord;
+
+    private async Task RequireNotOwnAsync(string employeeProfileId)
+    {
+        if (_ownRecord is not null && await _ownRecord.IsCallersOwnAsync(null, employeeProfileId))
+            throw new PayrollLoanException(OwnRecordRule.Refusal);
+    }
+
     public EmployeeLoanService(
         IEmployeeLoanRepository loans,
         IPayrollRunRepository runs,
         IDirectoryService directory,
         IAuditService audit,
         IPayrollDraftStaleness? drafts = null,
-        IPayslipRepository? payslips = null)
+        IPayslipRepository? payslips = null,
+        IOwnRecordRule? ownRecord = null)
     {
+        _ownRecord = ownRecord;
         _drafts = drafts;
         _payslips = payslips;
         _loans = loans;
@@ -57,6 +69,7 @@ public class EmployeeLoanService : IEmployeeLoanService
     public async Task<EmployeeLoanDto> CreateAsync(SaveEmployeeLoanDto dto)
     {
         await RequireProfileAsync(dto.EmployeeProfileId);
+        await RequireNotOwnAsync(dto.EmployeeProfileId);
 
         var now = DateTime.UtcNow;
         var loan = new EmployeeLoan
@@ -95,6 +108,7 @@ public class EmployeeLoanService : IEmployeeLoanService
     {
         var loan = await _loans.GetByIdAsync(id);
         if (loan is null) return null;
+        await RequireNotOwnAsync(loan.EmployeeProfileId);
 
         if (loan.Status == LoanStatus.PAUSED)
         {
@@ -138,6 +152,7 @@ public class EmployeeLoanService : IEmployeeLoanService
     {
         var loan = await _loans.GetByIdAsync(id);
         if (loan is null) return null;
+        await RequireNotOwnAsync(loan.EmployeeProfileId);
         RequireActive(loan, "re-planned");
 
         var firstEditable = PayrollLoans.FirstEditableIndex(loan, await LockedPeriodsAsync(loan.EmployeeProfileId));
@@ -167,6 +182,7 @@ public class EmployeeLoanService : IEmployeeLoanService
     {
         var loan = await _loans.GetByIdAsync(id);
         if (loan is null) return null;
+        await RequireNotOwnAsync(loan.EmployeeProfileId);
         RequireActive(loan, "paused");
 
         var firstEditable = PayrollLoans.FirstEditableIndex(loan, await LockedPeriodsAsync(loan.EmployeeProfileId));
@@ -186,6 +202,7 @@ public class EmployeeLoanService : IEmployeeLoanService
     {
         var loan = await _loans.GetByIdAsync(id);
         if (loan is null) return null;
+        await RequireNotOwnAsync(loan.EmployeeProfileId);
         RequireActive(loan, "paused");
 
         var firstEditable = PayrollLoans.FirstEditableIndex(loan, await LockedPeriodsAsync(loan.EmployeeProfileId));
@@ -212,6 +229,7 @@ public class EmployeeLoanService : IEmployeeLoanService
     {
         var loan = await _loans.GetByIdAsync(id);
         if (loan is null) return null;
+        await RequireNotOwnAsync(loan.EmployeeProfileId);
 
         if (loan.Status != LoanStatus.PAUSED || PayrollLoans.PausedIndex(loan) is not { } pausedAt)
         {
@@ -257,6 +275,7 @@ public class EmployeeLoanService : IEmployeeLoanService
     {
         var loan = await _loans.GetByIdAsync(id);
         if (loan is null) return null;
+        await RequireNotOwnAsync(loan.EmployeeProfileId);
 
         if (loan.Status == LoanStatus.PAUSED && status == LoanStatus.ACTIVE)
         {
@@ -300,6 +319,7 @@ public class EmployeeLoanService : IEmployeeLoanService
     {
         var loan = await _loans.GetByIdAsync(id);
         if (loan is null) return false;
+        await RequireNotOwnAsync(loan.EmployeeProfileId);
 
         // Deleting a loan that has been repaying erases the explanation for
         // deductions already on filed payslips.

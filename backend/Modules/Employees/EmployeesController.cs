@@ -12,6 +12,7 @@ namespace AltomateHR.Api.Modules.Employees;
 [Route("employees")]
 // A policy-limited admin reaches only their own people; anyone else is 404.
 [EmployeeInScope("id")]
+[OwnRecordGuard("id")]
 [EmployeeInScope("userId")]
 [RequireModule(OrgModules.Employees)]
 [Authorize(Roles = "Admin,Owner")]   // employee admin is admin/owner only

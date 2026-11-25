@@ -20,7 +20,10 @@ public record AuthResult(
     // Arrived through the Altomate SSO hand-off.
     bool ViaSso = false,
     // The active company is one this person no longer works at — view-only.
-    bool FormerEmployee = false);
+    bool FormerEmployee = false,
+    // An Employee & admin: this session can switch to their other portal
+    // (POST /auth/switch-portal). Role says which one they are in now.
+    bool CanSwitchPortal = false);
 
 // An org the signed-in account can act in (drives the org switcher). Role is the
 // account's role IN THAT org — Employee here, Supervisor there, etc. Name is the

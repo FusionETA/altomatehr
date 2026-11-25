@@ -107,7 +107,8 @@
               <tr><td><code>email</code></td><td>string</td><td>Login email.</td></tr>
               <tr><td><code>name</code></td><td>string</td><td>Display name.</td></tr>
               <tr><td><code>avatarUrl</code></td><td>string | null</td><td>Profile picture, if set.</td></tr>
-              <tr><td><code>role</code></td><td>string</td><td><code>Employee</code>, <code>Supervisor</code>, <code>Admin</code> or <code>Owner</code> — in this org.</td></tr>
+              <tr><td><code>role</code></td><td>string</td><td><code>Employee</code>, <code>Supervisor</code>, <code>Admin</code> or <code>Owner</code> — in this org. This is their admin access, not whether they work here: see <code>employmentRole</code>.</td></tr>
+              <tr><td><code>employmentRole</code></td><td>string | null</td><td>Whether they work here. For an <code>Employee</code> or <code>Supervisor</code> it equals <code>role</code>. For an <code>Admin</code> or <code>Owner</code> it is <code>"Employee"</code> or <code>"Supervisor"</code> when they are also on the staff (an "Employee &amp; admin": paid by payroll, on teams, has a policy), or <code>null</code> when they are admin only.</td></tr>
               <tr><td><code>employeeNumber</code></td><td>string | null</td><td>Staff/payroll number in this org.</td></tr>
               <tr><td><code>jobTitle</code></td><td>string | null</td><td></td></tr>
               <tr><td><code>nickname</code></td><td>string | null</td><td>What colleagues call them in this org, e.g. <code>"JT"</code>. Per company (it belongs to the membership, not the user). <code>name</code> above stays the legal name; other endpoints that return a display name append the nickname as <code>"Name (Nickname)"</code>.</td></tr>
@@ -149,7 +150,8 @@
               <tr><td><code>jobTitle</code></td><td>string</td><td>No</td><td>Max 120 chars.</td></tr>
               <tr><td><code>nickname</code></td><td>string</td><td>No</td><td>Max 60 chars. Trimmed; blank is stored as none. Applies to this company only, even when the email already belongs to someone at another company.</td></tr>
               <tr><td><code>joinDate</code></td><td>string (date)</td><td>No</td><td>Drives pro-rated leave accrual.</td></tr>
-              <tr><td><code>role</code></td><td>string</td><td>Yes</td><td>One of <code>Employee</code>, <code>Supervisor</code>, <code>Admin</code>, <code>Owner</code> (case-insensitive). Defaults to <code>Employee</code> if omitted.</td></tr>
+              <tr><td><code>role</code></td><td>string</td><td>Yes</td><td>One of <code>Employee</code>, <code>Supervisor</code>, <code>Admin</code>, <code>Owner</code> (case-insensitive). Defaults to <code>Employee</code> if omitted. Creating an <code>Admin</code> or <code>Owner</code> is the Owner's call &mdash; see <a href="#admin-changes">Admin changes are Owner-only</a>.</td></tr>
+              <tr><td><code>employmentRole</code></td><td>string | null</td><td>No</td><td>Max 20 chars. Only read when <code>role</code> is <code>Admin</code> or <code>Owner</code>: <code>"Employee"</code> or <code>"Supervisor"</code> makes them an Employee &amp; admin (gets an employee number if none is given), <code>""</code> or omitted = admin only. Any other value is a <code>400</code>. Ignored for an <code>Employee</code> or <code>Supervisor</code>.</td></tr>
               <tr><td><code>policyId</code></td><td>string</td><td>No</td><td>Max 40 chars.</td></tr>
               <tr><td><code>shiftId</code></td><td>string</td><td>No</td><td>Max 40 chars.</td></tr>
               <tr><td><code>modules</code></td><td>string[] | null</td><td>No</td><td>Per-admin module grant (only meaningful for an <code>Admin</code>). <code>null</code> = full access, <code>[]</code> = locked out, otherwise a subset of the plan's modules.</td></tr>
@@ -169,6 +171,7 @@
             <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
             <tbody>
               <tr><td><code>400</code></td><td>Bad role, blank email, already a member, or a new account missing a required field</td><td><code>{ "error": "…" }</code></td></tr>
+              <tr><td><code>400</code></td><td><code>role</code> is <code>Admin</code>/<code>Owner</code> (any key, see <a href="#admin-changes">below</a>), or <code>employmentRole</code> is not <code>Employee</code>, <code>Supervisor</code> or empty</td><td><code>{ "error": "Only the organization's owner can add admins or change an admin's role and access." }</code> or <code>{ "error": "Employment must be Employee, Supervisor, or empty for admin only." }</code></td></tr>
             </tbody>
           </table>
         </div>
@@ -239,7 +242,8 @@
               <tr><td><code>nickname</code></td><td>string | null</td><td>No</td><td>Max 60 chars. <code>null</code> = unchanged, <code>""</code> = clear.</td></tr>
               <tr><td><code>joinDate</code></td><td>string (date) | null</td><td>No</td><td><code>null</code> = unchanged. Recomputes pro-rated leave accrual when it actually changes.</td></tr>
               <tr><td><code>clearJoinDate</code></td><td>boolean</td><td>No</td><td>Default <code>false</code>. Wins over <code>joinDate</code>.</td></tr>
-              <tr><td><code>role</code></td><td>string</td><td>Yes</td><td>One of <code>Employee</code>, <code>Supervisor</code>, <code>Admin</code>, <code>Owner</code>. Always replaced — resend the current value to leave it as is.</td></tr>
+              <tr><td><code>role</code></td><td>string</td><td>Yes</td><td>One of <code>Employee</code>, <code>Supervisor</code>, <code>Admin</code>, <code>Owner</code>. Always replaced — resend the current value to leave it as is. Moving an <code>Employee</code>/<code>Supervisor</code> up to <code>Admin</code> or <code>Owner</code> keeps them on the staff (their old role becomes <code>employmentRole</code>); moving an admin down makes the new role their only one.</td></tr>
+              <tr><td><code>employmentRole</code></td><td>string | null</td><td>No</td><td>Max 20 chars. For an <code>Admin</code> or <code>Owner</code> only: <code>"Employee"</code> or <code>"Supervisor"</code> = also works here, <code>""</code> = admin only, <code>null</code>/omitted = unchanged. Any other value is a <code>400</code>. Ignored for an <code>Employee</code> or <code>Supervisor</code>. Putting an admin on or off the staff marks every payroll draft stale.</td></tr>
               <tr><td><code>policyId</code></td><td>string | null</td><td>No</td><td>Replaced outright; <code>null</code> falls back to the org default.</td></tr>
               <tr><td><code>shiftId</code></td><td>string | null</td><td>No</td><td>Replaced outright; <code>null</code> falls back to the project default.</td></tr>
               <tr><td><code>modules</code></td><td>string[] | null</td><td>No</td><td>Replaced outright. <code>null</code> = full access, <code>[]</code> = locked out.</td></tr>
@@ -253,7 +257,8 @@
           <table>
             <thead><tr><th>Status</th><th>When</th><th>Body</th></tr></thead>
             <tbody>
-              <tr><td><code>400</code></td><td>Bad role, duplicate email, an email change that is refused (<a href="#update-employee-email">below</a>), or demoting someone who still has people routing approvals to them</td><td><code>{ "error": "…" }</code></td></tr>
+              <tr><td><code>400</code></td><td>Bad role, duplicate email, an email change that is refused (<a href="#update-employee-email">below</a>), or demoting someone who still has people routing approvals to them. Also the Owner-only refusal for any change to an admin (<a href="#admin-changes">below</a>) and the bad-<code>employmentRole</code> message</td><td><code>{ "error": "…" }</code></td></tr>
+              <tr><td><code>403</code></td><td>The target is the calling admin's own record (<a href="#own-record">below</a>)</td><td><code>{ "error": { "status": 403, "message": "…" } }</code></td></tr>
               <tr><td><code>404</code></td><td><code>{id}</code> is not a member of this organization</td><td>empty</td></tr>
             </tbody>
           </table>
@@ -1063,6 +1068,47 @@
 <pre><code>curl https://&lt;api-host&gt;/pending \
   -H "Authorization: Bearer wp_live_xxx"</code></pre>
       </section>
+    </section>
+
+    <section class="section" id="admin-changes">
+      <h2>Admin changes are Owner-only</h2>
+      <p>
+        Admin access is the Owner's to give. Creating an <code>Admin</code> or <code>Owner</code>, promoting
+        someone to one, changing an admin's <code>role</code> or <code>modules</code>, and changing whether
+        an admin also works here (<code>employmentRole</code>) are refused for <strong>any</strong> caller whose
+        role is <code>Admin</code>, even one with full module access. An API key always acts as an Admin,
+        so through a key these requests return <code>400</code>
+        <code>{ "error": "Only the organization's owner can add admins or change an admin's role and access." }</code>.
+        A save that leaves an admin's role, modules and employment as they are still goes through.
+      </p>
+      <p>
+        The <code>Role</code> column of <a href="#import">POST /employees/import</a> accepts
+        <code>Employee</code> or <code>Supervisor</code> only. On a new row, <code>Admin</code>/<code>Owner</code>
+        is a row error (<code>"Role can only be Employee or Supervisor here. Admin access is given by the owner from the user's Admin access tab."</code>).
+        On an existing admin's row, <code>Employee</code>/<code>Supervisor</code> sets their <code>employmentRole</code>
+        and keeps them an admin, and their own <code>Admin</code>/<code>Owner</code> is read as no change (an
+        admin-only row exports as that). The export's Role column shows <code>employmentRole</code> when set.
+      </p>
+    </section>
+
+    <section class="section" id="own-record">
+      <h2>Your own record</h2>
+      <p>
+        An <code>Admin</code> who is also on the staff (an Employee &amp; admin) can't change <em>their own</em>
+        employee record from the admin portal, so nobody can raise their own pay. This reaches every
+        non-read endpoint on this page keyed by <code>{id}</code>/<code>{userId}</code>, and the same
+        rule is applied to the payroll employee, salary-change, run-adjustment, employee and attendance
+        imports, to loans, and to leave admin-edit, admin-cancel and filing leave on someone's behalf.
+        Reads are unaffected. The Owner is exempt.
+      </p>
+      <div class="callout warn">
+        <strong>For an API key:</strong> a plain organization key has no person behind it, so it is never
+        refused. A key minted to act as a specific admin (it carries that admin's identity) is refused when
+        that admin is on the staff and the request targets their own record. Route-keyed endpoints
+        answer <code>403</code> <code>{ "error": { "status": 403, "message": "You can't change your own employee record from the admin portal. Ask another admin or the owner." } }</code>;
+        imports list the same message against that row in <code>errors</code> (still <code>200</code>); loans answer
+        <code>400</code> <code>{ "error": "…" }</code> and leave <code>400</code> <code>{ "message": "…" }</code>, with that message.
+      </div>
     </section>
 
     <section class="section" id="not-available">

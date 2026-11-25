@@ -66,13 +66,169 @@ public class EmployeeServiceTests
     {
         var positions = new FakeApproverPositions();
         positions.Place("usr-super", "Ops", layer: 1);
-        var service = MakeService(out var memberships, out _, out _, positions);
+        var service = MakeService(out var memberships, out _, out _, positions, caller: Owner());
 
         var result = await service.UpdateAsync("usr-super", new UpdateEmployeeDto { Role = "Admin" });
 
         Assert.True(result.Ok, result.Error);
-        Assert.Equal("Admin", memberships.Single(m => m.UserId == "usr-super").Role);
+        var promoted = memberships.Single(m => m.UserId == "usr-super");
+        Assert.Equal("Admin", promoted.Role);
+        // Promoting someone doesn't take them off the staff: they are
+        // Employee & admin, still a Supervisor in their teams and still paid.
+        Assert.Equal("Supervisor", promoted.EmploymentRole());
+        Assert.Equal("Supervisor", result.Employee!.EmploymentRole);
     }
+
+    // ─── Admin access is the Owner's to give ────────────────────────────
+
+    // The gap a full-access admin used to walk through: only LIMITED admins
+    // were stopped, so an admin with every box ticked could make a second
+    // Owner — through this, the import, or the API.
+    [Theory]
+    [InlineData("Admin")]
+    [InlineData("Owner")]
+    public async Task A_full_access_admin_cannot_create_an_admin_or_owner(string role)
+    {
+        var service = MakeService(out var memberships);
+
+        var result = await service.CreateAsync(new CreateEmployeeDto
+        {
+            Email = "boss@altomate.com", Name = "Boss", Password = "irrelevant-but-required", Role = role,
+        });
+
+        Assert.False(result.Ok);
+        Assert.Contains("owner", result.Error);
+        Assert.DoesNotContain(memberships, m => m.UserId != "usr-admin" && m.Role == role);
+    }
+
+    [Fact]
+    public async Task A_full_access_admin_cannot_promote_an_employee_to_admin()
+    {
+        var service = MakeService(out var memberships);
+
+        var result = await service.UpdateAsync("usr-emp", new UpdateEmployeeDto { Role = "Admin" });
+
+        Assert.False(result.Ok);
+        Assert.Equal("Employee", memberships.Single(m => m.UserId == "usr-emp").Role);
+    }
+
+    [Fact]
+    public async Task The_owner_adds_an_employee_and_admin_who_is_on_the_staff()
+    {
+        var service = MakeService(out var memberships, out _, out _, new FakeApproverPositions(), caller: Owner());
+
+        var result = await service.CreateAsync(new CreateEmployeeDto
+        {
+            Email = "hr@altomate.com", Name = "Aminah", Password = "irrelevant-but-required",
+            Role = "Admin", EmploymentRole = "Employee",
+        });
+
+        Assert.True(result.Ok, result.Error);
+        var hr = memberships.Single(m => m.UserId == result.Employee!.Id);
+        Assert.True(hr.IsEmployeeAndAdmin());
+        Assert.NotNull(hr.EmployeeNumber);   // staff get a number, as any employee does
+    }
+
+    [Fact]
+    public async Task The_owner_adds_an_admin_only_who_is_not_on_the_staff()
+    {
+        var service = MakeService(out var memberships, out _, out _, new FakeApproverPositions(), caller: Owner());
+
+        var result = await service.CreateAsync(new CreateEmployeeDto
+        {
+            Email = "accountant@altomate.com", Name = "Kelvin", Password = "irrelevant-but-required", Role = "Admin",
+        });
+
+        Assert.True(result.Ok, result.Error);
+        var kelvin = memberships.Single(m => m.UserId == result.Employee!.Id);
+        Assert.False(kelvin.IsEmployed());
+        Assert.Null(kelvin.EmployeeNumber);
+        Assert.Null(result.Employee!.EmploymentRole);
+    }
+
+    [Fact]
+    public async Task The_owner_gives_an_admin_only_an_employee_record_then_removes_their_admin_access()
+    {
+        var service = MakeService(out var memberships, out _, out _, new FakeApproverPositions(), caller: Owner());
+        var admin = memberships.Single(m => m.UserId == "usr-admin");
+
+        var hired = await service.UpdateAsync("usr-admin", new UpdateEmployeeDto { Role = "Admin", EmploymentRole = "Employee" });
+        Assert.True(hired.Ok, hired.Error);
+        Assert.True(admin.IsEmployeeAndAdmin());
+        Assert.NotNull(admin.EmployeeNumber);   // joining the staff gets a number
+
+        var demoted = await service.UpdateAsync("usr-admin", new UpdateEmployeeDto { Role = "Employee" });
+        Assert.True(demoted.Ok, demoted.Error);
+        Assert.Equal("Employee", admin.Role);
+        Assert.Null(admin.EmploymentRole);   // their Role says it all now
+        Assert.True(admin.IsEmployed());
+    }
+
+    [Fact]
+    public async Task An_admin_cannot_put_an_admin_on_the_staff_or_take_them_off_it()
+    {
+        var service = MakeService(out var memberships);
+        memberships.Add(Membership("usr-other", "Admin"));
+
+        var result = await service.UpdateAsync("usr-other", new UpdateEmployeeDto { Role = "Admin", EmploymentRole = "Employee" });
+
+        Assert.False(result.Ok);
+        Assert.False(memberships.Single(m => m.UserId == "usr-other").IsEmployed());
+    }
+
+    // An Employee & admin's employee side is ordinary HR work: another admin
+    // can still change their job title without touching their admin access.
+    [Fact]
+    public async Task An_admin_can_still_edit_an_employee_and_admin_s_job_title()
+    {
+        var service = MakeService(out var memberships);
+        var hr = Membership("usr-other", "Admin");
+        hr.EmploymentRole = "Employee";
+        memberships.Add(hr);
+
+        var result = await service.UpdateAsync("usr-other", new UpdateEmployeeDto { Role = "Admin", JobTitle = "HR Executive" });
+
+        Assert.True(result.Ok, result.Error);
+        Assert.Equal("HR Executive", hr.JobTitle);
+        Assert.True(hr.IsEmployeeAndAdmin());
+    }
+
+    [Fact]
+    public async Task An_unknown_employment_role_is_refused()
+    {
+        var service = MakeService(out _, out _, out _, new FakeApproverPositions(), caller: Owner());
+
+        var result = await service.UpdateAsync("usr-admin", new UpdateEmployeeDto { Role = "Admin", EmploymentRole = "Owner" });
+
+        Assert.False(result.Ok);
+    }
+
+    // On the staff or off it changes who a payroll draft pays, so every draft
+    // has to re-run — or a submittable draft pays someone now off payroll.
+    [Fact]
+    public async Task Joining_or_leaving_the_staff_marks_payroll_drafts_for_a_re_run()
+    {
+        var drafts = new CountingDrafts();
+        var service = MakeService(out _, out _, out _, new FakeApproverPositions(), caller: Owner(), drafts: drafts);
+
+        await service.UpdateAsync("usr-admin", new UpdateEmployeeDto { Role = "Admin", JobTitle = "Finance" });
+        Assert.Equal(0, drafts.Marked);   // no change to who is paid
+
+        await service.UpdateAsync("usr-admin", new UpdateEmployeeDto { Role = "Admin", EmploymentRole = "Employee" });
+        Assert.Equal(1, drafts.Marked);
+
+        await service.UpdateAsync("usr-admin", new UpdateEmployeeDto { Role = "Admin", EmploymentRole = "" });
+        Assert.Equal(2, drafts.Marked);
+    }
+
+    private sealed class CountingDrafts : AltomateHR.Api.Modules.Payroll.IPayrollDraftStaleness
+    {
+        public int Marked { get; private set; }
+        public Task MarkAllDraftsAsync() { Marked++; return Task.CompletedTask; }
+        public Task MarkDraftsCoveringAsync(DateTime from, DateTime to, string? userId = null) => Task.CompletedTask;
+    }
+
+    private static StubCurrentUser Owner() => new() { UserId = "usr-owner", Role = "Owner" };
 
     // Data that predates the guard stays editable. Someone already stored as
     // an Employee at an upper layer is a problem to fix on the team screen —
@@ -508,7 +664,9 @@ public class EmployeeServiceTests
         out List<User> users,
         FakeApproverPositions positions,
         AltomateHR.Api.Modules.Organizations.IModuleAccessService? access = null,
-        CapturingEmailSender? email = null)
+        CapturingEmailSender? email = null,
+        StubCurrentUser? caller = null,
+        AltomateHR.Api.Modules.Payroll.IPayrollDraftStaleness? drafts = null)
     {
         users = new List<User>
         {
@@ -529,12 +687,13 @@ public class EmployeeServiceTests
             new FakeUserRepository(users),
             new FakeLeaveService(),
             new FakeAuditService(),
-            new StubCurrentUser(),
+            caller ?? new StubCurrentUser(),
             email ?? new CapturingEmailSender(),
             new FakeOrgRepositoryForWelcome(),
             positions,
             Options.Create(new PortalOptions()),
-            access);
+            access,
+            drafts: drafts);
     }
 
     private static User User(string id, string email) => new()

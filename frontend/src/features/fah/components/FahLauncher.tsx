@@ -753,7 +753,7 @@ function DownloadButton({ onDownload }: { onDownload: () => Promise<void> }) {
         void onDownload().finally(() => setBusy(false));
       }}
       disabled={busy}
-      title="AltomateHR's import file: check it in Excel, then import it from Manage Employee"
+      title="AltomateHR's import file: check it in Excel, then import it from Manage User"
       className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card px-4 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted disabled:opacity-60"
     >
       {busy ? <LoaderCircle className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}

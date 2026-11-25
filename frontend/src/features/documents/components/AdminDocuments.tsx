@@ -1,3 +1,4 @@
+import { staffRole } from "@/features/employees/lib/user-kind";
 import { useMemo, useRef, useState } from "react";
 import { FilePlus2, FileText, FileUp, LoaderCircle, Plus, Sparkles, WandSparkles } from "lucide-react";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
@@ -11,7 +12,7 @@ import {
   SelectValue,
 } from "@/shared/components/ui/select";
 import { useMyAccess } from "@/features/settings/lib/module-access";
-import { getEmployees, STAFF_ROLES } from "@/features/employees/api";
+import { getEmployees } from "@/features/employees/api";
 import {
   addSampleTemplates,
   deleteTemplate,
@@ -357,7 +358,7 @@ export function GeneratedLettersView({ onOpen }: { onOpen?: OnOpen }) {
   const employees = useMemo(
     () =>
       (employeesQuery.data ?? [])
-        .filter((e) => (STAFF_ROLES as readonly string[]).includes(e.role))
+        .filter((e) => staffRole(e) !== null)
         .sort((a, b) => a.name.localeCompare(b.name)),
     [employeesQuery.data],
   );

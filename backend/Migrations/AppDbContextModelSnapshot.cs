@@ -1615,6 +1615,10 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("varchar(40)");
 
+                    b.Property<string>("EmploymentRole")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
                     b.Property<DateTime?>("HiddenByEmployeeAt")
                         .HasColumnType("datetime(6)");
 

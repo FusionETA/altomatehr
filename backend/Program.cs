@@ -60,6 +60,8 @@ builder.Services.AddControllers(o =>
         o.Filters.Add<PartnerAccessFilter>();   // deny-by-default for partner tokens
         // A policy-limited admin reaches no employee outside their scope by id.
         o.Filters.Add<AltomateHR.Api.Modules.Organizations.EmployeeScopeRouteFilter>();
+        // An Employee & admin can't change their own record from the admin portal.
+        o.Filters.Add<AltomateHR.Api.Modules.Employees.OwnRecordRouteFilter>();
     })
     .AddJsonOptions(o =>
         o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
@@ -473,6 +475,7 @@ builder.Services.AddScoped<AltomateHR.Api.Modules.DocumentExpiry.IDocumentExpiry
 builder.Services.AddHostedService<AltomateHR.Api.Modules.DocumentExpiry.Cron.DocumentExpiryReminderBackgroundService>();
 builder.Services.AddScoped<ITeamService, TeamService>();
 builder.Services.AddScoped<IApproverPositions, ApproverPositions>();
+builder.Services.AddScoped<AltomateHR.Api.Modules.Employees.IOwnRecordRule, AltomateHR.Api.Modules.Employees.OwnRecordRule>();
 builder.Services.AddScoped<IXeroRepository, XeroRepository>();
 builder.Services.AddScoped<IXeroService, XeroService>();
 builder.Services.AddScoped<IXeroAppRepository, XeroAppRepository>();

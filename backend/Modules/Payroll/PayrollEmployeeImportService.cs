@@ -12,6 +12,8 @@ public class PayrollEmployeeImportService : IPayrollEmployeeImportService
     private readonly IEmployeeProfileRepository _profiles;
     private readonly IEmployeeRowResolver _employees;
     private readonly IDirectoryService _directory;
+    // An Employee & admin's own row is refused: not their own pay, from the admin portal.
+    private readonly IOwnRecordRule? _ownRecord;
     private readonly IAuditService _audit;
     // Optional so hand-built instances in tests need not supply it; the app
     // always does.
@@ -22,8 +24,10 @@ public class PayrollEmployeeImportService : IPayrollEmployeeImportService
         IEmployeeRowResolver employees,
         IDirectoryService directory,
         IAuditService audit,
-        IPayrollDraftStaleness? drafts = null)
+        IPayrollDraftStaleness? drafts = null,
+        IOwnRecordRule? ownRecord = null)
     {
+        _ownRecord = ownRecord;
         _drafts = drafts;
         _profiles = profiles;
         _employees = employees;
@@ -56,7 +60,7 @@ public class PayrollEmployeeImportService : IPayrollEmployeeImportService
         // with no way to fix them in bulk.
         // Employees and Supervisors only, like the roster it fills in.
         var memberships = (await _directory.GetMembershipsForCurrentOrgAsync())
-            .Where(m => OrgRoles.IsOnPayroll(m.Role))
+            .Where(m => m.IsEmployed())
             .ToList();
 
         foreach (var membership in memberships
@@ -172,11 +176,17 @@ public class PayrollEmployeeImportService : IPayrollEmployeeImportService
                 continue;
             }
 
+            if (_ownRecord is not null && await _ownRecord.IsCallersOwnAsync(userId))
+            {
+                result.Fail(rowNumber, OwnRecordRule.Refusal);
+                continue;
+            }
+
             if (notOnPayroll.Contains(userId))
             {
                 result.Fail(rowNumber,
-                    $"'{(email.Length > 0 ? email : name)}' is an Admin or Owner, and payroll is for "
-                    + "employees and supervisors only.");
+                    $"'{(email.Length > 0 ? email : name)}' is admin only, and payroll is for the staff. "
+                    + "To pay them, give them an employee record from their Admin access tab.");
                 continue;
             }
 

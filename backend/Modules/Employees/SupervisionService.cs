@@ -76,9 +76,13 @@ public class SupervisionService : ISupervisionService
 
     public bool IsOrgApprover(string? role) => OrgRoles.IsAdministrative(role);
 
+    // Admins and owners never approve — except one who also works here as a
+    // Supervisor: in their employee-portal session they are that team's
+    // supervisor like any other (see MembershipRoles).
     public async Task<IReadOnlySet<string>> GetAdministrativeUserIdsAsync() =>
         (await _directory.GetMembershipsForCurrentOrgAsync())
-            .Where(m => OrgRoles.IsAdministrative(m.Role))
+            .Where(m => OrgRoles.IsAdministrative(m.Role)
+                        && !string.Equals(m.EmploymentRole(), OrgRoles.Supervisor, StringComparison.Ordinal))
             .Select(m => m.UserId)
             .ToHashSet();
 

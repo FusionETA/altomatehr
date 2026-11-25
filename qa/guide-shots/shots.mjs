@@ -520,9 +520,67 @@ const admin = {
     await page.mouse.move(5, 5);
     await shoot(page, "admin", "employee-nickname");
   },
+  // Owner's Manage User: Users heading, Add user, type filter, admin-only box.
   "manage-employee": async (page) => {
     await go(page, "company/manage-employee");
+    await inDemoCo(page);
+    await go(page, "company/manage-employee");
+    await page.getByText(/admin only/).first().waitFor({ timeout: 15000 });
     await shoot(page, "admin", "manage-employee");
+  },
+  "add-user-kind": async (page) => {
+    await go(page, "company/manage-employee");
+    await inDemoCo(page);
+    await go(page, "company/manage-employee");
+    await page.getByRole("button", { name: /Add user/ }).first().click();
+    await page.getByText("What is this person in your company?").waitFor();
+    await shoot(page, "admin", "add-user-kind");
+    await page.getByRole("button", { name: "Close" }).click();
+  },
+  "add-user-both": async (page) => {
+    await go(page, "company/manage-employee");
+    await inDemoCo(page);
+    await go(page, "company/manage-employee");
+    await page.getByRole("button", { name: /Add user/ }).first().click();
+    await page.getByText("Employee & admin", { exact: true }).click();
+    await page.getByText(/Step 1 of 2/).waitFor();
+    await shoot(page, "admin", "add-user-both");
+    await page.getByRole("button", { name: "Cancel" }).or(page.getByRole("button", { name: "Back" })).first().click().catch(() => {});
+  },
+  "user-admin-access": async (page) => {
+    await go(page, "company/manage-employee");
+    await inDemoCo(page);
+    await go(page, "company/manage-employee");
+    await page.getByPlaceholder("Search users").fill("junior");
+    await settle(page);
+    await page.getByText("junior@admin.com").first().click();
+    await settle(page);
+    await clickText(page, "Admin access");
+    await page.getByText("Remove admin access").first().waitFor({ timeout: 15000 });
+    await page.mouse.move(5, 5);
+    await shoot(page, "admin", "user-admin-access");
+  },
+  "user-type-filter": async (page) => {
+    await go(page, "company/manage-employee");
+    await inDemoCo(page);
+    await go(page, "company/manage-employee");
+    await page.getByRole("combobox", { name: "Filter by type" }).click();
+    await settle(page, 500);
+    await shoot(page, "admin", "user-type-filter");
+    await page.getByRole("option", { name: "Admin only" }).click();
+    await page.getByText(/admin only/).first().waitFor();
+    await settle(page);
+    await shoot(page, "admin", "user-admin-only-list");
+  },
+  "user-admin-only": async (page) => {
+    await go(page, "company/manage-employee");
+    await inDemoCo(page);
+    await go(page, "company/manage-employee");
+    await page.getByText("exec.demo@altomate.com").first().click();
+    await page.getByText("Create employee record").first().waitFor({ timeout: 15000 });
+    await page.evaluate(() => { document.querySelectorAll("*").forEach((e) => { if (e.scrollTop) e.scrollTop = 0; }); window.scrollTo(0, 0); });
+    await settle(page, 1500);
+    await shoot(page, "admin", "user-admin-only");
   },
   // Needs `node setup.mjs transfers` (Priya has a transfer queued). The header
   // with Transfer / Duplicate and the banner with Cancel transfer.
@@ -1380,12 +1438,43 @@ const exec = {
   },
 };
 
+
+// ─── Employee & admin (junior@admin.com), desktop and phone ──────────────
+const both = {
+  // Account menu in the admin portal for someone who is also on the staff.
+  "layout-menu-switch": async (page) => {
+    await go(page, "overview");
+    await inDemoCo(page);
+    await page.getByRole("button", { name: "Account menu" }).click();
+    await page.getByText("Switch to my portal").waitFor();
+    await shoot(page, "admin", "layout-menu-switch");
+    await page.keyboard.press("Escape");
+  },
+};
+const bothPhone = {
+  // Same person in their employee portal: Switch to admin portal.
+  "account-menu-switch": async (page) => {
+    await page.getByRole("button", { name: "Account menu" }).click();
+    await page.getByText("Switch to my portal").click();
+    await page.waitForLoadState();
+    await settle(page, 2500);
+    await page.getByRole("button", { name: "Account menu" }).click();
+    await page.getByText("Switch to admin portal").waitFor();
+    await shoot(page, "employee", "account-menu-switch");
+    // Put the demo person back in the admin portal.
+    await page.getByText("Switch to admin portal").click();
+    await settle(page, 2500);
+  },
+};
+
 const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
 const failures = [];
 for (const [group, email, device, extra, steps] of [
   ["admin", "admin@altomate.com", DESKTOP, {}, admin],
   ["evan", "employee@altomate.com", PHONE, { geolocation: SITE_A, permissions: ["geolocation"] }, evan],
   ["exec", "exec.demo@altomate.com", DESKTOP, {}, exec],
+  ["both", "junior@admin.com", DESKTOP, {}, both],
+  ["bothphone", "junior@admin.com", PHONE, {}, bothPhone],
   ["sara", "supervisor@altomate.com", PHONE, {}, sara],
   ["nadia", "nadia.demo@altomate.com", PHONE, { password: "nadia.demo@altomate.com0517" }, nadia],
 ]) {

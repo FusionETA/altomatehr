@@ -65,7 +65,7 @@ public class PolicyService : IPolicyService
     private async Task<bool> CoversAdministratorsAsync(string policyId)
     {
         var administrators = (await _directory.GetMembershipsForCurrentOrgAsync())
-            .Where(m => !Common.OrgRoles.IsOnPayroll(m.Role))
+            .Where(m => Common.OrgRoles.IsAdministrative(m.Role))
             .Select(m => m.UserId);
         return (await GetEffectivePoliciesForEmployeesAsync(administrators))
             .Values.Any(p => p.Id == policyId);

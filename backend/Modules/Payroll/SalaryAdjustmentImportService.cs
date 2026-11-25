@@ -22,6 +22,8 @@ public class SalaryAdjustmentImportService : ISalaryAdjustmentImportService
     private static readonly TimeZoneInfo Myt = TimeZoneInfo.FindSystemTimeZoneById("Asia/Kuala_Lumpur");
 
     private readonly IDirectoryService _directory;
+    // An Employee & admin's own row is refused: not their own pay, from the admin portal.
+    private readonly IOwnRecordRule? _ownRecord;
     private readonly IEmployeeProfileRepository _profiles;
     private readonly ISalaryChangeService _salaryChanges;
     private readonly IPayrollDraftStaleness? _drafts;
@@ -32,8 +34,10 @@ public class SalaryAdjustmentImportService : ISalaryAdjustmentImportService
         IEmployeeProfileRepository profiles,
         ISalaryChangeService salaryChanges,
         IPayrollDraftStaleness? drafts = null,
-        Func<DateTime>? today = null)
+        Func<DateTime>? today = null,
+        IOwnRecordRule? ownRecord = null)
     {
+        _ownRecord = ownRecord;
         _directory = directory;
         _profiles = profiles;
         _salaryChanges = salaryChanges;
@@ -102,6 +106,11 @@ public class SalaryAdjustmentImportService : ISalaryAdjustmentImportService
             if (who is null)
             {
                 errors.Add(new TabularImportError(rowNumber, whoError!));
+                continue;
+            }
+            if (_ownRecord is not null && await _ownRecord.IsCallersOwnAsync(who.Profile.UserId, who.Profile.Id))
+            {
+                errors.Add(new TabularImportError(rowNumber, OwnRecordRule.Refusal));
                 continue;
             }
 

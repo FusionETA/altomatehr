@@ -67,7 +67,7 @@ public static class EmployeeImportSheet
         (new(NameKey, "Name", false, "Aisyah Binti Rahman", ["employee name", "full name"]),
             "Full name. Needed for a new person."),
         (new(RoleKey, "Role", false, "Employee", ["access"]),
-            "Employee, Supervisor, Admin or Owner. A new person defaults to Employee."),
+            "Employee or Supervisor. A new person defaults to Employee. Admin access is given by the owner from the user's Admin access tab."),
         (new(EmployeeNumberKey, "Employee No", false, "EMP-001", ["employee number", "staff id", "employee id"]),
             "Needed for a new person — payroll files by it."),
         (new(JobTitleKey, "Job Title", false, "Site Engineer", ["position"]),

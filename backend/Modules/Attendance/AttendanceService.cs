@@ -74,6 +74,8 @@ public class AttendanceService : IAttendanceService
     private readonly ILeaveTypeService _leaveTypes;
 
     private readonly TeamChat.ITeamChatAlerts? _teamChat;
+    // An Employee & admin can't import their own attendance from the admin portal.
+    private readonly Employees.IOwnRecordRule? _ownRecord;
 
     public AttendanceService(
         IAttendanceRepository repo,
@@ -98,8 +100,10 @@ public class AttendanceService : IAttendanceService
         Xero.IXeroFileReader xero,
         ILeaveService leave,
         ILeaveTypeService leaveTypes,
-        TeamChat.ITeamChatAlerts? teamChat = null)
+        TeamChat.ITeamChatAlerts? teamChat = null,
+        Employees.IOwnRecordRule? ownRecord = null)
     {
+        _ownRecord = ownRecord;
         _teamChat = teamChat;
         _holidays = holidays;
         _xero = xero;
@@ -1920,6 +1924,11 @@ public class AttendanceService : IAttendanceService
             if (employeeId is null)
             {
                 result.Fail(rowNumber, $"No employee in this organization matches '{(email.Length > 0 ? email : name)}'.");
+                continue;
+            }
+            if (_ownRecord is not null && await _ownRecord.IsCallersOwnAsync(employeeId))
+            {
+                result.Fail(rowNumber, Employees.OwnRecordRule.Refusal);
                 continue;
             }
 

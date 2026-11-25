@@ -175,6 +175,95 @@ public class AuthServiceTests
         Assert.Equal("Employee", result.Role);   // role is per-org
     }
 
+    // ─── Employee & admin: one login, two portals ───────────────────────
+
+    private static OrganizationMembership EmployeeAndAdmin(string employment = "Employee") =>
+        new() { OrganizationId = "org-1", UserId = "usr-admin", Role = "Admin", EmploymentRole = employment };
+
+    [Fact]
+    public async Task An_employee_and_admin_signs_in_to_the_admin_portal_and_can_switch()
+    {
+        var service = CreateService(users: [CreateUser(password: "x")], refreshTokens: out _,
+            memberships: [EmployeeAndAdmin()]);
+
+        var result = await service.SwitchOrgAsync("usr-admin", "org-1");
+
+        Assert.Equal("Admin", result!.Role);
+        Assert.True(result.CanSwitchPortal);
+    }
+
+    [Fact]
+    public async Task Switching_portal_moves_between_the_admin_role_and_the_employment_role()
+    {
+        var service = CreateService(users: [CreateUser(password: "x")], refreshTokens: out var tokens,
+            memberships: [EmployeeAndAdmin("Supervisor")]);
+
+        var mine = await service.SwitchPortalAsync("usr-admin", "org-1", currentRole: "Admin");
+        Assert.Equal("Supervisor", mine!.Role);
+        Assert.True(mine.CanSwitchPortal);
+        // The refresh token remembers the portal, so a refresh stays in it.
+        Assert.Equal("Supervisor", tokens.Tokens.Single(t => t.Token == mine.RefreshToken).Role);
+
+        var back = await service.SwitchPortalAsync("usr-admin", "org-1", currentRole: "Supervisor");
+        Assert.Equal("Admin", back!.Role);
+    }
+
+    [Theory]
+    [InlineData("Admin", null)]        // admin only
+    [InlineData("Employee", null)]     // staff only
+    public async Task Someone_who_is_not_both_cannot_switch_portal(string role, string? employment)
+    {
+        var service = CreateService(users: [CreateUser(password: "x")], refreshTokens: out _,
+            memberships: [new OrganizationMembership
+            {
+                OrganizationId = "org-1", UserId = "usr-admin", Role = role, EmploymentRole = employment,
+            }]);
+
+        Assert.Null(await service.SwitchPortalAsync("usr-admin", "org-1", currentRole: role));
+        Assert.False((await service.SwitchOrgAsync("usr-admin", "org-1"))!.CanSwitchPortal);
+    }
+
+    [Fact]
+    public async Task A_refresh_keeps_the_employee_portal_while_it_is_still_theirs()
+    {
+        var service = CreateService(users: [CreateUser(password: "x")], refreshTokens: out _,
+            existingRefreshTokens: [Refresh("Employee")], memberships: [EmployeeAndAdmin()]);
+
+        Assert.Equal("Employee", (await service.RefreshAsync("rt"))!.Role);
+    }
+
+    // Admin access removed while they were signed in to the admin portal:
+    // the next refresh carries on as what they are now.
+    [Fact]
+    public async Task A_refresh_drops_an_admin_role_they_no_longer_have()
+    {
+        var service = CreateService(users: [CreateUser(password: "x")], refreshTokens: out _,
+            existingRefreshTokens: [Refresh("Admin")],
+            memberships: [Membership("usr-admin", "Employee", "org-1")]);
+
+        var result = await service.RefreshAsync("rt");
+
+        Assert.Equal("Employee", result!.Role);
+        Assert.False(result.CanSwitchPortal);
+    }
+
+    // In their employee portal when the owner changes their staff role: they
+    // stay in their employee portal, in the new role — not moved to admin.
+    [Fact]
+    public async Task A_refresh_follows_a_changed_staff_role_in_the_employee_portal()
+    {
+        var service = CreateService(users: [CreateUser(password: "x")], refreshTokens: out _,
+            existingRefreshTokens: [Refresh("Employee")], memberships: [EmployeeAndAdmin("Supervisor")]);
+
+        Assert.Equal("Supervisor", (await service.RefreshAsync("rt"))!.Role);
+    }
+
+    private static RefreshToken Refresh(string role) => new()
+    {
+        Token = "rt", UserId = "usr-admin", Email = "admin@altomate.com", Role = role, OrganizationId = "org-1",
+        CreatedAt = DateTime.UtcNow.AddMinutes(-5), ExpiresAt = DateTime.UtcNow.AddDays(1),
+    };
+
     [Fact]
     public async Task SwitchOrgAsync_ToANonMemberOrg_ReturnsNull()
     {

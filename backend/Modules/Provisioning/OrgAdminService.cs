@@ -82,8 +82,9 @@ public class OrgAdminService : IOrgAdminService
         else
         {
             // An existing employee being promoted. The seat changes; the
-            // account and its history do not.
-            membership.Role = role;
+            // account and its history do not — and they stay on the staff
+            // (Employee & admin), so promoting someone doesn't stop their pay.
+            membership.SetRole(role);
             membership.UpdatedAt = DateTime.UtcNow;
             await _memberships.UpdateAsync(membership);
         }

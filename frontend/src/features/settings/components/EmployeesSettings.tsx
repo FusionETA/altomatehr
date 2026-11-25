@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Archive, ArrowRightLeft, ChevronRight, CircleAlert, CircleCheck, Download, Plus, TrendingUp, Upload, Users } from "lucide-react";
+import { Archive, ArrowLeft, ArrowRightLeft, ChevronRight, CircleAlert, CircleCheck, Download, Plus, ShieldCheck, TrendingUp, Upload, Users } from "lucide-react";
 import { getEmployees, getOpenTransfers, type Employee, type EmployeeTransfer } from "@/features/employees/api";
 import { getPolicies } from "@/features/policies/api";
 import { getPayrollEmployees } from "@/features/payroll/api";
@@ -26,6 +26,8 @@ import { ExportEmployeesDialog } from "@/features/employees/components/ExportEmp
 import { ImportSalaryAdjustmentsDialog } from "@/features/payroll/components/ImportSalaryAdjustmentsDialog";
 import { EmployeeDetail } from "@/features/employees/components/EmployeeDetail";
 import { clearEmployeeLink, readEmployeeLink } from "@/features/employees/lib/profile-link";
+import { staffRole, userKind, USER_KIND_LABEL, type UserKind } from "@/features/employees/lib/user-kind";
+import { AdminAccessPanel } from "./AdminAccessPanel";
 
 const CARD =
   "rounded-[28px] border border-border/70 bg-card/90 p-5 shadow-ambient backdrop-blur-sm sm:p-6";
@@ -60,6 +62,9 @@ const TD_LAST = "py-3 pl-3 pr-5 text-right sm:pr-6";
 const ALL = "ALL";
 const ROLE_FILTERS = ["Employee", "Supervisor"] as const;
 type RoleFilter = (typeof ROLE_FILTERS)[number] | typeof ALL;
+// The Owner's extra filter: what each person is here.
+type TypeFilter = UserKind | typeof ALL;
+const TYPE_FILTERS: UserKind[] = ["employee", "both", "admin"];
 
 // Active by default: someone who has left is a record to keep, not a person to
 // manage, and listing them among the staff put leavers in "ready for payroll".
@@ -72,9 +77,14 @@ const ROLE_PILL: Record<string, string> = {
 };
 
 
-export function EmployeesSettings() {
+// Manage User. Everyone on the staff — including admins who also work here
+// (Employee & admin) — for any admin with Employees access. The Owner also
+// sees who is admin only, and can filter by what each person is: who
+// administers the company is the Owner's to decide, so nobody else sees it.
+export function EmployeesSettings({ isOwner = false }: { isOwner?: boolean }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState<RoleFilter>(ALL);
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>(ALL);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ACTIVE");
   const [page, setPage] = useState(1);
   const [readyPage, setReadyPage] = useState(1);
@@ -120,14 +130,14 @@ export function EmployeesSettings() {
     if (employeesQuery.data) setEmployees(employeesQuery.data);
   }, [employeesQuery.data]);
 
-  // Employees and supervisors only — an admin is not an employee. They hold no
-  // place in an approval chain, carry no payroll profile, and their access is
-  // granted rather than employed, so this screen would offer them a form full
-  // of fields that mean nothing for them. Mirrors the previous system, whose
-  // Manage Employee query is scoped to EMPLOYEE + SUPERVISOR.
-  const staff = useMemo(
-    () => employees.filter((e) => e.role === "Employee" || e.role === "Supervisor"),
-    [employees],
+  // The staff: Employees, Supervisors and admins who also work here. An
+  // admin who is admin only holds no approval-chain place and no payroll
+  // profile, so they never sit among them — the Owner sees them in a box of
+  // their own below.
+  const staff = useMemo(() => employees.filter((e) => staffRole(e) !== null), [employees]);
+  const adminOnly = useMemo(
+    () => (isOwner ? employees.filter((e) => userKind(e) === "admin") : []),
+    [employees, isOwner],
   );
   // Which profiles are short of what payroll needs to include them. Read from
   // the payroll roster rather than recomputed here: that endpoint already runs
@@ -210,8 +220,10 @@ export function EmployeesSettings() {
 
   const filtered = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
+    if (typeFilter === "admin") return [];
     return staff.filter((emp) => {
-      if (roleFilter !== ALL && emp.role !== roleFilter) return false;
+      if (typeFilter !== ALL && userKind(emp) !== typeFilter) return false;
+      if (roleFilter !== ALL && staffRole(emp) !== roleFilter) return false;
       if (statusFilter === "ACTIVE" && isArchived(emp.id)) return false;
       if (statusFilter === "ARCHIVED" && !isArchived(emp.id)) return false;
       if (!query) return true;
@@ -233,7 +245,17 @@ export function EmployeesSettings() {
     });
     // isArchived closes over the payroll roster.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [staff, policies, searchTerm, roleFilter, statusFilter, readiness]);
+  }, [staff, policies, searchTerm, roleFilter, typeFilter, statusFilter, readiness]);
+
+  // Admin only: not on payroll, so no setup, ready or archived — just listed.
+  const adminOnlyShown = useMemo(() => {
+    if (typeFilter !== ALL && typeFilter !== "admin") return [];
+    if (roleFilter !== ALL || statusFilter === "ARCHIVED") return [];
+    const query = searchTerm.trim().toLowerCase();
+    return adminOnly.filter(
+      (emp) => !query || [emp.name, emp.email, emp.role].join(" ").toLowerCase().includes(query),
+    );
+  }, [adminOnly, typeFilter, roleFilter, statusFilter, searchTerm]);
 
   // Two boxes, not two tabs: the people who cannot be paid yet are the whole
   // reason an admin opens this screen, so they sit at the top of the same page
@@ -264,7 +286,7 @@ export function EmployeesSettings() {
     setPage(1);
     setReadyPage(1);
     setArchivedPage(1);
-  }, [searchTerm, roleFilter, statusFilter]);
+  }, [searchTerm, roleFilter, typeFilter, statusFilter]);
 
   const setupPages = Math.max(1, Math.ceil(needsSetup.length / CLAIMS_PAGE_SIZE));
   const setupCurrent = Math.min(page, setupPages);
@@ -301,13 +323,59 @@ export function EmployeesSettings() {
   const statusTotal =
     statusFilter === "ACTIVE" ? activeCount : statusFilter === "ARCHIVED" ? archivedCount : staff.length;
   const narrowed = filtered.length !== statusTotal;
+  // Admin-only people count as active (they're never archived) for the Owner.
+  const adminOnlyTotal = statusFilter === "ARCHIVED" ? 0 : adminOnly.length;
 
   // A row opens the full record, as in the previous system. The list stays a
   // list — every field is edited in one place rather than three of them being
   // editable inline and the rest hidden.
+  // Admin only: there's no employee record to show — just their access,
+  // and the way to give them an employee record.
+  if (selected && userKind(selected) === "admin") {
+    return (
+      <div className="space-y-4">
+        <button
+          type="button"
+          onClick={() => setSelectedId(null)}
+          className="inline-flex items-center gap-1.5 text-sm font-semibold text-muted-foreground transition hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          All users
+        </button>
+        <div className={CARD}>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-black text-foreground">
+              {personName(selected.name, selected.email, undefined, selected.nickname)}
+            </h2>
+            <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary">
+              {selected.role}
+            </span>
+            <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground">
+              Not on payroll
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">{selected.email}</p>
+        </div>
+        <AdminAccessPanel
+          employee={selected}
+          onChanged={(updated) => setEmployees((cur) => cur.map((e) => (e.id === updated.id ? updated : e)))}
+          onRemoved={() => {
+            setEmployees((cur) => cur.filter((e) => e.id !== selected.id));
+            setSelectedId(null);
+          }}
+        />
+      </div>
+    );
+  }
+
   if (selected) {
     return (
       <EmployeeDetail
+        isOwner={isOwner}
+        onRemoved={() => {
+          setEmployees((cur) => cur.filter((e) => e.id !== selected.id));
+          setSelectedId(null);
+        }}
         employee={selected}
         policies={policies}
         initialSection={link?.userId === selected.id ? (link.section ?? undefined) : undefined}
@@ -336,14 +404,16 @@ export function EmployeesSettings() {
             Add employee stranded on a line of its own. */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h2 className="text-lg font-black text-foreground">Employees</h2>
+            <h2 className="text-lg font-black text-foreground">Users</h2>
             {/* Hidden until the roster is in. A count of 0 next to a table of
                 skeleton rows reads as "this company has no employees", which is
                 a different and alarming statement. */}
             {loading ? null : (
               <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground">
                 <Users className="h-3 w-3" />
-                {narrowed ? `${filtered.length} of ${statusTotal}` : statusTotal}
+                {narrowed || adminOnlyShown.length !== adminOnlyTotal
+                  ? `${filtered.length + adminOnlyShown.length} of ${statusTotal + adminOnlyTotal}`
+                  : statusTotal + adminOnlyTotal}
               </span>
             )}
 
@@ -398,7 +468,7 @@ export function EmployeesSettings() {
                 className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_rgba(76,26,134,0.18)] transition hover:opacity-90"
               >
                 <Plus className="h-4 w-4" />
-                Add employee
+                Add user
               </button>
             ) : null}
           </div>
@@ -411,11 +481,29 @@ export function EmployeesSettings() {
           <SearchInput
             value={searchTerm}
             onChange={setSearchTerm}
-            placeholder="Search employees"
+            placeholder="Search users"
             className="w-full sm:flex-1"
             inputClassName="h-10 rounded-xl border-border/70 bg-card/90 focus-visible:ring-primary focus-visible:ring-offset-0"
           />
-          <div className="grid grid-cols-2 gap-2 sm:flex">
+          <div className={`grid gap-2 sm:flex ${isOwner ? "grid-cols-3" : "grid-cols-2"}`}>
+            {isOwner ? (
+              <Select value={typeFilter} onValueChange={(next) => setTypeFilter(next as TypeFilter)}>
+                <SelectTrigger
+                  aria-label="Filter by type"
+                  className="h-10 w-full rounded-xl border-border/70 bg-card/90 text-sm sm:w-44"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All types</SelectItem>
+                  {TYPE_FILTERS.map((kind) => (
+                    <SelectItem key={kind} value={kind}>
+                      {USER_KIND_LABEL[kind]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
             <Select
               value={roleFilter}
               onValueChange={(next) => setRoleFilter(next as RoleFilter)}
@@ -483,14 +571,14 @@ export function EmployeesSettings() {
             </table>
           </div>
         </div>
-      ) : filtered.length === 0 ? (
+      ) : filtered.length === 0 && adminOnlyShown.length === 0 ? (
         <div className={CARD}>
           <p className="py-8 text-center text-sm text-muted-foreground">
-            {staff.length === 0
-              ? "No employees yet. Add the first one to get started."
+            {staff.length === 0 && adminOnly.length === 0
+              ? "No users yet. Add the first one to get started."
               : statusFilter === "ARCHIVED" && archivedCount === 0
-                ? "No archived employees."
-                : "No employees match these filters."}
+                ? "No archived users."
+                : "No users match these filters."}
           </p>
         </div>
       ) : (
@@ -597,6 +685,21 @@ export function EmployeesSettings() {
               />
             </section>
           ) : null}
+          {adminOnlyShown.length > 0 ? (
+            <section className={`${BOX} border border-border/70 bg-card/90`}>
+              <header className={BOX_HEADER}>
+                <h3 className="flex items-center gap-2 text-sm font-bold text-foreground">
+                  <ShieldCheck className="size-4 text-primary" aria-hidden />
+                  {adminOnlyShown.length} admin only
+                </h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  They run the admin portal but aren't on the staff — not paid by payroll, no policy, leave or
+                  claims. Only you, the owner, see them here.
+                </p>
+              </header>
+              <AdminOnlyRows rows={adminOnlyShown} onOpen={setSelectedId} />
+            </section>
+          ) : null}
         </>
       )}
 
@@ -605,6 +708,7 @@ export function EmployeesSettings() {
       {showAdd ? (
         <AddEmployeeModal
           policies={policies}
+          isOwner={isOwner}
           onClose={() => setShowAdd(false)}
           onCreated={(created) => {
             setEmployees((cur) => [created, ...cur]);
@@ -706,12 +810,19 @@ function EmployeeRows({
                   </div>
                 </td>
                 <td className={TD}>
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
-                      ROLE_PILL[emp.role] ?? "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {emp.role}
+                  <span className="inline-flex flex-wrap gap-1">
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                        ROLE_PILL[staffRole(emp) ?? ""] ?? "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      {staffRole(emp)}
+                    </span>
+                    {userKind(emp) === "both" ? (
+                      <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary">
+                        {emp.role}
+                      </span>
+                    ) : null}
                   </span>
                 </td>
                 <td className={`${TD} text-muted-foreground`}>
@@ -748,6 +859,61 @@ function EmployeeRows({
               </tr>
             );
           })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Admin-only people: who they are and their admin seat. Nothing about
+// payroll, because they aren't on it.
+function AdminOnlyRows({ rows, onOpen }: { rows: Employee[]; onOpen: (id: string) => void }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[760px] text-sm">
+        <thead>
+          <tr className="border-y border-border/60">
+            <th className={TH_FIRST}>Person</th>
+            <th className={TH}>Access</th>
+            <th className={TH}>Status</th>
+            <th className={TH_LAST} />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((emp) => (
+            <tr
+              key={emp.id}
+              tabIndex={0}
+              onClick={() => onOpen(emp.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onOpen(emp.id);
+                }
+              }}
+              className="group cursor-pointer border-b border-border/60 transition-colors last:border-0 hover:bg-muted/70 focus-visible:bg-muted/70 focus-visible:outline-none"
+            >
+              <td className={TD_FIRST}>
+                <p className="truncate font-semibold text-foreground">
+                  {personName(emp.name, emp.email, undefined, emp.nickname)}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">{emp.email}</p>
+              </td>
+              <td className={TD}>
+                <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary">
+                  {emp.role}
+                </span>
+              </td>
+              <td className={TD}>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground">
+                  Not on payroll
+                </span>
+              </td>
+              <td className={TD_LAST}>
+                <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" />
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
