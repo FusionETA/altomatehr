@@ -38,6 +38,8 @@ public class EmployeeService : IEmployeeService
     private readonly IModuleAccessService? _access;
     private readonly Policies.IEmployeePolicyRepository? _policies;
     private readonly IEmployeeScope? _scope;
+    // Joining or leaving the staff changes who a payroll draft pays.
+    private readonly Payroll.IPayrollDraftStaleness? _drafts;
 
     public EmployeeService(
         IOrganizationMembershipRepository memberships,
@@ -52,8 +54,10 @@ public class EmployeeService : IEmployeeService
         IOptions<PortalOptions> portal,
         IModuleAccessService? access = null,
         Policies.IEmployeePolicyRepository? policies = null,
-        IEmployeeScope? scope = null)
+        IEmployeeScope? scope = null,
+        Payroll.IPayrollDraftStaleness? drafts = null)
     {
+        _drafts = drafts;
         _scope = scope;
         _access = access;
         _policies = policies;
@@ -455,6 +459,11 @@ public class EmployeeService : IEmployeeService
                 membership.PolicyId,
                 membership.ShiftId,
             }));
+
+        // On the staff or off it (an admin given an employee record, or made
+        // admin only): who payroll pays changed, so every draft re-runs.
+        if (_drafts is not null && (previousEmployment is null) != (membership.EmploymentRole() is null))
+            await _drafts.MarkAllDraftsAsync();
 
         // Only after the membership is saved — the recompute reads JoinDate back.
         if (joinDateChanged)

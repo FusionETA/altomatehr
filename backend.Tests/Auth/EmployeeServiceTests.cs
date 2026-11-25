@@ -203,6 +203,31 @@ public class EmployeeServiceTests
         Assert.False(result.Ok);
     }
 
+    // On the staff or off it changes who a payroll draft pays, so every draft
+    // has to re-run — or a submittable draft pays someone now off payroll.
+    [Fact]
+    public async Task Joining_or_leaving_the_staff_marks_payroll_drafts_for_a_re_run()
+    {
+        var drafts = new CountingDrafts();
+        var service = MakeService(out _, out _, out _, new FakeApproverPositions(), caller: Owner(), drafts: drafts);
+
+        await service.UpdateAsync("usr-admin", new UpdateEmployeeDto { Role = "Admin", JobTitle = "Finance" });
+        Assert.Equal(0, drafts.Marked);   // no change to who is paid
+
+        await service.UpdateAsync("usr-admin", new UpdateEmployeeDto { Role = "Admin", EmploymentRole = "Employee" });
+        Assert.Equal(1, drafts.Marked);
+
+        await service.UpdateAsync("usr-admin", new UpdateEmployeeDto { Role = "Admin", EmploymentRole = "" });
+        Assert.Equal(2, drafts.Marked);
+    }
+
+    private sealed class CountingDrafts : AltomateHR.Api.Modules.Payroll.IPayrollDraftStaleness
+    {
+        public int Marked { get; private set; }
+        public Task MarkAllDraftsAsync() { Marked++; return Task.CompletedTask; }
+        public Task MarkDraftsCoveringAsync(DateTime from, DateTime to, string? userId = null) => Task.CompletedTask;
+    }
+
     private static StubCurrentUser Owner() => new() { UserId = "usr-owner", Role = "Owner" };
 
     // Data that predates the guard stays editable. Someone already stored as
@@ -640,7 +665,8 @@ public class EmployeeServiceTests
         FakeApproverPositions positions,
         AltomateHR.Api.Modules.Organizations.IModuleAccessService? access = null,
         CapturingEmailSender? email = null,
-        StubCurrentUser? caller = null)
+        StubCurrentUser? caller = null,
+        AltomateHR.Api.Modules.Payroll.IPayrollDraftStaleness? drafts = null)
     {
         users = new List<User>
         {
@@ -666,7 +692,8 @@ public class EmployeeServiceTests
             new FakeOrgRepositoryForWelcome(),
             positions,
             Options.Create(new PortalOptions()),
-            access);
+            access,
+            drafts: drafts);
     }
 
     private static User User(string id, string email) => new()

@@ -12,6 +12,8 @@ public class PayrollEmployeeImportService : IPayrollEmployeeImportService
     private readonly IEmployeeProfileRepository _profiles;
     private readonly IEmployeeRowResolver _employees;
     private readonly IDirectoryService _directory;
+    // An Employee & admin's own row is refused: not their own pay, from the admin portal.
+    private readonly IOwnRecordRule? _ownRecord;
     private readonly IAuditService _audit;
     // Optional so hand-built instances in tests need not supply it; the app
     // always does.
@@ -22,8 +24,10 @@ public class PayrollEmployeeImportService : IPayrollEmployeeImportService
         IEmployeeRowResolver employees,
         IDirectoryService directory,
         IAuditService audit,
-        IPayrollDraftStaleness? drafts = null)
+        IPayrollDraftStaleness? drafts = null,
+        IOwnRecordRule? ownRecord = null)
     {
+        _ownRecord = ownRecord;
         _drafts = drafts;
         _profiles = profiles;
         _employees = employees;
@@ -169,6 +173,12 @@ public class PayrollEmployeeImportService : IPayrollEmployeeImportService
                 result.Fail(rowNumber,
                     $"No employee in this organization matches "
                     + $"'{(email.Length > 0 ? email : name)}'.");
+                continue;
+            }
+
+            if (_ownRecord is not null && await _ownRecord.IsCallersOwnAsync(userId))
+            {
+                result.Fail(rowNumber, OwnRecordRule.Refusal);
                 continue;
             }
 

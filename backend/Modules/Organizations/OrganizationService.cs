@@ -1,3 +1,4 @@
+using AltomateHR.Api.Common;
 using AltomateHR.Api.Modules.Auth;
 using AltomateHR.Api.Modules.Employees;
 using AltomateHR.Api.Modules.Employees.Entities;
@@ -19,6 +20,9 @@ public class OrganizationService : IOrganizationService
     private readonly IXeroService _xero;
     private readonly IAuditService _audit;
     private readonly IOrganizationMembershipRepository _memberships;
+    // Who sits above the bottom layer of a team — they can't be left an
+    // Employee there (see RemoveAdminAsync).
+    private readonly Teams.IApproverPositions? _approverPositions;
     private readonly ILeaveTypeService _leaveTypes;
     private readonly IDirectoryService _directory;
     private readonly IOrganizationDefaultsService _defaults;
@@ -40,8 +44,10 @@ public class OrganizationService : IOrganizationService
         Policies.IEmployeePolicyRepository? policies = null,
         AltomateHR.Api.Common.ICurrentUser? currentUser = null,
         Auth.IUserRepository? users = null,
-        TeamChat.ITeamChatAlerts? teamChat = null)
+        TeamChat.ITeamChatAlerts? teamChat = null,
+        Teams.IApproverPositions? approverPositions = null)
     {
+        _approverPositions = approverPositions;
         _teamChat = teamChat;
         _users = users;
         _policies = policies;
@@ -132,6 +138,21 @@ public class OrganizationService : IOrganizationService
         // grant is reset, so giving admin access again starts from scratch.
         if (membership.EmploymentRole() is { } employment)
         {
+            // An Employee sitting above the bottom layer would become the
+            // approver for everyone below — and an Employee can't open the
+            // approvals screens, so their requests would sit. The same rule
+            // as making someone an Employee on their record.
+            if (employment == OrgRoles.Employee && _approverPositions is not null)
+            {
+                var positions = await _approverPositions.ForEmployeeAsync(userId);
+                if (positions.Count > 0)
+                    return (false,
+                        $"{user?.Name ?? user?.Email ?? "They"} sits above the bottom layer in "
+                        + string.Join(", ", positions.Select(p => $"\"{p.TeamName}\""))
+                        + ", so they can't be left as an Employee there. Make them a Supervisor on their record, "
+                        + "or move them down a layer, first.");
+            }
+
             membership.SetRole(employment);
             membership.Modules = null;
             membership.PolicyScope = null;

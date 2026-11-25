@@ -83,8 +83,13 @@ public class ModuleAccessService : IModuleAccessService
             return _access;
         }
 
+        // Limited only while acting AS the admin: an Employee & admin in their
+        // own employee-portal session (role Employee/Supervisor) is an
+        // ordinary member there, and their admin grant must not lock them out
+        // of their team's approvals.
         _access = membership is null
                   || !string.Equals(membership.Role, "Admin", StringComparison.OrdinalIgnoreCase)
+                  || !string.Equals(_currentUser.Role, "Admin", StringComparison.OrdinalIgnoreCase)
             ? AdminAccess.Full
             : AdminAccess.ForAdmin(membership.Modules, membership.CanChangeSettings, membership.PolicyScope);
 

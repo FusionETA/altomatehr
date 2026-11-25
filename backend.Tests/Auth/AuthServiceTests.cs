@@ -247,6 +247,17 @@ public class AuthServiceTests
         Assert.False(result.CanSwitchPortal);
     }
 
+    // In their employee portal when the owner changes their staff role: they
+    // stay in their employee portal, in the new role — not moved to admin.
+    [Fact]
+    public async Task A_refresh_follows_a_changed_staff_role_in_the_employee_portal()
+    {
+        var service = CreateService(users: [CreateUser(password: "x")], refreshTokens: out _,
+            existingRefreshTokens: [Refresh("Employee")], memberships: [EmployeeAndAdmin("Supervisor")]);
+
+        Assert.Equal("Supervisor", (await service.RefreshAsync("rt"))!.Role);
+    }
+
     private static RefreshToken Refresh(string role) => new()
     {
         Token = "rt", UserId = "usr-admin", Email = "admin@altomate.com", Role = role, OrganizationId = "org-1",

@@ -35,6 +35,9 @@ public class EmployeeImportService : IEmployeeImportService
     private readonly Organizations.IOrganizationService? _organizations;
     private readonly Common.ICurrentUser? _currentUser;
 
+    // An Employee & admin's own row is refused: not their own record, from the admin portal.
+    private readonly IOwnRecordRule? _ownRecord;
+
     public EmployeeImportService(
         IEmployeeService employees,
         IEmployeeProfileService profiles,
@@ -43,8 +46,10 @@ public class EmployeeImportService : IEmployeeImportService
         IShiftService shifts,
         Organizations.IModuleAccessService access,
         Organizations.IOrganizationService? organizations = null,
-        Common.ICurrentUser? currentUser = null)
+        Common.ICurrentUser? currentUser = null,
+        IOwnRecordRule? ownRecord = null)
     {
+        _ownRecord = ownRecord;
         _employees = employees;
         _profiles = profiles;
         _directory = directory;
@@ -317,6 +322,12 @@ public class EmployeeImportService : IEmployeeImportService
 
             if (existing.TryGetValue(email, out var member))
             {
+                if (_ownRecord is not null && await _ownRecord.IsCallersOwnAsync(member.Id))
+                {
+                    errors.Add(new TabularImportError(rowNumber, OwnRecordRule.Refusal));
+                    continue;
+                }
+
                 var profile = await _profiles.GetAsync(member.Id);
                 if (profile is null)
                 {

@@ -59,6 +59,28 @@ public class RemoveAdminAccessTests : IDisposable
         Assert.Null(hr.PolicyScope);
     }
 
+    // Left as an Employee above the bottom layer, they would become the
+    // approver for everyone below — and an Employee can't open approvals.
+    [Fact]
+    public async Task Removing_admin_access_is_refused_while_it_would_leave_an_employee_approving()
+    {
+        var hr = _db.OrganizationMemberships.Single(m => m.UserId == "usr-hr");
+        hr.EmploymentRole = "Employee";
+        _db.SaveChanges();
+        var positions = new AltomateHR.Api.Tests.Auth.FakeApproverPositions();
+        positions.Place("usr-hr", "Ops", layer: 1);
+        var memberships = new OrganizationMembershipRepository(_db);
+        var service = new OrganizationService(
+            new OrganizationRepository(_db), memberships, new FakeAuditService(), null!, null!,
+            TestDirectory.Over(memberships, new UserRepository(_db)), null!,
+            currentUser: new StubCurrentUser { UserId = "usr-owner", Role = "Owner" }, approverPositions: positions);
+
+        var (_, error) = await service.RemoveAdminAsync("usr-hr");
+
+        Assert.Contains("Ops", error);
+        Assert.Equal("Admin", _db.OrganizationMemberships.Single(m => m.UserId == "usr-hr").Role);
+    }
+
     [Fact]
     public async Task An_admin_only_leaves_the_company()
     {

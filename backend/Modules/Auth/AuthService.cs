@@ -332,10 +332,14 @@ public class AuthService : IAuthService
         // admin keeps whichever side they were on, but someone whose admin
         // access was removed (or who was made admin only) carries on in the
         // role they actually have now.
+        // Someone in their employee portal whose staff role changed (Employee
+        // → Supervisor) stays in their employee portal, in the new role.
         var role = string.Equals(stored.Role, membership.Role, StringComparison.OrdinalIgnoreCase)
                    || string.Equals(stored.Role, membership.EmploymentRole(), StringComparison.OrdinalIgnoreCase)
             ? stored.Role
-            : membership.Role;
+            : OrgRoles.IsOnPayroll(stored.Role) && membership.EmploymentRole() is { } staffRole
+                ? staffRole
+                : membership.Role;
         return await IssueTokensAsync(
             stored.UserId, stored.Email, role, stored.OrganizationId, sso: stored.IsSso);
     }

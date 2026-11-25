@@ -23,20 +23,11 @@ public static class OwnRecordGuard
 {
     public static readonly string[] EmployeeRouteKeys = ["employeeId", "userId", "employeeProfileId"];
 
-    public const string Refusal =
-        "You can't change your own employee record from the admin portal. Ask another admin or the owner.";
+    public const string Refusal = OwnRecordRule.Refusal;
 
     public static async Task<bool> RefusesAsync(ActionExecutingContext context, IEnumerable<string> routeKeys)
     {
         if (AccessGateIsRead(context)) return false;
-
-        var services = context.HttpContext.RequestServices;
-        var currentUser = services.GetRequiredService<ICurrentUser>();
-        if (currentUser.UserId is not { } me
-            || currentUser.OrganizationId is not { } orgId
-            || currentUser.IsSupport
-            || !string.Equals(currentUser.Role, OrgRoles.Admin, StringComparison.OrdinalIgnoreCase))
-            return false;
 
         var ids = routeKeys
             .Select(k => context.RouteData.Values.TryGetValue(k, out var raw) ? raw?.ToString() : null)
@@ -44,18 +35,11 @@ public static class OwnRecordGuard
             .ToList();
         if (ids.Count == 0) return false;
 
-        var directory = services.GetRequiredService<IDirectoryService>();
-        var mine = ids.Contains(me, StringComparer.Ordinal);
-        if (!mine)
-        {
-            var myProfiles = (await directory.GetProfilesByUserAsync(me))
-                .Where(p => p.OrganizationId == orgId)
-                .Select(p => p.Id);
-            mine = myProfiles.Any(p => ids.Contains(p, StringComparer.Ordinal));
-        }
-        if (!mine) return false;
-
-        return (await directory.GetMembershipForUserAsync(me))?.IsEmployed() == true;
+        // A route value may be a user id or a profile id; ask both ways.
+        var rule = context.HttpContext.RequestServices.GetRequiredService<IOwnRecordRule>();
+        foreach (var id in ids)
+            if (await rule.IsCallersOwnAsync(id, id)) return true;
+        return false;
     }
 
     private static bool AccessGateIsRead(ActionExecutingContext context)

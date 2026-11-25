@@ -58,6 +58,11 @@ public class LeaveService : ILeaveService
     private readonly Employees.IEmployeeProfileService? _profiles;
 
     private readonly TeamChat.ITeamChatAlerts? _teamChat;
+    // An Employee & admin can't change their own leave from the admin portal.
+    private readonly Employees.IOwnRecordRule? _ownRecord;
+
+    private async Task<bool> IsCallersOwnAsync(string employeeId) =>
+        _ownRecord is not null && await _ownRecord.IsCallersOwnAsync(employeeId);
 
     public LeaveService(
         ILeaveApplicationRepository apps,
@@ -79,8 +84,10 @@ public class LeaveService : ILeaveService
         Payroll.IPayrollDraftStaleness? drafts = null,
         Audit.IAuditService? audit = null,
         Employees.IEmployeeProfileService? profiles = null,
-        TeamChat.ITeamChatAlerts? teamChat = null)
+        TeamChat.ITeamChatAlerts? teamChat = null,
+        Employees.IOwnRecordRule? ownRecord = null)
     {
+        _ownRecord = ownRecord;
         _teamChat = teamChat;
         _drafts = drafts;
         _audit = audit;
@@ -1156,6 +1163,8 @@ public class LeaveService : ILeaveService
     {
         var membership = await _directory.GetMembershipForUserAsync(employeeId);
         if (membership is null) return new LeaveApplyResult(false, null, null);   // → 404
+        if (await IsCallersOwnAsync(employeeId))
+            return new LeaveApplyResult(false, null, Employees.OwnRecordRule.Refusal);
 
         var result = await ApplyAsync(dto, employeeId);
         if (!result.Ok) return result;
@@ -1789,6 +1798,8 @@ public class LeaveService : ILeaveService
         var application = await _apps.GetByIdAsync(id);
         if (application is null)
             return new LeaveTransitionResult(false, false, null, "Application not found");
+        if (await IsCallersOwnAsync(application.EmployeeId))
+            return new LeaveTransitionResult(true, false, ToDto(application), Employees.OwnRecordRule.Refusal);
 
         if (application.Status == LeaveStatus.CANCELLED)
             return new LeaveTransitionResult(true, true, ToDto(application));   // idempotent
@@ -1840,6 +1851,8 @@ public class LeaveService : ILeaveService
     {
         var app = await _apps.GetByIdAsync(id);
         if (app is null) return new LeaveApplyResult(false, null, null);   // → 404
+        if (await IsCallersOwnAsync(app.EmployeeId))
+            return new LeaveApplyResult(false, null, Employees.OwnRecordRule.Refusal);
 
         if (app.Status is not (LeaveStatus.PENDING or LeaveStatus.APPROVED))
             return new LeaveApplyResult(false, null, "Only pending or approved leave can be changed.");

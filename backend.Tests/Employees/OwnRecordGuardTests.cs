@@ -89,6 +89,7 @@ public class OwnRecordGuardTests : IDisposable
             .AddSingleton<ICurrentUser>(new StubCurrentUser { UserId = caller, Role = role, IsSupport = support })
             .AddSingleton<IDirectoryService>(TestDirectory.Over(
                 new OrganizationMembershipRepository(_db), profiles: new EmployeeProfileRepository(_db)))
+            .AddScoped<IOwnRecordRule, OwnRecordRule>()
             .BuildServiceProvider();
 
         var http = new DefaultHttpContext { RequestServices = services };
