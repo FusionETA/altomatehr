@@ -11,6 +11,8 @@ public interface IAttendanceRepository
     Task<AttendanceRecord?> GetByPhotoUrlAsync(string photoUrl);
     Task<List<AttendanceRecord>> GetByEmployeeAsync(string employeeId);
     Task<List<AttendanceRecord>> GetAllAsync();
+    // Every record filed under one business day, across the whole company.
+    Task<List<AttendanceRecord>> GetOnDateAsync(DateTime date);
     Task<List<AttendanceRecord>> GetWithPhotosAsync();
     Task<List<AttendanceRecord>> GetWithPhotosInRangeAsync(DateTime from, DateTime to);
 

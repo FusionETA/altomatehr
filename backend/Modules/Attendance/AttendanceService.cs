@@ -170,6 +170,24 @@ public class AttendanceService : IAttendanceService
             ToDto(r, byRecord.GetValueOrDefault(r.Id, []), sessions.GetValueOrDefault(r.Id, [])), radius));
     }
 
+    public async Task<IEnumerable<AttendanceRecordDto>> GetOrgTodayAsync()
+    {
+        var today = AttendanceTime.StartOfLocalDay(DateTime.UtcNow);
+        var records = await _repo.GetOnDateAsync(today);
+        var ids = records.Select(r => r.Id).ToList();
+
+        var approvals = (await _approvalRequests.GetByRecordIdsAsync(ids))
+            .GroupBy(a => a.AttendanceRecordId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<AttendanceApprovalRequest>)g.ToList());
+        var sessions = (await _sessions.GetByRecordIdsAsync(ids))
+            .GroupBy(x => x.AttendanceRecordId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<AttendanceSession>)g.ToList());
+
+        var radius = await GetRadiusAsync();
+        return records.Select(r => WithOffSite(
+            ToDto(r, approvals.GetValueOrDefault(r.Id, []), sessions.GetValueOrDefault(r.Id, [])), radius));
+    }
+
     // The RECORDS awaiting the caller as current-step approver — the day, its
     // clock times, GPS and photos, with the full approval history attached.
     //
