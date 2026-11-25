@@ -222,16 +222,19 @@ public partial class ActivityService : IActivityService
         if (session is null) return null;
 
         var now = DateTime.UtcNow;
+        // The newest steps when there are too many: one extra is fetched only
+        // to know that older ones were left out.
         var events = await _repo.GetEventsAsync(id, MaxTimelineEvents + 1);
         var truncated = events.Count > MaxTimelineEvents;
-        if (truncated) events = events.Take(MaxTimelineEvents).ToList();
+        if (truncated) events = events.Skip(1).ToList();
 
         // The API request log keys a person by user id, not session — so a
         // window around this session. (Two sessions of the same person open at
         // once would share their failed reads; rare, and harmless to show.)
         var end = (session.EndedAt ?? session.LastSeenAt).AddMinutes(1);
+        var start = truncated ? events[0].CreatedAt : session.StartedAt;
         var errors = await _apiLogs.GetErrorsForCallerAsync(
-            session.UserId, session.StartedAt.AddSeconds(-5), end, MaxTimelineErrors);
+            session.UserId, start.AddSeconds(-5), end, MaxTimelineErrors);
 
         var otherOrgIds = events
             .Select(e => e.OrganizationId)

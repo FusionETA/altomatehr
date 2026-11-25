@@ -19,7 +19,7 @@ public interface IApiRequestLogRepository
     Task<List<ApiRequestLog>> GetErrorsAsync(
         DateTime from, DateTime to, string? organizationId, string? method, string? route, int? status, int limit);
 
-    // One signed-in person's failed calls in [from, to), oldest first — the
+    // One signed-in person's newest failed calls in [from, to), in order — the
     // red lines in a session's activity timeline (Modules/Activity).
     Task<List<ApiRequestLog>> GetErrorsForCallerAsync(string callerId, DateTime from, DateTime to, int limit);
 }

@@ -11,6 +11,11 @@ using AltomateHR.Api.Modules.Organizations.Entities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Routing.Patterns;
+using AltomateHR.Api.Data;
+using AltomateHR.Api.Modules.Auth;
+using AltomateHR.Api.Modules.Auth.Entities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -178,6 +183,46 @@ public class ActivityServiceTests
     [InlineData("curl/8.4.0", "Other")]
     public void DeviceName_IsCoarse(string userAgent, string expected) =>
         Assert.Equal(expected, DeviceName.From(userAgent));
+}
+
+// Against a real EF context: the activity repository shares the request's
+// AppDbContext with the refresh-token save that follows a sign-in.
+public class ActivityRepositoryTests
+{
+    [Fact]
+    public async Task AFailedSessionInsert_DoesNotBreakTheRefreshTokenSaveAfterIt()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .AddInterceptors(new FailUserSessionInserts())
+            .Options;
+        await using var db = new AppDbContext(options, new ActivityCurrentUser());
+        var service = new ActivityService(
+            new ActivityRepository(db), new NoApiErrors(), new NoOrganizations(), new ActivityCurrentUser(),
+            Options.Create(new ActivityOptions()), NullLogger<ActivityService>.Instance);
+
+        var id = await service.StartSessionAsync(
+            new SessionStart("usr-1", "a@globe.com", null, "org-1", null, "Employee", "password"));
+        await new RefreshTokenRepository(db).AddAsync(new RefreshToken
+        {
+            Token = "rt", UserId = "usr-1", Email = "a@globe.com", Role = "Employee", OrganizationId = "org-1",
+            CreatedAt = DateTime.UtcNow, ExpiresAt = DateTime.UtcNow.AddDays(7),
+        });
+
+        Assert.Null(id);
+        Assert.Equal(1, await db.RefreshTokens.CountAsync());
+    }
+
+    private sealed class FailUserSessionInserts : SaveChangesInterceptor
+    {
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context!.ChangeTracker.Entries<UserSession>().Any(e => e.State == EntityState.Added))
+                throw new InvalidOperationException("simulated failure inserting a session");
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
+    }
 }
 
 public class UserActivityMiddlewareTests

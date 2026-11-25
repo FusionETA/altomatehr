@@ -22,7 +22,7 @@ public interface IActivityRepository
 
     Task<(List<UserSession> Rows, int Total)> ListSessionsAsync(SessionFilter filter);
 
-    // Oldest first, at most `limit`.
+    // The newest `limit` events, in order (oldest of them first).
     Task<List<UserActivityEvent>> GetEventsAsync(string sessionId, int limit);
 
     // Rows deleted.
@@ -39,7 +39,7 @@ public sealed record SessionFilter(
     string? OrganizationId,
     string? Search,
     string? Via,
-    // Seen at or after this, and not signed out. Null = any.
+    // Seen at or after this, and not signed out — regardless of From. Null = any.
     DateTime? OnlineSince,
     bool IncludeStaff,
     int Skip,

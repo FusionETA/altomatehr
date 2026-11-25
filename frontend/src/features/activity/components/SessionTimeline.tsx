@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -14,6 +14,7 @@ import {
 import { getSession, type SessionDetail, type TimelineItem } from "../api";
 import {
   counts,
+  dayLabel,
   describeAction,
   describeClick,
   describePage,
@@ -49,6 +50,18 @@ export function SessionTimeline({ sessionId, onBack }: { sessionId: string; onBa
   }, [load]);
 
   const session = detail?.session;
+
+  // Someone who never logs out keeps one session for days or weeks: then each
+  // day gets a heading, since the rows only show the time.
+  const endAt = session ? (session.endedAt ?? session.lastSeenAt) : null;
+  const multiDay = !!session && !!endAt && dayLabel(session.startedAt) !== dayLabel(endAt);
+  let prevDay = session ? dayLabel(session.startedAt) : "";
+  const dayBreak = (iso: string) => {
+    const day = dayLabel(iso);
+    const changed = multiDay && day !== prevDay;
+    prevDay = day;
+    return changed ? <DayHeading label={day} /> : null;
+  };
 
   return (
     <section className="rounded-[28px] border border-border/60 bg-card p-5 shadow-ambient sm:p-6">
@@ -114,15 +127,25 @@ export function SessionTimeline({ sessionId, onBack }: { sessionId: string; onBa
 
           {/* ── What they did ────────────────────────────────────────── */}
           <ol className="mt-4 space-y-1">
+            {multiDay ? <DayHeading label={dayLabel(session.startedAt)} /> : null}
             <Row
               icon={<KeyRound className="h-4 w-4 text-primary" aria-hidden />}
               time={formatTime(session.startedAt)}
               title="Signed in"
               detail={`${viaLabel(session.via)}${session.ipAddress ? ` · ${session.ipAddress}` : ""}`}
             />
+            {detail?.truncated ? (
+              <li className="px-2 py-1.5 text-xs text-muted-foreground">
+                … earlier steps not shown. This is the latest 2,000.
+              </li>
+            ) : null}
             {(detail?.items ?? []).map((item, i) => (
-              <TimelineRow key={`${item.at}-${i}`} item={item} />
+              <Fragment key={`${item.at}-${i}`}>
+                {dayBreak(item.at)}
+                <TimelineRow item={item} />
+              </Fragment>
             ))}
+            {endAt ? dayBreak(endAt) : null}
             {session.endedAt ? (
               <Row
                 icon={<LogOut className="h-4 w-4 text-muted-foreground" aria-hidden />}
@@ -139,9 +162,6 @@ export function SessionTimeline({ sessionId, onBack }: { sessionId: string; onBa
             )}
           </ol>
 
-          {detail?.truncated ? (
-            <p className="mt-3 text-xs text-muted-foreground">Showing the first 2,000 steps of this session.</p>
-          ) : null}
           {(detail?.items.length ?? 0) === 0 ? (
             <p className="mt-3 text-xs text-muted-foreground">
               Nothing recorded yet in this session. Page views arrive within about 10 seconds.
@@ -270,6 +290,12 @@ function Row({
         {raw ? <p className="truncate font-mono text-[11px] text-muted-foreground/70">{raw}</p> : null}
       </div>
     </li>
+  );
+}
+
+function DayHeading({ label }: { label: string }) {
+  return (
+    <li className="px-2 pb-1 pt-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</li>
   );
 }
 

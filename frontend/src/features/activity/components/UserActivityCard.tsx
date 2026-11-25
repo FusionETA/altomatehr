@@ -108,8 +108,9 @@ export function UserActivityCard({ companies }: { companies: ActivityCompany[] }
         <div className="min-w-0">
           <h2 className="text-lg font-black text-foreground">User activity</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Every sign-in, and what was opened, clicked and changed in it. Fusioneta only, never shown to
-            customers. Kept for 90 days. Nothing typed or shown on screen is recorded.
+            Every sign-in, and what was opened, clicked and changed in it. Most recently active first; a
+            range shows sessions in use during it. Fusioneta only, never shown to customers. Kept for 90
+            days. Nothing typed or shown on screen is recorded.
           </p>
         </div>
         <button
@@ -155,7 +156,7 @@ export function UserActivityCard({ companies }: { companies: ActivityCompany[] }
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-3">
-        <div role="group" aria-label="Signed in" className="flex gap-1 rounded-xl border border-border bg-card p-1">
+        <div role="group" aria-label="Active in" className="flex gap-1 rounded-xl border border-border bg-card p-1">
           {RANGES.map((r) => (
             <button
               key={r.key}

@@ -84,6 +84,11 @@ export function formatTime(iso: string): string {
   return utc(iso).toLocaleTimeString("en-MY", { hour: "numeric", minute: "2-digit", second: "2-digit" });
 }
 
+// "Wed, 25 Nov" — the day a step happened, for sessions that span days.
+export function dayLabel(iso: string): string {
+  return utc(iso).toLocaleDateString("en-MY", { weekday: "short", day: "numeric", month: "short" });
+}
+
 export function formatDateTime(iso: string): string {
   return utc(iso).toLocaleString("en-MY", {
     weekday: "short",

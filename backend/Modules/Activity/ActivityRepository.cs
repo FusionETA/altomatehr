@@ -16,7 +16,19 @@ public class ActivityRepository : IActivityRepository
     public async Task AddSessionAsync(UserSession session)
     {
         _db.UserSessions.Add(session);
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch
+        {
+            // This context is the request's, shared with the refresh-token save
+            // that follows a sign-in. Left tracked, the failed row would be
+            // retried by THAT save and take the sign-in down with it — the
+            // caller swallows this so tracking can never block a sign-in.
+            _db.Entry(session).State = EntityState.Detached;
+            throw;
+        }
     }
 
     public Task<UserSession?> GetSessionAsync(string id) =>
@@ -59,8 +71,13 @@ public class ActivityRepository : IActivityRepository
 
     public async Task<(List<UserSession> Rows, int Total)> ListSessionsAsync(SessionFilter filter)
     {
+        // A session lasts as long as its refresh-token chain — someone who
+        // never logs out keeps one for weeks. So "in this range" means ACTIVE
+        // in it (overlaps it), not started in it; and online-now ignores the
+        // range altogether.
         var query = _db.UserSessions.AsNoTracking()
-            .Where(s => s.StartedAt >= filter.From && s.StartedAt < filter.To);
+            .Where(s => s.StartedAt < filter.To);
+        if (filter.OnlineSince is null) query = query.Where(s => s.LastSeenAt >= filter.From);
 
         if (filter.OrganizationId is not null) query = query.Where(s => s.OrganizationId == filter.OrganizationId);
         if (filter.Via is not null) query = query.Where(s => s.Via == filter.Via);
@@ -72,19 +89,27 @@ public class ActivityRepository : IActivityRepository
 
         var total = await query.CountAsync();
         var rows = await query
-            .OrderByDescending(s => s.StartedAt)
+            // Most recently active first: a long-running session that is in
+            // use right now belongs at the top, not under weeks of sign-ins.
+            .OrderByDescending(s => s.LastSeenAt)
             .Skip(filter.Skip)
             .Take(filter.Take)
             .ToListAsync();
         return (rows, total);
     }
 
-    public Task<List<UserActivityEvent>> GetEventsAsync(string sessionId, int limit) =>
-        _db.UserActivityEvents.AsNoTracking()
+    // The NEWEST `limit`, returned oldest first: in a weeks-long session, today
+    // is what someone is looking for.
+    public async Task<List<UserActivityEvent>> GetEventsAsync(string sessionId, int limit)
+    {
+        var newest = await _db.UserActivityEvents.AsNoTracking()
             .Where(e => e.SessionId == sessionId)
-            .OrderBy(e => e.CreatedAt)
+            .OrderByDescending(e => e.CreatedAt)
             .Take(limit)
             .ToListAsync();
+        newest.Reverse();
+        return newest;
+    }
 
     // One statement each, not load-and-remove: a day can be tens of thousands of rows.
     public Task<int> DeleteEventsOlderThanAsync(DateTime cutoff) =>

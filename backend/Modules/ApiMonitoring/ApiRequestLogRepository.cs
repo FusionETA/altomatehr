@@ -66,13 +66,18 @@ public class ApiRequestLogRepository : IApiRequestLogRepository
         return query.OrderByDescending(r => r.CreatedAt).Take(limit).ToListAsync();
     }
 
-    public Task<List<ApiRequestLog>> GetErrorsForCallerAsync(string callerId, DateTime from, DateTime to, int limit) =>
-        _db.ApiRequestLogs.AsNoTracking()
+    // The newest `limit`, returned oldest first — same rule as a session's events.
+    public async Task<List<ApiRequestLog>> GetErrorsForCallerAsync(string callerId, DateTime from, DateTime to, int limit)
+    {
+        var newest = await _db.ApiRequestLogs.AsNoTracking()
             .Where(r => r.CallerType == ApiCallerTypes.User && r.CallerId == callerId
                         && r.CreatedAt >= from && r.CreatedAt < to && r.StatusCode >= 400)
-            .OrderBy(r => r.CreatedAt)
+            .OrderByDescending(r => r.CreatedAt)
             .Take(limit)
             .ToListAsync();
+        newest.Reverse();
+        return newest;
+    }
 
     private IQueryable<ApiRequestLog> InRange(DateTime from, DateTime to, string? organizationId)
     {
