@@ -85,8 +85,21 @@ public static class PayrollJournal
         // identifiers: a split follows who is where NOW.
         public string? EmployeeId { get; init; }
         public string? Department { get; init; }
-        // The live projects of the teams this person is in, for PROJECT rules.
+        // The live projects of the teams this person is in.
         public IReadOnlyList<string> Projects { get; init; } = [];
+        // Their main project (EmployeeProfile.MainProjectId), only when it is
+        // one of `Projects`. For someone on several projects it is the one
+        // their pay posts under, and the only one PROJECT rules see.
+        public string? MainProject { get; init; }
+
+        // What a PROJECT rule matches on: the main project when one is set,
+        // otherwise every project they are on.
+        public IReadOnlyList<string> ProjectsForRules =>
+            MainProject is { } main ? [main] : Projects;
+
+        // On teams in two or more projects with no main project chosen: their
+        // pay posts under "(No project)" and the journal flags them.
+        public bool NeedsMainProject => Projects.Count > 1 && MainProject is null;
         public string? JobTitle { get; init; }
         // `EmploymentStatus` as written (PERMANENT, CONTRACT…).
         public string? EmploymentType { get; init; }

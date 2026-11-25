@@ -241,12 +241,28 @@ public static class PayrollJournalSplit
         return checks;
     }
 
-    // Apply the rules to a built standard journal.
+    // When the org's journal is "Sum by project": the project tracking
+    // category and its options, so a split keeps one line per project.
+    public sealed record ByProject(string? TrackingCategory, IReadOnlySet<string> TrackingOptions)
+    {
+        public IReadOnlyList<PayrollJournal.TrackingTag> TagsFor(string project) =>
+            !string.IsNullOrWhiteSpace(TrackingCategory) && TrackingOptions.Contains(project)
+                ? [new PayrollJournal.TrackingTag(TrackingCategory, project)]
+                : [];
+    }
+
+    // Apply the rules to a built standard journal. With `byProject`, a people
+    // rule (and a remainder that takes only people's own amounts) posts one
+    // line per project — each person's amount under their project
+    // (EmployeeRow.ProjectName), tagged with its tracking option — instead of
+    // one line, as the standard "Sum by project" journal does. A rule that
+    // names its own tracking keeps its single tagged line.
     public static Result Apply(
         PayrollJournal.Result standard,
         IReadOnlyList<PayrollJournal.EmployeeRow> rows,
         IReadOnlyList<PayrollJournalSplitRule> rules,
-        Context context)
+        Context context,
+        ByProject? byProject = null)
     {
         var checks = CheckRules(rules, context).ToList();
 
@@ -281,7 +297,7 @@ public static class PayrollJournalSplit
                     SplitBases.TakesPeople(r.Basis) && Matches(r, row) && TakesType(r, unit.Category));
                 if (first?.Basis != SplitBasis.PROJECT) continue;
 
-                var named = row.Projects
+                var named = row.ProjectsForRules
                     .Where(p => projectRules.Any(r => r.Match.Any(m =>
                         string.Equals(m.Trim(), p.Trim(), StringComparison.OrdinalIgnoreCase))))
                     .ToList();
@@ -298,7 +314,9 @@ public static class PayrollJournalSplit
             checks.Add(new Check(
                 "Staff in more than one project",
                 true,
-                $"Their whole pay goes to the first project rule that matches them: {string.Join("; ", multiProject)}.",
+                $"No main project is set for them, so their whole pay goes to the first project rule that "
+                + $"matches: {string.Join("; ", multiProject)}. Set a main project on their employee profile "
+                + "(Employment) to choose.",
                 Warning: true));
         }
 
@@ -320,7 +338,7 @@ public static class PayrollJournalSplit
             // HRDF): nothing to split, and that is not a failure.
             if (total == 0m) continue;
 
-            var lines = SplitOne(source, total, group.ToList(), rows, context, problems, placements);
+            var lines = SplitOne(source, total, group.ToList(), rows, context, problems, placements, byProject);
             if (lines is null) continue;
 
             split[source] = [.. lines.Select(l => l with { Amount = sign * l.Amount })];
@@ -376,7 +394,7 @@ public static class PayrollJournalSplit
     private static List<PayrollJournal.Line>? SplitOne(
         string source, decimal total, List<PayrollJournalSplitRule> rules,
         IReadOnlyList<PayrollJournal.EmployeeRow> rows, Context context, List<string> problems,
-        List<(int Row, Placement Placement)> placements)
+        List<(int Row, Placement Placement)> placements, ByProject? byProject = null)
     {
         var label = PayrollJournalSplitSources.Label(source);
         var lines = new List<PayrollJournal.Line>();
@@ -387,14 +405,15 @@ public static class PayrollJournalSplit
         var takenTotal = 0m;
         foreach (var rule in rules.Where(r => SplitBases.TakesPeople(r.Basis)))
         {
-            var amount = 0m;
+            var byProjectAmounts = new SortedDictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
             for (var i = 0; i < units.Count; i++)
             {
                 var unit = units[i];
                 if (taken.Contains(i) || !Matches(rule, rows[unit.Row]) || !TakesType(rule, unit.Category)) continue;
 
                 taken.Add(i);
-                amount += unit.Amount;
+                var project = rows[unit.Row].ProjectName;
+                byProjectAmounts[project] = byProjectAmounts.GetValueOrDefault(project) + unit.Amount;
                 if (unit.Amount != 0m)
                 {
                     placements.Add((unit.Row, new Placement(
@@ -402,9 +421,11 @@ public static class PayrollJournalSplit
                 }
             }
 
-            amount = Money.Round2(amount);
-            takenTotal += amount;
-            if (amount != 0m) lines.Add(LineFor(rule, source, amount, context));
+            foreach (var line in PeopleLines(rule, source, byProjectAmounts, context, byProject))
+            {
+                takenTotal += line.Amount;
+                lines.Add(line);
+            }
         }
 
         // 2. The pool is what they left. Fixed amounts and percentages share it.
@@ -461,7 +482,41 @@ public static class PayrollJournalSplit
 
         if (remainder is not null)
         {
-            if (leftover != 0m) shares.Add(LineFor(remainder, source, leftover, context));
+            if (leftover != 0m && !hasShares && ProjectLinesFor(remainder, byProject))
+            {
+                // Only people's own amounts are left: post them under their
+                // projects, like a people rule. Any sen between those amounts
+                // and the leftover (the standard line's rounding) goes on the
+                // biggest line.
+                var byProjectAmounts = new SortedDictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+                for (var i = 0; i < units.Count; i++)
+                {
+                    if (taken.Contains(i)) continue;
+                    var project = rows[units[i].Row].ProjectName;
+                    byProjectAmounts[project] = byProjectAmounts.GetValueOrDefault(project) + units[i].Amount;
+                }
+
+                var remainderLines = PeopleLines(remainder, source, byProjectAmounts, context, byProject);
+                var gap = Money.Round2(leftover - remainderLines.Sum(l => l.Amount));
+                if (gap != 0m && remainderLines.Count > 0)
+                {
+                    var biggest = remainderLines.IndexOf(remainderLines.MaxBy(l => Math.Abs(l.Amount))!);
+                    remainderLines[biggest] = remainderLines[biggest] with
+                    {
+                        Amount = Money.Round2(remainderLines[biggest].Amount + gap),
+                    };
+                }
+                else if (gap != 0m)
+                {
+                    remainderLines.Add(LineFor(remainder, source, gap, context));
+                }
+
+                shares.AddRange(remainderLines);
+            }
+            else if (leftover != 0m)
+            {
+                shares.Add(LineFor(remainder, source, leftover, context));
+            }
         }
         else if (leftover != 0m)
         {
@@ -544,7 +599,7 @@ public static class PayrollJournalSplit
     private static bool Matches(PayrollJournalSplitRule rule, PayrollJournal.EmployeeRow row) => rule.Basis switch
     {
         SplitBasis.DEPARTMENT => Is(rule, row.Department),
-        SplitBasis.PROJECT => row.Projects.Any(p => Is(rule, p)),
+        SplitBasis.PROJECT => row.ProjectsForRules.Any(p => Is(rule, p)),
         SplitBasis.JOB_TITLE => Is(rule, row.JobTitle),
         SplitBasis.EMPLOYMENT_TYPE => Is(rule, row.EmploymentType),
         SplitBasis.ROLE => Is(rule, row.Role),
@@ -603,6 +658,39 @@ public static class PayrollJournalSplit
             $"{PayrollJournalSplitSources.Label(source).ToUpperInvariant()} - {Describe(rule)}",
             Source: source,
             Tags: tags);
+    }
+
+    // Whether a rule's line is broken down by project: the journal is "Sum by
+    // project" and the rule names no tracking of its own.
+    private static bool ProjectLinesFor(PayrollJournalSplitRule rule, ByProject? byProject) =>
+        byProject is not null && rule.Tracking.Count == 0;
+
+    // A people rule's lines: one per project when the journal is by project,
+    // otherwise one line for the lot.
+    private static List<PayrollJournal.Line> PeopleLines(
+        PayrollJournalSplitRule rule, string source, IReadOnlyDictionary<string, decimal> byProjectAmounts,
+        Context context, ByProject? byProject)
+    {
+        if (!ProjectLinesFor(rule, byProject))
+        {
+            var amount = Money.Round2(byProjectAmounts.Values.Sum());
+            return amount == 0m ? [] : [LineFor(rule, source, amount, context)];
+        }
+
+        var lines = new List<PayrollJournal.Line>();
+        foreach (var (project, raw) in byProjectAmounts)
+        {
+            var amount = Money.Round2(raw);
+            if (amount == 0m) continue;
+
+            var line = LineFor(rule, source, amount, context);
+            lines.Add(line with
+            {
+                Description = $"{line.Description} - {project}",
+                Tags = byProject!.TagsFor(project),
+            });
+        }
+        return lines;
     }
 
     // Xero matches a tracking category by its exact name.

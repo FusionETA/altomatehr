@@ -46,6 +46,9 @@ public class EmployeeProfileDto
     public string? Department { get; set; }
     public string? Location { get; set; }
     public string? WorkSchedule { get; set; }
+    // See EmployeeProfile.MainProjectId. Only meaningful for someone on teams
+    // in two or more live projects; the employee page offers just those.
+    [MaxLength(40)] public string? MainProjectId { get; set; }
     public EmploymentStatus? EmploymentStatus { get; set; }
     public DateTime? ContractEndDate { get; set; }
     [Range(0, 120)] public int? ProbationMonths { get; set; }

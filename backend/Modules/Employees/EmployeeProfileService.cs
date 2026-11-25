@@ -345,6 +345,7 @@ public class EmployeeProfileService : IEmployeeProfileService
 
         e.JoinDate = d.JoinDate; e.LeaveDate = d.LeaveDate;
         e.Department = d.Department; e.Location = d.Location; e.WorkSchedule = d.WorkSchedule;
+        e.MainProjectId = string.IsNullOrWhiteSpace(d.MainProjectId) ? null : d.MainProjectId.Trim();
         e.EmploymentStatus = d.EmploymentStatus; e.ContractEndDate = d.ContractEndDate?.Date;
         e.ProbationMonths = d.ProbationMonths; e.ConfirmationDate = d.ConfirmationDate?.Date;
 
@@ -416,6 +417,7 @@ public class EmployeeProfileService : IEmployeeProfileService
 
         JoinDate = e.JoinDate, LeaveDate = e.LeaveDate,
         Department = e.Department, Location = e.Location, WorkSchedule = e.WorkSchedule,
+        MainProjectId = e.MainProjectId,
         EmploymentStatus = e.EmploymentStatus, ContractEndDate = e.ContractEndDate,
         ProbationMonths = e.ProbationMonths, ConfirmationDate = e.ConfirmationDate,
 
