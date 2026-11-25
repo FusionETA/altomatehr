@@ -1032,6 +1032,7 @@ function ClaimDetailsForm({
         </button>
         <button
           type="submit"
+          data-track={isEditing ? "claims.save-changes" : "claims.submit"}
           disabled={saving || !canSubmit}
           className="inline-flex items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-[0_12px_30px_rgba(76,26,134,0.18)] transition hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
         >

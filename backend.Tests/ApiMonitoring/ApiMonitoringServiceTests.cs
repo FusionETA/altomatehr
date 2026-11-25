@@ -244,5 +244,7 @@ public class ApiMonitoringServiceTests : IDisposable
         public Task<List<ApiRequestLog>> GetErrorsAsync(
             DateTime from, DateTime to, string? organizationId, string? method, string? route, int? status, int limit) =>
             throw new NotSupportedException();
+        public Task<List<ApiRequestLog>> GetErrorsForCallerAsync(string callerId, DateTime from, DateTime to, int limit) =>
+            throw new NotSupportedException();
     }
 }

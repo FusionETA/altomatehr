@@ -145,6 +145,7 @@ export function GeneratedLettersList({
                   onClick={() => void download(doc)}
                   disabled={busyId === doc.id}
                   aria-label="Download"
+                  data-track="documents.letter-download"
                   className="grid h-8 w-8 place-items-center rounded-xl border border-border bg-card text-foreground transition hover:border-primary hover:text-primary disabled:opacity-50"
                 >
                   {busyId === doc.id ? (

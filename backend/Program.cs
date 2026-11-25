@@ -578,6 +578,20 @@ builder.Services.AddScoped<AltomateHR.Api.Modules.ApiMonitoring.IApiMonitoringSe
 builder.Services.AddHostedService<AltomateHR.Api.Modules.ApiMonitoring.Cron.ApiRequestLogWriterBackgroundService>();
 builder.Services.AddHostedService<AltomateHR.Api.Modules.ApiMonitoring.Cron.ApiRequestLogCleanupBackgroundService>();
 
+// User activity (Fusioneta only): a session per sign-in, and what the person
+// did in it. Actions are queued by UserActivityMiddleware and saved in batches
+// by the writer; page views and clicks arrive from the browser tracker.
+builder.Services.Configure<AltomateHR.Api.Modules.Activity.ActivityOptions>(
+    builder.Configuration.GetSection(AltomateHR.Api.Modules.Activity.ActivityOptions.SectionName));
+builder.Services.AddSingleton<AltomateHR.Api.Modules.Activity.IActivityEventQueue,
+    AltomateHR.Api.Modules.Activity.ActivityEventQueue>();
+builder.Services.AddScoped<AltomateHR.Api.Modules.Activity.IActivityRepository,
+    AltomateHR.Api.Modules.Activity.ActivityRepository>();
+builder.Services.AddScoped<AltomateHR.Api.Modules.Activity.IActivityService,
+    AltomateHR.Api.Modules.Activity.ActivityService>();
+builder.Services.AddHostedService<AltomateHR.Api.Modules.Activity.Cron.ActivityEventWriterBackgroundService>();
+builder.Services.AddHostedService<AltomateHR.Api.Modules.Activity.Cron.ActivityCleanupBackgroundService>();
+
 // Whether a company is deactivated: read on every request, so cached briefly.
 builder.Services.AddMemoryCache();
 builder.Services.AddScoped<AltomateHR.Api.Modules.Organizations.IOrganizationStatus,
@@ -620,6 +634,10 @@ if (app.Environment.IsDevelopment())
 // Outermost, so it times the whole request and records the status the caller
 // actually got — after the exception handler below has turned a crash into one.
 app.UseMiddleware<AltomateHR.Api.Modules.ApiMonitoring.ApiRequestLogMiddleware>();
+
+// Also outside the exception handler, for the same reason: a person's failed
+// action is recorded with the status they were actually shown.
+app.UseMiddleware<AltomateHR.Api.Modules.Activity.UserActivityMiddleware>();
 
 app.UseExceptionHandler(errorApp =>
 {

@@ -28,6 +28,12 @@ public class RefreshToken
     // not bring back the Log out an Altomate hand-off hides.
     public bool IsSso { get; set; }
 
+    // The activity session (Modules/Activity UserSession) this token belongs
+    // to. Copied onto the next token at every rotation, so one sign-in stays
+    // one session however many times it refreshes. Null on tokens minted
+    // before activity tracking existed.
+    [MaxLength(40)] public string? SessionId { get; set; }
+
     public DateTime ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? RevokedAt { get; set; }             // null = still valid

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PortalSwitchMenuItem } from "@/features/auth/components/PortalSwitchMenuItem";
 import { useUrlNav, type UrlNav } from "@/shared/lib/use-url-nav";
+import { usePageTracking } from "@/features/activity/lib/use-page-tracking";
 import { ExternalLink, KeyRound, LifeBuoy, LogOut, MoreVertical } from "lucide-react";
 import { ChangePasswordModal } from "@/features/auth/components/ChangePasswordModal";
 import { NotificationBell } from "@/features/notifications/components/NotificationBell";
@@ -85,6 +86,8 @@ export function AdminShell({
   const nav = normalise(urlNav);
   const activeParent = nav.parent;
   const activeChild = nav.child ?? defaultChildOf(findNavItem(nav.parent));
+  // A tab with no sub-pages has itself as its "child"; report it once.
+  usePageTracking(activeParent, activeChild === activeParent ? null : activeChild);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   // Bumped when a notification opens someone's record, so the employee page

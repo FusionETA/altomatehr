@@ -19,7 +19,10 @@ public interface IAuthService
 
     // Re-mint the token for another org the user belongs to. Null = not a member.
     // `sso`: keep the session marked as an Altomate SSO hand-off.
-    Task<AuthResult?> SwitchOrgAsync(string userId, string organizationId, bool sso = false);
+    // `signInVia`: this is a sign-in of its own (the Altomate SSO hand-off), so
+    // it starts a new activity session labelled with it rather than carrying
+    // the caller's current one.
+    Task<AuthResult?> SwitchOrgAsync(string userId, string organizationId, bool sso = false, string? signInVia = null);
 
     // An Employee & admin: from the admin portal to their employee portal or
     // back, in the same company. Null when they aren't both.

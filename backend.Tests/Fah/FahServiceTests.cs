@@ -1102,7 +1102,7 @@ public class FahServiceTests
         public Task<AuthResult?> EnterSupportAsync(string userId, string organizationId, bool sso = false) => throw new NotSupportedException();
         public Task<AuthResult?> ExitSupportAsync(string userId, bool sso = false) => throw new NotSupportedException();
         public Task<AuthResult?> SwitchPortalAsync(string userId, string organizationId, string? currentRole, bool sso = false) => throw new NotSupportedException();
-        public Task<AuthResult?> SwitchOrgAsync(string userId, string organizationId, bool sso = false) => throw new NotSupportedException();
+        public Task<AuthResult?> SwitchOrgAsync(string userId, string organizationId, bool sso = false, string? signInVia = null) => throw new NotSupportedException();
         public Task<AltomateHR.Api.Modules.Auth.Entities.User?> VerifyPasswordAsync(string email, string password, string? clientIp = null) => throw new NotSupportedException();
         public Task<AuthResult?> LoginAsync(string email, string password, string? clientIp = null) => throw new NotSupportedException();
         public Task<AuthResult?> RefreshAsync(string refreshToken) => throw new NotSupportedException();

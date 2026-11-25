@@ -2651,6 +2651,7 @@ export function EmployeeDetail({
                               <button
                                 type="button"
                                 onClick={() => void handleDownloadLhdnForm(form)}
+                                data-track="employees.lhdn-form-download"
                                 disabled={downloadingLhdnKind === form.kind}
                                 className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-xl border border-border bg-card px-3 text-xs font-bold text-foreground transition hover:border-primary hover:text-primary disabled:pointer-events-none disabled:opacity-50"
                               >
@@ -2720,6 +2721,7 @@ export function EmployeeDetail({
                       <button
                         type="button"
                         onClick={() => void handleDownloadDocument(doc)}
+                        data-track="employees.document-download"
                         className="min-w-0 flex-1 text-left"
                       >
                         <span className="block truncate text-sm font-semibold text-foreground hover:underline">

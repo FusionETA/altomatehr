@@ -450,3 +450,24 @@ export const apiDelete = <T>(path: string) =>
     cache.invalidateFor(path);
     return r;
   });
+
+// Fire-and-forget POST that survives the page being hidden or closed
+// (`keepalive`), for the last few bytes a tab sends on its way out. No refresh
+// on a 401, no cache, no error: by the time it settles nobody is listening.
+// Browsers cap keepalive bodies at about 64 KB, so keep them small.
+export function apiPostKeepalive(path: string, body: unknown): void {
+  try {
+    void fetch(`${API_URL}${path}`, {
+      method: "POST",
+      credentials: "include",
+      keepalive: true,
+      headers: {
+        "Content-Type": "application/json",
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
+      body: JSON.stringify(body),
+    }).catch(() => {});
+  } catch {
+    /* a browser without keepalive: the events are lost, nothing else is */
+  }
+}

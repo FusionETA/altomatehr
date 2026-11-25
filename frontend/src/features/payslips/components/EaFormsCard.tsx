@@ -59,6 +59,7 @@ export function EaFormsCard() {
               <button
                 type="button"
                 onClick={() => void download(form.year)}
+                data-track="payslips.ea-form-download"
                 disabled={downloading === form.year}
                 className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-4 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
               >

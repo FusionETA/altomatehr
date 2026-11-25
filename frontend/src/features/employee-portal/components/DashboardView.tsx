@@ -503,6 +503,7 @@ export function DashboardView({
                     : "bg-primary text-primary-foreground"
                 }`}
                 aria-label={clockingOut ? "Clock out" : "Clock in"}
+                data-track={clockingOut ? "attendance.clock-out" : "attendance.clock-in"}
               >
                 {busy ? (
                   <LoaderCircle className="h-8 w-8 animate-spin sm:h-9 sm:w-9" />

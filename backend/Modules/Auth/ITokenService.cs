@@ -12,5 +12,11 @@ public interface ITokenService
     string CreateToken(
         string userId, string email, string role, string organizationId, bool support, bool sso = false, bool former = false) =>
         CreateToken(userId, email, role, organizationId);
+
+    // The same, carrying the activity session it belongs to (claim "asid" —
+    // see Modules/Activity). Null leaves the claim off.
+    string CreateToken(
+        string userId, string email, string role, string organizationId, bool support, bool sso, bool former, string? sessionId) =>
+        CreateToken(userId, email, role, organizationId, support, sso, former);
     string CreateRefreshToken();                                                           // opaque random string
 }

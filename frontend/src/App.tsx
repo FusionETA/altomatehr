@@ -9,6 +9,7 @@ import { EnableNotificationsPrompt } from "./features/notifications/components/E
 import { LoadingScreen } from "./shared/components/LoadingScreen";
 import { onSessionClosed, setAuthToken } from "./shared/lib/api-client";
 import { connectRealtime, disconnectRealtime } from "./shared/lib/realtime-client";
+import { startActivityTracking, stopActivityTracking } from "./features/activity/lib/tracker";
 import type { SignedInUser } from "./shared/types/session";
 
 // Admins and owners get the admin portal; everyone else (supervisors,
@@ -55,13 +56,17 @@ function App() {
         setAuthToken(res.token);
         setUser(toSignedInUser(res));
         connectRealtime();
+        startActivityTracking();
       })
       .catch(() => {
         /* no valid refresh cookie: stay logged out */
       })
       .finally(() => setBooting(false));
 
-    return () => disconnectRealtime();
+    return () => {
+      disconnectRealtime();
+      void stopActivityTracking();
+    };
   }, []);
 
   // The company was deactivated under them. Reloaded like a company switch,
@@ -93,6 +98,7 @@ function App() {
           setAuthToken(res.token);
           setUser(toSignedInUser(res));
           connectRealtime();
+          startActivityTracking();
         }}
       />
     );
@@ -100,6 +106,8 @@ function App() {
 
   const handleLogout = async () => {
     disconnectRealtime();
+    // Sends what's still buffered while the token is valid, then stops.
+    await stopActivityTracking();
     await logout().catch(() => {});
     setAuthToken(null);
     setUser(null);

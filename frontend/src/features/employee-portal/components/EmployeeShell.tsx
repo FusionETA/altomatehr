@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PortalSwitchMenuItem } from "@/features/auth/components/PortalSwitchMenuItem";
 import { useUrlNav } from "@/shared/lib/use-url-nav";
+import { usePageTracking } from "@/features/activity/lib/use-page-tracking";
 import { ExternalLink, LifeBuoy, KeyRound, LoaderCircle, LogOut, MoreVertical } from "lucide-react";
 import { leaveOrg } from "@/features/auth/api";
 import { useConfirm } from "@/shared/components/ConfirmDialog";
@@ -66,6 +67,7 @@ export function EmployeeShell({
   const [leaveError, setLeaveError] = useState<string | null>(null);
   const [confirm, confirmDialog] = useConfirm();
   const sub = nav.child;
+  usePageTracking(activeView, sub);
   const [organizationName, setOrganizationName] = useState<string | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const whatsNew = useWhatsNew(user.email, "everyone");
