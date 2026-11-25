@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 3a6d47a
+// whats-new-covered-up-to: 5550c52
 
 // A line is for everyone, or — wrapped in admins(…) — for admins and owners
 // only. Employees and supervisors never see an admins line, so it doesn't
@@ -30,14 +30,19 @@ export type WhatsNewEntry = {
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-11-25",
-    title: "A main project for staff on several projects",
+    title: "Main projects, and admins who are also on the staff",
     new: [
       admins("Employees on teams in more than one project can now have a main project, in Employee → Company → Main project. Their pay posts to Xero under it."),
       admins("Payroll settings → Xero sync lists anyone on several projects with no main project. Their pay posts under \"(No project)\" until one is set."),
+      admins("Admins can now also be on the staff, with one login. Add a user as Employee & admin, or give admin access from their record's Admin access tab (owner only)."),
+      admins("Manage Employee is now Manage User. Add user asks Employee only, Employee & admin or Admin only, and the owner can filter the list by type."),
+      admins("An admin on the staff switches between the admin portal and My portal from the account menu. Their own pay, leave and loans are changed by another admin or the owner."),
     ],
     improved: [
       admins("The AI split's project rules now match on an employee's main project."),
       admins("With \"Sum by project\", split lines stay separate for each project and carry that project's tag."),
+      admins("Only the owner can add admins or change admin access now, including through the import. The import's Role column takes Employee or Supervisor only."),
+      admins("Removing admin access from an Employee & admin in Settings → Admins keeps them on payroll. Existing admins stay admin only, so nobody's pay changes."),
     ],
   },
   {

@@ -19,7 +19,7 @@ type QuickLink = { parent: string; child: string; label: string; hint: string; i
 
 // Base admin config — always available (not module-gated; these are settings, not analytics).
 const quickLinks: QuickLink[] = [
-  { parent: "company", child: "manage-employee", label: "Manage Employee", hint: "Roles, supervisors & policies", icon: Users },
+  { parent: "company", child: "manage-employee", label: "Manage User", hint: "Staff, admins, roles & policies", icon: Users },
   { parent: "company", child: "company-structure", label: "Company Structure", hint: "Projects, teams & approval chains", icon: Network },
   { parent: "settings", child: "settings-organization", label: "Organization", hint: "Company profile & geofence", icon: Building2 },
   { parent: "settings", child: "settings-policies", label: "Policies", hint: "Enforcement & entitlements", icon: ShieldCheck },
