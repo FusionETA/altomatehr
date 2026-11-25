@@ -12,6 +12,17 @@ public class CreateApiKeyDto
     public List<string> Scopes { get; set; } = new();
 }
 
+// Superadmin edits an existing key: its label and its scopes. The token itself
+// never changes, so whatever already holds it keeps working with the new access.
+public class UpdateApiKeyDto
+{
+    [Required, MaxLength(120)]
+    public string Name { get; set; } = string.Empty;
+
+    // Subset of ApiScopes.All. Unknown scopes are rejected by the service.
+    public List<string> Scopes { get; set; } = new();
+}
+
 // Returned in the LIST — never includes the token, only its prefix.
 public class ApiKeyDto
 {

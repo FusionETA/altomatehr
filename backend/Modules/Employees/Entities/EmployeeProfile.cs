@@ -56,6 +56,14 @@ public class EmployeeProfile : ITenantScoped
     [MaxLength(120)] public string? Location { get; set; }
     [MaxLength(120)] public string? WorkSchedule { get; set; }
 
+    // The project that carries this person's pay in the payroll journal, for
+    // someone on teams in more than one project. Their whole pay posts under
+    // it (tagged with its Xero tracking option). Only honoured while they are
+    // still on a team in it; otherwise — or unset — a multi-project person's
+    // pay posts under "(No project)" and the journal says so. Someone on one
+    // project needs nothing here: that project is used.
+    [MaxLength(40)] public string? MainProjectId { get; set; }
+
     // Employment terms, reported on CP8D (fields 5 and 6). Null status reads
     // as permanent; a contract end is the date the contract runs to.
     public EmploymentStatus? EmploymentStatus { get; set; }

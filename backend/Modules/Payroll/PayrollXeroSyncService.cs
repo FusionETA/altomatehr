@@ -127,14 +127,41 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
         IReadOnlyList<PayrollJournalSplitRule>? rules)
     {
         var standard = PayrollJournal.Build(input);
+        var noMain = NoMainProjectWarning(input);
         if (rules is null)
         {
-            return new Journal(standard.Ok, standard.Error, standard.Narration, standard.Date, standard.Lines, null);
+            return new Journal(standard.Ok, standard.Error, standard.Narration, standard.Date, standard.Lines,
+                noMain is null ? null : [noMain]);
         }
 
-        var split = PayrollJournalSplit.Apply(standard, input.Rows, rules, context);
+        var byProject = input.Mapping.AggregationMode == XeroAggregationMode.SUM_BY_PROJECT
+            ? new PayrollJournalSplit.ByProject(input.TrackingCategoryName, input.TrackingOptions)
+            : null;
+        var split = PayrollJournalSplit.Apply(standard, input.Rows, rules, context, byProject);
+        IReadOnlyList<PayrollJournalSplit.Check> checks = noMain is null ? split.Checks : [.. split.Checks, noMain];
         return new Journal(
-            split.Ok, split.Error, standard.Narration, standard.Date, split.Lines, split.Checks, split.Assignments);
+            split.Ok, split.Error, standard.Narration, standard.Date, split.Lines, checks, split.Assignments);
+    }
+
+    // Staff on teams in more than one project with no main project chosen:
+    // their pay posts under "(No project)", untagged. Not a refusal — the
+    // journal still balances — but the admin should know whose.
+    private static PayrollJournalSplit.Check? NoMainProjectWarning(PayrollJournal.Input input)
+    {
+        var names = input.Rows
+            .Where(r => r.NeedsMainProject)
+            .Select(r => r.EmployeeName)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (names.Count == 0) return null;
+
+        return new PayrollJournalSplit.Check(
+            $"{names.Count} on more than one project with no main project",
+            true,
+            $"Their pay posts under \"{PayrollJournal.NoProject}\" with no project tag: {string.Join(", ", names)}. "
+            + "Set a main project on each one's employee profile (Company → Main project).",
+            Warning: true);
     }
 
     // The settings page's try-out: these rules (saved or just generated)
@@ -210,6 +237,28 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
                 .Select(a => new PayrollXeroSplitAccount(a.Code, a.Name, a.XeroType ?? a.Type))]);
     }
 
+    public async Task<IReadOnlyList<string>> GetPeopleNeedingMainProjectAsync()
+    {
+        var people = await PeopleAsync();
+        var waiting = (await _profiles.GetAllForCurrentOrgAsync())
+            .Where(p => !p.IsArchived
+                        && people.TryGetValue(p.Id, out var person)
+                        && person.Projects.Count > 1
+                        && person.MainProject is null)
+            .ToList();
+        if (waiting.Count == 0 || _directory is null) return [];
+
+        // One look-up per person still waiting, not the whole user table:
+        // users aren't tenant-scoped, and this list is short.
+        var names = new List<string>(waiting.Count);
+        foreach (var profile in waiting)
+        {
+            var user = await _directory.GetUserAsync(profile.UserId);
+            if (user is not null) names.Add(string.IsNullOrWhiteSpace(user.Name) ? user.Email : user.Name);
+        }
+        return [.. names.Distinct(StringComparer.Ordinal).OrderBy(n => n, StringComparer.OrdinalIgnoreCase)];
+    }
+
     private async Task<string?> LatestRunWithPayslipsAsync()
     {
         var runs = (await _runs.GetAllAsync())
@@ -272,7 +321,11 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
                 .GroupBy(p => p.EmployeeProfileId, StringComparer.Ordinal)
                 .ToDictionary(
                     g => g.Key,
-                    g => people.GetValueOrDefault(g.Key)?.Projects ?? (IReadOnlyList<string>)[],
+                    // What a PROJECT rule will match them on: their main
+                    // project alone when one is chosen.
+                    g => people.GetValueOrDefault(g.Key) is { } person
+                        ? (person.MainProject is { } main ? [main] : person.Projects)
+                        : (IReadOnlyList<string>)[],
                     StringComparer.Ordinal),
         };
     }
@@ -281,7 +334,13 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
     // the run's other identifiers, so a split follows who is where now.
     private sealed record Person(
         string? Department, IReadOnlyList<string> Projects, string? JobTitle,
-        string? EmploymentType, string? Role, string? Policy);
+        string? EmploymentType, string? Role, string? Policy, string? MainProject = null)
+    {
+        // The project their pay posts under: their only one, or the main one
+        // they chose among several; otherwise none.
+        public string ProjectName =>
+            Projects.Count == 1 ? Projects[0] : MainProject ?? PayrollJournal.NoProject;
+    }
 
     private async Task<Dictionary<string, Person>> PeopleAsync()
     {
@@ -293,7 +352,7 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
             : (await _directory.GetMembershipsForCurrentOrgAsync())
                 .GroupBy(m => m.UserId, StringComparer.Ordinal)
                 .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
-        var projects = await ProjectsByUserAsync();
+        var (projects, projectNames) = await ProjectsByUserAsync();
         var policies = _policies is null
             ? new Dictionary<string, Policies.Entities.EmployeePolicy>(StringComparer.Ordinal)
             : await _policies.GetEffectivePoliciesForEmployeesAsync(userIds);
@@ -301,13 +360,24 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
         return profiles.ToDictionary(p => p.Id, p =>
         {
             var membership = memberships.GetValueOrDefault(p.UserId);
+            var mine = projects.GetValueOrDefault(p.UserId) ?? [];
+
+            // Honoured only while they are still on a team in it: a main
+            // project they have since left would otherwise keep pulling their
+            // pay to a site they no longer work on.
+            var main = p.MainProjectId is { } id && projectNames.TryGetValue(id, out var name)
+                && mine.Contains(name, StringComparer.OrdinalIgnoreCase)
+                ? name
+                : null;
+
             return new Person(
                 p.Department,
-                projects.GetValueOrDefault(p.UserId) ?? [],
+                mine,
                 membership?.JobTitle,
                 p.EmploymentStatus?.ToString(),
                 membership?.Role,
-                policies.GetValueOrDefault(p.UserId)?.Name);
+                policies.GetValueOrDefault(p.UserId)?.Name,
+                main);
         }, StringComparer.Ordinal);
     }
 
@@ -323,12 +393,15 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
-    // User id → the names of the projects their teams belong to. Live
-    // projects only; a team under an archived project doesn't count.
-    private async Task<Dictionary<string, IReadOnlyList<string>>> ProjectsByUserAsync()
+    // User id → the names of the projects their teams belong to, and live
+    // project id → name. Live projects only; a team under an archived project
+    // doesn't count.
+    private async Task<(Dictionary<string, IReadOnlyList<string>> ByUser, Dictionary<string, string> Names)>
+        ProjectsByUserAsync()
     {
         var result = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
-        if (_teams is null || _memberships is null || _projects is null) return result;
+        if (_teams is null || _memberships is null || _projects is null)
+            return (result, new Dictionary<string, string>(StringComparer.Ordinal));
 
         var projectNames = (await _projects.GetAllAsync())
             .Where(p => !p.IsArchived && !string.IsNullOrWhiteSpace(p.Name))
@@ -349,7 +422,7 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
             if (names.Count > 0) result[group.Key] = names;
         }
 
-        return result;
+        return (result, projectNames);
     }
 
     public async Task<PayrollXeroSyncResult> SyncAsync(string runId)
@@ -575,15 +648,16 @@ public class PayrollXeroSyncService : IPayrollXeroSyncService
                 EmployeeId = p.EmployeeProfileId,
                 Department = person?.Department,
                 Projects = person?.Projects ?? [],
+                MainProject = person?.MainProject,
                 JobTitle = person?.JobTitle,
                 EmploymentType = person?.EmploymentType,
                 Role = person?.Role,
                 Policy = person?.Policy,
-                // No project dimension on a payslip yet — every line lands
-                // under "(No project)" until one exists. Kept as a real value
+                // Their only project, or the main one they chose among
+                // several; "(No project)" otherwise. Kept as a real value
                 // rather than null so the tracking lookup has something to
                 // match and the journal reads consistently.
-                ProjectName = PayrollJournal.NoProject,
+                ProjectName = person?.ProjectName ?? PayrollJournal.NoProject,
                 ProratedPay = p.ProratedPay,
                 OtPay = p.OtPay,
                 NetPay = p.NetPay,

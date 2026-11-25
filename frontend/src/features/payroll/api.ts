@@ -623,6 +623,11 @@ export type XeroPreview = {
   checks?: XeroSplitCheck[] | null;
 };
 
+// Current staff on teams in more than one project with no main project:
+// their pay posts under "(No project)", untagged, until one is set.
+export const getPeopleNeedingMainProject = () =>
+  apiGet<string[]>("/payroll/settings/xero/needs-main-project");
+
 export const getXeroPreview = (id: string) =>
   apiGet<XeroPreview>(`/payroll/runs/${id}/xero/preview`);
 

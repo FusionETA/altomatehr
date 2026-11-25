@@ -1320,6 +1320,10 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("varchar(120)");
 
+                    b.Property<string>("MainProjectId")
+                        .HasMaxLength(40)
+                        .HasColumnType("varchar(40)");
+
                     b.Property<string>("MaritalStatus")
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");

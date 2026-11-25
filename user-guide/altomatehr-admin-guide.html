@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 0e93e2b
+  user-guide-covered-up-to: 3a6d47a
 -->
 <html lang="en">
 <head>
@@ -817,6 +817,11 @@
     <p>With Xero connected: how expense lines are grouped, the tracking category for projects, and which Xero
       accounts each payroll line posts to (including the optional <em>PCB borne by employer</em> expense account; left
       blank, it posts to Salary).</p>
+    <p><strong>People with no main project.</strong> If anyone currently employed is on teams in more than one project
+      and has no main project, a warning panel appears on the Standard mapping, above the expense accounts. It says how
+      many people are affected, lists their names (press <em>and … more</em> to see the rest), and explains that their
+      pay posts under “(No project)” with no project tag. Open each person's record, go to <strong>Company → Main
+      project</strong> and choose where their pay should be charged. The panel disappears once everyone has one.</p>
     <p>The tab has two parts: <span class="btn-name">Standard mapping</span> (the screen described above) and
       <span class="btn-name">AI split (advanced)</span>. The second one only appears while Xero is connected.</p>
     <h3>AI split (advanced)</h3>
@@ -971,7 +976,7 @@
           <strong>Special tax rate (15%)</strong>, <strong>Bank / payout</strong>, and the
           <a href="#lhdn-forms">LHDN forms</a> for that person</td></tr>
         <tr><td><strong>Company</strong></td><td>Employee number, job title, role, policy, department, <strong>Work location</strong> (next to Department; HR letters use it for their Work location), and which projects,
-          teams and approval level they sit in</td></tr>
+          teams and approval level they sit in. For someone on more than one project, a <strong>Main project</strong> section appears too</td></tr>
         <tr><td><strong>Documents</strong></td><td>ID scans, contracts, certificates — and, below them, the
           <strong>Letters</strong> card with the <a href="#letters">HR letters</a> kept for this person</td></tr>
       </tbody>
@@ -1248,6 +1253,10 @@
           <img src="shots/admin/employee-pcb-borne.png" alt="The Income tax section on an employee's Statutory tab, with the PCB borne by employer switch off and its hint underneath" loading="lazy">
           <p class="shot-cap">PCB borne by employer, Statutory tab</p>
         </div>
+        <div class="shot-item">
+          <img src="shots/admin/employee-main-project.png" alt="The Main project section on the Company tab of an employee on two projects, with the Charge their pay to picker set to Site A" loading="lazy">
+          <p class="shot-cap">Main project, Company tab</p>
+        </div>
       </div>
       <p class="shot-cap shot-cap-main">An employee's record</p>
     </figure>
@@ -1272,6 +1281,13 @@
         layer.</p></li>
     </ol>
     <p>You can also place someone from their own record — <strong>Company</strong> tab → <em>Add a project</em>.</p>
+    <p><strong>Someone on more than one project:</strong> once a person is on teams in two or more projects, their
+      <strong>Company</strong> tab shows a <strong>Main project</strong> section. Choose a project under
+      <em>Charge their pay to</em>, then <span class="btn-name">Save changes</span>. The payroll journal charges all of
+      that person's pay to this project in Xero. Leave it on <em>Not chosen</em> and their pay posts under
+      “(No project)”, with no project tag. If the project saved for them is no longer one of theirs (for example you
+      took them off that team), a warning says so and the journal ignores it. Press <span class="btn-name">Clear</span>
+      to remove it, or pick another project. Someone on a single project doesn't need this: that project is used.</p>
     <div class="note"><span class="nt">Admins limited to some policies</span>
       <p>An admin who only covers some policies can still create teams, and edit, delete or fill a team — as long as
         everyone on it is on their policies. If a team includes anyone outside them, including another admin or the

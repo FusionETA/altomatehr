@@ -242,6 +242,9 @@ internal sealed class StubPayrollXeroSync : IPayrollXeroSyncService
         throw new NotSupportedException();
 
     public Task<PayrollXeroSplitOrgContext> GetSplitOrgContextAsync() => throw new NotSupportedException();
+
+    public Task<IReadOnlyList<string>> GetPeopleNeedingMainProjectAsync() =>
+        Task.FromResult<IReadOnlyList<string>>([]);
 }
 
 // Only the two reads payroll actually uses. Everything else throws, so a

@@ -19,6 +19,10 @@ public static class AuditActions
     public const string SettingsClaimsUpdate = "settings.claims.update";
     public const string SettingsNotificationsUpdate = "settings.notifications.update";
 
+    // A partner app's wp_live_ token given different access. The token is in
+    // someone else's system, so widening it is the change worth tracing.
+    public const string ApiKeyUpdate = "api-key.update";
+
     // Payroll configuration — what these decide ends up on a statutory filing,
     // so every change is recorded.
     public const string PayrollSettingsUpdate = "payroll.settings.update";

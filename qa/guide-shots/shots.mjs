@@ -297,6 +297,31 @@ async function toAbTestCoA(page) {
 }
 
 const admin = {
+  // Employee → Company tab scrolled to the "Main project" section. Sara is on
+  // teams in two projects (HQ Office and Site A) in the seed.
+  "employee-main-project": async (page) => {
+    await go(page, "company/manage-employee");
+    await inDemoCo(page);
+    await go(page, "company/manage-employee");
+    await page.getByPlaceholder("Search employees").fill("Sara");
+    await settle(page, 800);
+    await clickText(page, "Sara Supervisor");
+    await clickText(page, "Company");
+    await page.getByText("Charge their pay to", { exact: true }).first().waitFor({ timeout: 15000 });
+    await scrollTo(page, "Main project", 480, true);
+    await shoot(page, "admin", "employee-main-project");
+  },
+  // Settings → API integrations with the "Edit access" form open on a token.
+  // Needs `node setup.mjs api-token` and admin@altomate.com on SUPERADMIN_EMAILS.
+  "api-token-edit": async (page) => {
+    await go(page, "settings/settings-api");
+    await inDemoCo(page);
+    await go(page, "settings/settings-api");
+    await page.getByRole("button", { name: "Edit access" }).first().click();
+    await page.getByRole("button", { name: "Save access" }).waitFor({ timeout: 15000 });
+    await settle(page);
+    await shoot(page, "admin", "api-token-edit");
+  },
   // System Settings → Work Schedule: the Overtime types card, after the
   // Holidays and Calendar cards (needs `node setup.mjs overtime-types` for the
   // Night shift row).

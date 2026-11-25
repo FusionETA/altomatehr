@@ -505,6 +505,18 @@ export function EmployeeDetail({
     [myMemberships, projects],
   );
 
+  // The live projects they're on (any layer — an approver seat counts, as it
+  // does in the payroll journal). Two or more means their pay needs a main
+  // project to post under.
+  const liveProjects = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const { team } of myMemberships) {
+      const project = projects.find((p) => p.id === team.projectId);
+      if (project && !project.isArchived) seen.set(project.id, project.name);
+    }
+    return [...seen].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [myMemberships, projects]);
+
   // Only projects that have a team to join, and not one they are already on:
   // two memberships on one project would make the chain resolution ambiguous.
   const assignableProjects = useMemo(() => {
@@ -2510,6 +2522,45 @@ export function EmployeeDetail({
                     </button>
                   </div>
                 </Stack>
+
+                {!teamsLoading &&
+                (liveProjects.length > 1 ||
+                  (profile.mainProjectId !== null &&
+                    !liveProjects.some((p) => p.id === profile.mainProjectId))) ? (
+                  <Stack
+                    title="Main project"
+                    hint="They're on more than one project. The payroll journal charges all of their pay to this one in Xero; without it, their pay posts under “(No project)”."
+                  >
+                    {profile.mainProjectId !== null &&
+                    !liveProjects.some((p) => p.id === profile.mainProjectId) ? (
+                      <p className="flex items-start gap-2 rounded-2xl border border-warning bg-warning/40 px-4 py-3 text-sm font-medium text-warning-foreground">
+                        <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                        <span>
+                          The main project saved for them is no longer one of their projects, so the journal ignores it.
+                          {liveProjects.length > 1 ? " Pick another." : " With one project, that one is used."}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => set("mainProjectId", null)}
+                          className="ml-auto shrink-0 text-sm font-bold underline"
+                        >
+                          Clear
+                        </button>
+                      </p>
+                    ) : null}
+                    <div className="max-w-md">
+                      <Field label="Charge their pay to">
+                        <Picker
+                          value={liveProjects.some((p) => p.id === profile.mainProjectId) ? profile.mainProjectId : null}
+                          onChange={(v) => set("mainProjectId", v)}
+                          allowNone
+                          noneLabel="Not chosen"
+                          options={liveProjects.map((p) => ({ value: p.id, label: p.name }))}
+                        />
+                      </Field>
+                    </div>
+                  </Stack>
+                ) : null}
               </>
             ) : (
               <>

@@ -1124,6 +1124,37 @@
   -d '{"runId":"run_123","rules":[{"source":"salary","basis":"DEPARTMENT","match":["Sales"],"accountCode":"6100","tracking":[],"label":"Sales"},{"source":"salary","basis":"REMAINDER","match":[],"accountCode":"6000","tracking":[]}]}'</code></pre>
       </section>
 
+      <section class="endpoint" id="xero-needs-main-project">
+        <div class="endpoint-head">
+          <span class="method get">GET</span>
+          <span class="path">/payroll/settings/xero/needs-main-project</span>
+          <span class="tag scope">payroll:read</span>
+        </div>
+        <p>
+          Names the current (non-archived) employees who are on teams in more than one project but have no
+          <code>mainProjectId</code> set, so their pay would post under &ldquo;(No project)&rdquo; with no
+          Xero tracking tag. <strong>Module gate:</strong> Payroll.
+        </p>
+        <h3>Request</h3>
+        <p>No parameters or body.</p>
+        <h3>Response <code>200</code></h3>
+        <p>
+          A JSON array of strings: display names (the email when a user has no name), de-duplicated and sorted
+          alphabetically. <code>[]</code> when nobody is waiting. To fix one, set <code>mainProjectId</code> on
+          the person's <a href="employees.html">employee profile</a>.
+        </p>
+        <h3>Errors</h3>
+        <ul>
+          <li><code>403</code> <code>{ "error": { "status": 403, "message": "…" } }</code> &mdash; missing <code>payroll:read</code> scope or module, or the admin's access doesn't include changing settings (this read is gated like the Xero settings, because it names every affected employee).</li>
+        </ul>
+        <div class="callout">
+          The same people appear as a passing check with <code>warning: true</code> in the Xero journal checks.
+        </div>
+<pre><code>curl https://&lt;api-host&gt;/payroll/settings/xero/needs-main-project \
+  -H "Authorization: Bearer wp_live_xxx"
+# ["Jane Doe","John Doe"]</code></pre>
+      </section>
+
       <section class="endpoint">
         <div class="endpoint-head">
           <span class="method get">GET</span>

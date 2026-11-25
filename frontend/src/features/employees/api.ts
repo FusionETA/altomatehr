@@ -351,6 +351,10 @@ export type EmployeeProfile = {
   department: string | null;
   location: string | null;
   workSchedule: string | null;
+  /** For someone on teams in two or more projects: the project their pay is
+   *  charged to in the payroll journal (Xero). Ignored once they leave it;
+   *  someone on one project needs none. */
+  mainProjectId: string | null;
   // Reported on CP8D. Null status is treated as permanent.
   employmentStatus: EmploymentStatus | null;
   contractEndDate: string | null;

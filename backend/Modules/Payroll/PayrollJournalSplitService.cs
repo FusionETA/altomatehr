@@ -103,8 +103,11 @@ public class PayrollJournalSplitService : IPayrollJournalSplitService
           basis       who or what it takes. People bases take the actual amounts of the people
                       whose detail is one of the values in "match":
                         DEPARTMENT       department names        (context.departments)
-                        PROJECT          project names; someone on several projects matches if
-                                         ANY of their projects is listed (context.projects)
+                        PROJECT          project names; someone on several projects matches on
+                                         their main project when one is chosen (then it is the
+                                         only one listed for them in context.employees),
+                                         otherwise if ANY of their projects is listed
+                                         (context.projects)
                         JOB_TITLE        job titles              (context.jobTitles)
                         EMPLOYMENT_TYPE  employment types        (context.employmentTypes)
                         ROLE             roles                   (context.roles)
