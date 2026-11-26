@@ -150,8 +150,8 @@ public class PcbBreakdownTests
         // Step 3 — CS = (P₂ − M₂) × R₂ + B₂.
         Assert.Equal(ar.Cs, Money.Round2(Math.Max(0m, (ar.ChargeableWithAr - ar.M2) * ar.R2 + ar.B2)));
 
-        // Step 2 — PCB(B) = X + trunc2(monthly) × (N + 1).
-        Assert.Equal(ar.PcbB, b.X + Money.Trunc2(b.CurrentMonthPcb) * (b.N + 1));
+        // Step 2 — PCB(B) = X + PCB(A) × (N + 1), PCB(A) as deducted.
+        Assert.Equal(ar.PcbB, b.X + b.PcbNormal * (b.N + 1));
 
         // Step 4 — PCB(C) = CS − PCB(B) − Z.
         Assert.Equal(ar.PcbCBeforeRounding, Math.Max(0m, ar.Cs - ar.PcbB - b.Z));

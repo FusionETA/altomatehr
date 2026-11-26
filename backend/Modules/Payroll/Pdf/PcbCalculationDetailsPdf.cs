@@ -278,12 +278,13 @@ public static class PcbCalculationDetailsPdf
         {
         SectionTitle(section, "2. Yearly PCB");
         Subsection(section, "PCB (B)");
-        Formula(section, "(X) + [Current Month PCB × (n + 1)]");
-        Formula(section, $"({Amount(b.X)}) + [{Amount(b.CurrentMonthPcb)} × ({b.N} + 1)]");
+        Formula(section, "(X) + [PCB (A) × (n + 1)]");
+        Formula(section, $"({Amount(b.X)}) + [{Amount(b.PcbNormal)} × ({b.N} + 1)]");
 
         Variable(section, "PCB (B)",
-            "Projected annual normal PCB — what the year's PCB would total if the employee earned this "
-            + "month's normal PCB every remaining month, plus the amount already paid year to date.",
+            "Projected annual normal PCB — what the year's PCB would total if this month's normal PCB "
+            + "(as deducted: nil when under RM 10) were deducted every remaining month, plus the amount "
+            + "already paid year to date.",
             ar.PcbB, bold: true);
     });
 

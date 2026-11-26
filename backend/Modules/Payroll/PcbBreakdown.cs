@@ -161,12 +161,14 @@ public sealed record PcbArBreakdown
     public decimal Cs { get; init; }
 
     // Step 2 — PCB(B), the projected annual NORMAL deduction:
-    //          X + trunc2(CurrentMonthPcb) × (N + 1).
+    //          X + PCB(A) × (N + 1).
     //
-    // Note the TRUNCATED monthly figure, not the thresholded PCB(A). The spec
-    // writes "PCB(A) × (n+1)" but means the truncated value; using the
-    // thresholded one would drop a whole month's projection whenever the
-    // monthly deduction sits under RM 10.
+    // PCB(A) as DEDUCTED — after the RM 10 threshold — exactly as the spec
+    // writes it. When the normal MTD is under RM 10 nothing is withheld for it,
+    // so it must not be subtracted from CS as if it were; LHDN's own Kalkulator
+    // PCB 2026 does the same (an RM 0.78 normal MTD gives PCB(B) = X, and
+    // PCB(C) = CS − X). Subtracting the untruncated figure under-deducted
+    // PCB(C) by up to RM 29.95 a person against LHDN and SQL Payroll.
     public decimal PcbB { get; init; }
 
     // Step 4 — CS − PCB(B) − Z, before the RM 10 threshold and truncation.
