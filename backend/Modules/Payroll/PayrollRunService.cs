@@ -1929,8 +1929,10 @@ public class PayrollRunService : IPayrollRunService
             : Math.Max(0m, declared.Value - ownOrgYtd);
     }
 
+    // Row by row: one blank amount must not drop the person's other recurring
+    // allowances (see FixedAllowanceJson).
     private static IReadOnlyList<FixedAllowance> ParseFixedAllowances(string? json) =>
-        Parse<FixedAllowance>(json);
+        FixedAllowanceJson.Parse(json);
 
     // Lenient on purpose: migrated profiles carry v1's legacy values, and a
     // strict read drops every child (see ChildReliefJson).
