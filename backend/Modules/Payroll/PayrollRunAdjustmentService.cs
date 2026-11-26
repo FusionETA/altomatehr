@@ -181,8 +181,10 @@ public class PayrollRunAdjustmentService : IPayrollRunAdjustmentService
 
     // The profile's recurring rows, carrying the array index the override
     // dictionary keys on. A row that fails to parse is skipped rather than
-    // taking the form down — the JSON comes from an older system.
-    private static IReadOnlyList<FixedAllowanceRowDto> ParseFixedAllowances(string? json)
+    // taking the form down — the JSON comes from an older system. Also read
+    // by the payroll roster, so a draft run can show what each person gets
+    // every month before payroll has been run.
+    internal static IReadOnlyList<FixedAllowanceRowDto> ParseFixedAllowances(string? json)
     {
         if (string.IsNullOrWhiteSpace(json)) return [];
 

@@ -117,6 +117,8 @@ public class PayrollEmployeeDirectoryService : IPayrollEmployeeDirectoryService
                 profile.ContributeToEpf ? profile.EpfNumber : null),
 
             ProfileIncompleteSections = PayrollProfileReadiness.IncompleteSections(profile),
+
+            FixedAllowances = PayrollRunAdjustmentService.ParseFixedAllowances(profile.FixedAllowancesJson),
         };
     }
 }
