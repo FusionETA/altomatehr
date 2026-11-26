@@ -23,6 +23,7 @@ public class OrganizationService : IOrganizationService
     // Who sits above the bottom layer of a team — they can't be left an
     // Employee there (see RemoveAdminAsync).
     private readonly Teams.IApproverPositions? _approverPositions;
+    private readonly Auth.ISuperadminRegistry? _superadmins;
     private readonly ILeaveTypeService _leaveTypes;
     private readonly IDirectoryService _directory;
     private readonly IOrganizationDefaultsService _defaults;
@@ -45,8 +46,10 @@ public class OrganizationService : IOrganizationService
         AltomateHR.Api.Common.ICurrentUser? currentUser = null,
         Auth.IUserRepository? users = null,
         TeamChat.ITeamChatAlerts? teamChat = null,
-        Teams.IApproverPositions? approverPositions = null)
+        Teams.IApproverPositions? approverPositions = null,
+        Auth.ISuperadminRegistry? superadmins = null)
     {
+        _superadmins = superadmins;
         _approverPositions = approverPositions;
         _teamChat = teamChat;
         _users = users;
@@ -204,6 +207,9 @@ public class OrganizationService : IOrganizationService
 
             if (await Employees.LoginEmailRule.RefusalAsync(_memberships, _currentUser, userId) is { } refusal)
                 return (false, refusal, null);
+
+            if (Employees.SuperadminEmailRule.RefusalFor(_superadmins, _currentUser, email) is { } reserved)
+                return (false, reserved, null);
         }
 
         var previousEmail = user.Email;

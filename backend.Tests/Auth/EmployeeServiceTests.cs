@@ -571,6 +571,106 @@ public class EmployeeServiceTests
         Assert.True(string.IsNullOrEmpty(users.Single(u => u.Id == "usr-emp").PasswordHash));
     }
 
+    // The cross-company takeover: an admin adds someone who works at another
+    // company (only their email is needed), sets their password, signs in as
+    // them and switches over. Any membership elsewhere blocks it, not only an
+    // administrative one.
+    [Theory]
+    [InlineData("Employee")]
+    [InlineData("Supervisor")]
+    public async Task SetPassword_RefusesSomeoneWhoAlsoBelongsToAnotherCompany(string roleThere)
+    {
+        var service = MakeService(out var memberships, out _, out var users);
+        memberships.Add(new OrganizationMembership { OrganizationId = "org-2", UserId = "usr-emp", Role = roleThere });
+
+        var result = await service.SetPasswordAsync("usr-emp", "a-good-password");
+
+        Assert.False(result.Ok);
+        Assert.Contains("another company", result.Error);
+        Assert.True(string.IsNullOrEmpty(users.Single(u => u.Id == "usr-emp").PasswordHash));
+    }
+
+    // Both companies are the caller's own: nothing is handed to anyone new.
+    [Fact]
+    public async Task SetPassword_AllowsItWhenTheCallerOwnsTheOtherCompany()
+    {
+        var service = MakeService(out var memberships, out _, out _);
+        memberships.Add(new OrganizationMembership { OrganizationId = "org-2", UserId = "usr-emp", Role = "Employee" });
+        memberships.Add(new OrganizationMembership { OrganizationId = "org-2", UserId = "usr-admin", Role = "Owner" });
+
+        var result = await service.SetPasswordAsync("usr-emp", "a-good-password");
+
+        Assert.True(result.Ok, result.Error);
+    }
+
+    // A superadmin's password opens every company.
+    [Fact]
+    public async Task SetPassword_RefusesASuperadminAccount()
+    {
+        var service = MakeService(out _, out _, out var users, new FakeApproverPositions(),
+            superadmins: new FakeSuperadmins("employee@altomate.com"));
+
+        var result = await service.SetPasswordAsync("usr-emp", "a-good-password");
+
+        Assert.False(result.Ok);
+        Assert.Contains("staff account", result.Error);
+        Assert.True(string.IsNullOrEmpty(users.Single(u => u.Id == "usr-emp").PasswordHash));
+    }
+
+    // Superadmin is decided by email, so a new login with a staff address and
+    // a password the admin chose would be a superadmin.
+    [Fact]
+    public async Task CreateAsync_RefusesANewLoginWithASuperadminEmail()
+    {
+        var service = MakeService(out _, out _, out var users, new FakeApproverPositions(),
+            superadmins: new FakeSuperadmins("staff@fusioneta.com"));
+
+        var result = await service.CreateAsync(new CreateEmployeeDto
+        {
+            Email = "staff@fusioneta.com", Name = "Not Staff", Password = "chosen-by-admin", Role = "Employee",
+        });
+
+        Assert.False(result.Ok);
+        Assert.Equal(SuperadminEmailRule.Refusal, result.Error);
+        Assert.DoesNotContain(users, u => u.Email == "staff@fusioneta.com");
+    }
+
+    // Altomate support is already a superadmin, so may.
+    [Fact]
+    public async Task CreateAsync_SupportMayCreateALoginWithAStaffEmail()
+    {
+        var service = MakeService(out _, out _, out _, new FakeApproverPositions(),
+            caller: new StubCurrentUser { IsSupport = true },
+            superadmins: new FakeSuperadmins("staff@fusioneta.com"));
+
+        var result = await service.CreateAsync(new CreateEmployeeDto
+        {
+            Email = "staff@fusioneta.com", Name = "Staff", Password = "a-good-password", Role = "Employee",
+        });
+
+        Assert.True(result.Ok, result.Error);
+    }
+
+    // Renaming your own login counts: an Owner may change their own email,
+    // but not to a staff address.
+    [Fact]
+    public async Task UpdateAsync_RefusesChangingALoginEmailToASuperadminEmail()
+    {
+        var service = MakeService(out var memberships, out _, out var users, new FakeApproverPositions(),
+            caller: Owner(), superadmins: new FakeSuperadmins("staff@fusioneta.com"));
+        users.Add(User("usr-owner", "owner@altomate.com"));
+        memberships.Add(Membership("usr-owner", "Owner"));
+
+        var result = await service.UpdateAsync("usr-owner", new UpdateEmployeeDto
+        {
+            Role = "Owner", Email = "staff@fusioneta.com",
+        });
+
+        Assert.False(result.Ok);
+        Assert.Equal(SuperadminEmailRule.Refusal, result.Error);
+        Assert.Equal("owner@altomate.com", users.Single(u => u.Id == "usr-owner").Email);
+    }
+
     // Resending explains the house rule only while it still opens the account.
     [Fact]
     public async Task ResendWelcome_DescribesTheHousePasswordWhileItStillWorks()
@@ -666,7 +766,8 @@ public class EmployeeServiceTests
         AltomateHR.Api.Modules.Organizations.IModuleAccessService? access = null,
         CapturingEmailSender? email = null,
         StubCurrentUser? caller = null,
-        AltomateHR.Api.Modules.Payroll.IPayrollDraftStaleness? drafts = null)
+        AltomateHR.Api.Modules.Payroll.IPayrollDraftStaleness? drafts = null,
+        ISuperadminRegistry? superadmins = null)
     {
         users = new List<User>
         {
@@ -693,7 +794,14 @@ public class EmployeeServiceTests
             positions,
             Options.Create(new PortalOptions()),
             access,
-            drafts: drafts);
+            drafts: drafts,
+            superadmins: superadmins);
+    }
+
+    private sealed class FakeSuperadmins(params string[] emails) : ISuperadminRegistry
+    {
+        public bool IsSuperadmin(string? email) =>
+            email is not null && emails.Contains(email, StringComparer.OrdinalIgnoreCase);
     }
 
     private static User User(string id, string email) => new()

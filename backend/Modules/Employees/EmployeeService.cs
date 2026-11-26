@@ -40,6 +40,8 @@ public class EmployeeService : IEmployeeService
     private readonly IEmployeeScope? _scope;
     // Joining or leaving the staff changes who a payroll draft pays.
     private readonly Payroll.IPayrollDraftStaleness? _drafts;
+    // Superadmin is granted by email, so those addresses are guarded here.
+    private readonly ISuperadminRegistry? _superadmins;
 
     public EmployeeService(
         IOrganizationMembershipRepository memberships,
@@ -55,8 +57,10 @@ public class EmployeeService : IEmployeeService
         IModuleAccessService? access = null,
         Policies.IEmployeePolicyRepository? policies = null,
         IEmployeeScope? scope = null,
-        Payroll.IPayrollDraftStaleness? drafts = null)
+        Payroll.IPayrollDraftStaleness? drafts = null,
+        ISuperadminRegistry? superadmins = null)
     {
+        _superadmins = superadmins;
         _drafts = drafts;
         _scope = scope;
         _access = access;
@@ -108,6 +112,9 @@ public class EmployeeService : IEmployeeService
 
         if (user is null)
         {
+            if (SuperadminEmailRule.RefusalFor(_superadmins, _currentUser, email) is { } reserved)
+                return new EmployeeSaveResult(false, null, reserved);
+
             if (string.IsNullOrWhiteSpace(dto.Name))
                 return new EmployeeSaveResult(false, null, "A name is required to create a new account.");
 
@@ -361,6 +368,11 @@ public class EmployeeService : IEmployeeService
 
                 if (await LoginEmailRule.RefusalAsync(_memberships, _currentUser, id) is { } refusal)
                     return new EmployeeSaveResult(false, null, refusal);
+
+                // Your own too: an Owner renaming themselves to a staff
+                // address would become a superadmin.
+                if (SuperadminEmailRule.RefusalFor(_superadmins, _currentUser, newEmail) is { } reserved)
+                    return new EmployeeSaveResult(false, null, reserved);
             }
         }
 
@@ -697,8 +709,27 @@ public class EmployeeService : IEmployeeService
                 "This person administers another company, so their password can't be changed from here. They can use Forgot password.");
         }
 
+        // Plain membership elsewhere counts too. Adding someone from another
+        // company as an employee here takes only their email; setting their
+        // password would then let this admin sign in as them and switch to
+        // the other company. Only when the caller owns every other company
+        // the login opens is it theirs to set.
+        if (await LoginEmailRule.RefusalAsync(_memberships, _currentUser, userId) is not null)
+        {
+            return new SetPasswordResult(false,
+                "This person's login is also used in another company, so their password can't be changed from here. They can use Forgot password.");
+        }
+
         var user = await _users.GetByIdAsync(userId);
         if (user is null) return new SetPasswordResult(false, null);
+
+        // A superadmin's password opens every company — never from here,
+        // whoever is asking.
+        if (_superadmins?.IsSuperadmin(user.Email) ?? false)
+        {
+            return new SetPasswordResult(false,
+                "This is an Altomate staff account, so its password can't be changed from here.");
+        }
 
         user.PasswordHash = BC.HashPassword(newPassword);
         await _users.UpdateAsync(user);
