@@ -273,13 +273,19 @@ public static class PcbCalculationDetailsPdf
 
     // ─── 2. PCB(B) — the annual projection ──────────────────────────────
 
+    private static decimal MonthlyInPcbB(PcbBreakdown b, PcbArBreakdown ar) =>
+        b.X + b.PcbNormal * (b.N + 1) == ar.PcbB ? b.PcbNormal : Money.Trunc2(b.CurrentMonthPcb);
+
     private static void SectionYearlyPcb(ColumnDescriptor column, PcbBreakdown b, PcbArBreakdown ar) =>
         column.Item().ShowEntire().Column(section =>
         {
         SectionTitle(section, "2. Yearly PCB");
         Subsection(section, "PCB (B)");
         Formula(section, "(X) + [PCB (A) × (n + 1)]");
-        Formula(section, $"({Amount(b.X)}) + [{Amount(b.PcbNormal)} × ({b.N} + 1)]");
+        // The monthly figure the snapshot's PCB(B) was actually built from, so
+        // the line always adds up: PCB(A) as deducted since 26 Nov 2026, the
+        // untruncated-to-threshold monthly figure on payslips generated before.
+        Formula(section, $"({Amount(b.X)}) + [{Amount(MonthlyInPcbB(b, ar))} × ({b.N} + 1)]");
 
         Variable(section, "PCB (B)",
             "Projected annual normal PCB — what the year's PCB would total if this month's normal PCB "

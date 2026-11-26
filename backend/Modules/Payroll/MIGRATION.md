@@ -582,7 +582,7 @@ The April bonus month reconciles step by step — CS = (P₂ − M₂)R₂ + B�
 PCB(B) = X + PCB(A) × (N+1), PCB(C) = CS − PCB(B) − Z = 757.50.
 
 **PCB(B) uses PCB(A) as deducted — after the RM 10 threshold — as the spec
-writes it.** (It used the untruncated monthly figure until 26 Nov 2026.) A
+writes it.** (Until 26 Nov 2026 it used the truncated monthly figure before the threshold.) A
 normal MTD under RM 10 is not withheld, so it must not be subtracted from CS
 as if it were. LHDN's Kalkulator PCB 2026 confirms it: Ayu Borneo's October
 case with an RM 0.78 normal MTD shows PCB(C) = CS − X = 461.07, the figure SQL

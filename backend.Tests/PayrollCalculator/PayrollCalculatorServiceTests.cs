@@ -136,6 +136,19 @@ public class PayrollCalculatorServiceTests
         Assert.Contains("SOCSO is not charged on the bonus.", Item(r, "socso").Working);
     }
 
+    // Under RM10 a month no normal PCB is withheld, so the bonus month also
+    // carries the year's normal tax — the sentence must not call it all bonus tax.
+    [Fact]
+    public void Bonus_WithNoMonthlyPcb_SaysTheWholeYearsTaxIsDeducted()
+    {
+        var r = Ok(Body(3700, bonus: 5000));
+        var working = Item(r, "pcb").Working;
+        Assert.Contains("That is under RM10 a month, so nothing is deducted.", working);
+        Assert.Contains(working, l => l.StartsWith("With the RM5,000.00 bonus the year's tax is RM")
+                                      && l.EndsWith("is deducted this month."));
+        Assert.DoesNotContain(working, l => l.Contains("raises the year's tax by"));
+    }
+
     [Fact]
     public void NonResident_IsAFlatThirtyPercent()
     {

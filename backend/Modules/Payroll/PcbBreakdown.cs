@@ -167,8 +167,9 @@ public sealed record PcbArBreakdown
     // writes it. When the normal MTD is under RM 10 nothing is withheld for it,
     // so it must not be subtracted from CS as if it were; LHDN's own Kalkulator
     // PCB 2026 does the same (an RM 0.78 normal MTD gives PCB(B) = X, and
-    // PCB(C) = CS − X). Subtracting the untruncated figure under-deducted
-    // PCB(C) by up to RM 29.95 a person against LHDN and SQL Payroll.
+    // PCB(C) = CS − X). Subtracting the truncated pre-threshold figure instead
+    // under-deducted PCB(C) — by up to RM 29.95 a person in Ayu Borneo's
+    // October, up to ~RM 120 in a January — against LHDN and SQL Payroll.
     public decimal PcbB { get; init; }
 
     // Step 4 — CS − PCB(B) − Z, before the RM 10 threshold and truncation.
