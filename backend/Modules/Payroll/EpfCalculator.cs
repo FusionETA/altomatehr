@@ -156,17 +156,21 @@ public static class EpfCalculator
 
         // Two paths, per KWSP Third Schedule Note 2:
         //
-        //   1. Band table — Parts A and C (the branches with a cliff) at wages up
+        //   1. Band table — Parts A, C and E at wages up
         //      to RM 20,000. KWSP MANDATES the gazetted stepped table for the
         //      mandatory portion of BOTH sides. Voluntary has no place in the
         //      Schedule, so it is added as a separate ceil on top.
         //
-        //   2. Off table — the flat-rate branches (E and F) at any wage, and any
+        //   2. Off table — Part F (2%, which has no table) at any wage, and any
         //      branch above RM 20,000. Exact percentage, rounded up ONCE PER SIDE.
         //      Ceiling mandatory and voluntary separately over-collects by up to
         //      RM 1 per side, which is the bug this shape exists to avoid.
         var hasCliff = employerRateLow != employerRateHigh;
-        var usesBandTable = hasCliff && totalWage <= BandTableCeiling;
+        // Part E has no cliff but is still a gazetted table (KWSP: "not allowed
+        // to calculate ... based on exact percentage EXCEPT for salaries that
+        // exceed RM20,000"). Part F alone is a plain percentage.
+        var partETable = branch == EpfBranch.MALAYSIAN_CITIZEN_60_PLUS;
+        var usesBandTable = (hasCliff || partETable) && totalWage <= BandTableCeiling;
 
         decimal employee;
         decimal employer;
@@ -175,7 +179,8 @@ public static class EpfCalculator
         if (usesBandTable)
         {
             var band = StatutoryTables.LookupEpfBand(
-                totalWage, employerRateLow, employerRateHigh, employeeRate);
+                totalWage, employerRateLow, employerRateHigh, employeeRate,
+                flatRateUsesTable: partETable);
 
             employee = band.Employee + Money.CeilRinggit(totalWage, employeeVoluntaryRate);
 
@@ -194,7 +199,8 @@ public static class EpfCalculator
             //              ceil(15% × 4,537) = 681; on 5,246 (12% + 2%) 636 +
             //              105 = 741 where ceil(14% × 5,246) = 735. Never below
             //              the band, so the statutory share is always met.
-            var hasArLift = rateWage <= RateCliffWage && totalWage > RateCliffWage;
+            // Only a branch with a cliff has a tier for a bonus to lift.
+            var hasArLift = hasCliff && rateWage <= RateCliffWage && totalWage > RateCliffWage;
 
             employer = hasArLift
                 ? Money.CeilRinggit(totalWage, employerMandatoryRate + employerVoluntaryRate)
