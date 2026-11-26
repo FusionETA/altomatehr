@@ -156,9 +156,14 @@ public static class PayrollCalculatorWorking
 
             if (request.Bonus > 0m)
             {
-                lines.Add(r.PcbAdditional > 0m
-                    ? $"The {Rm(request.Bonus)} bonus raises the year's tax by {Rm(r.PcbAdditional)}, all deducted this month."
-                    : $"The {Rm(request.Bonus)} bonus adds no tax this month.");
+                // Under RM10 a month, no normal PCB is withheld, so the bonus
+                // month's PCB(C) also carries the year's normal tax (LHDN's
+                // PCB(B) counts the normal PCB as deducted: nil).
+                lines.Add(r.PcbAdditional <= 0m
+                    ? $"The {Rm(request.Bonus)} bonus adds no tax this month."
+                    : r.PcbNormal <= 0m && b.YearlyTax > 0m && b.Ar is { } ar
+                        ? $"With the {Rm(request.Bonus)} bonus the year's tax is {Rm(ar.Cs)}. None of it is covered by monthly PCB, so {Rm(r.PcbAdditional)} is deducted this month."
+                        : $"The {Rm(request.Bonus)} bonus raises the year's tax by {Rm(r.PcbAdditional)}, all deducted this month.");
             }
 
             // LHDN rounds the month's deduction UP to the next 5 sen, so the

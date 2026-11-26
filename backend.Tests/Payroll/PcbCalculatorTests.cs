@@ -469,6 +469,36 @@ public class PcbCalculatorTests
         Assert.Equal(10.66m, justAbove.Normal);
     }
 
+    // A normal MTD under RM 10 is not deducted, so PCB(B) must not count it:
+    // PCB(C) = CS − X. Checked on LHDN's Kalkulator PCB 2026 (calcpcbplus,
+    // 26 Nov 2026) — Ayu Borneo, October: Jan–Sep pay 39,607.48, EPF 4,313
+    // (over the RM 4,000 limit), PCB 139.60 paid; October normal pay
+    // 2,152.50 (basic + overtime) and 1,946.24 commission. The calculator
+    // shows PCB Bersih 0.00, PCB Saraan Tambahan 461.07, deduction 461.10 —
+    // SQL Payroll deducted the same. Subtracting the RM 0.78 normal MTD × 3
+    // as if it were withheld gave 458.75.
+    [Fact]
+    public void NormalMtdBelowTenRinggit_IsNotCountedInPcbB()
+    {
+        var b = PcbCalculator.Explain(Resident(
+            periodMonth: 10,
+            thisMonthTaxable: 2152.50m,
+            thisMonthEpf: 429m,
+            ytdTaxable: 39607.48m,
+            ytdEpf: 4313m,
+            ytdPcb: 139.60m,
+            additionalRemuneration: 1946.24m));
+
+        Assert.True(b.CurrentMonthPcb is > 0m and < 10m);
+        Assert.Equal(0m, b.PcbNormal);
+
+        var ar = Assert.IsType<PcbArBreakdown>(b.Ar);
+        Assert.Equal(600.67m, ar.Cs);
+        Assert.Equal(139.60m, ar.PcbB);
+        Assert.Equal(461.07m, ar.PcbC);
+        Assert.Equal(461.10m, b.PcbTotal);
+    }
+
     // ─── 15% approvals (MTD Spec 2026, D.b.3–5, Tables 2–4) ─────────────
 
     // Tables 2 and 3: REP and knowledge workers keep the RM 400 (RM 800 in

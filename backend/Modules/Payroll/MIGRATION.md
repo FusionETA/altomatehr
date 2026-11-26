@@ -579,12 +579,15 @@ Two presentation notes worth keeping:
 The spec (pages 45–50) prints more than the final ringgit, and the tests now
 pin those too: K2 = 308.63, P = 47,000.07, band {M = 35,000, R = 6%, B = 600}.
 The April bonus month reconciles step by step — CS = (P₂ − M₂)R₂ + B₂,
-PCB(B) = X + trunc2(monthly) × (N+1), PCB(C) = CS − PCB(B) − Z = 757.50.
+PCB(B) = X + PCB(A) × (N+1), PCB(C) = CS − PCB(B) − Z = 757.50.
 
-**PCB(B) uses the TRUNCATED monthly figure, not the thresholded PCB(A).** The
-spec writes "PCB(A) × (n+1)" but means the truncated value; using the
-thresholded one would drop a whole year's projection whenever the monthly
-deduction sits under RM 10.
+**PCB(B) uses PCB(A) as deducted — after the RM 10 threshold — as the spec
+writes it.** (Until 26 Nov 2026 it used the truncated monthly figure before the threshold.) A
+normal MTD under RM 10 is not withheld, so it must not be subtracted from CS
+as if it were. LHDN's Kalkulator PCB 2026 confirms it: Ayu Borneo's October
+case with an RM 0.78 normal MTD shows PCB(C) = CS − X = 461.07, the figure SQL
+Payroll deducted too; the old rule gave 458.73. Pinned by
+`PcbCalculatorTests.NormalMtdBelowTenRinggit_IsNotCountedInPcbB`.
 
 ---
 

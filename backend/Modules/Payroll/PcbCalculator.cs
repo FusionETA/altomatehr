@@ -204,7 +204,7 @@ public static class PcbCalculator
         var ar = arTaxable > 0m
             ? ExplainAr(
                 input, arTaxable, epf, annualTaxable, perkesoRelief, allowableDeductions,
-                reliefs, spouseClaimable, truncatedMonthly, monthsRemaining, ytdZakat, ytdPcb)
+                reliefs, spouseClaimable, pcbA, monthsRemaining, ytdZakat, ytdPcb)
             : null;
 
         var pcbC = ar?.PcbC ?? 0m;
@@ -272,7 +272,7 @@ public static class PcbCalculator
         decimal allowableDeductions,
         decimal reliefs,
         bool spouseClaimable,
-        decimal truncatedMonthly,
+        decimal pcbA,
         int monthsRemaining,
         decimal ytdZakat,
         decimal ytdPcb)
@@ -291,9 +291,9 @@ public static class PcbCalculator
         var cs = Money.Round2(
             PcbTaxBands.AnnualTax(chargeableWithAr, spouseClaimable, input.SpecialTaxScheme));
 
-        // PCB(B) — the projected annual NORMAL deduction. Truncated monthly
-        // figure, not the thresholded PCB(A); see the note on PcbArBreakdown.
-        var pcbB = ytdPcb + truncatedMonthly * monthsRemaining;
+        // PCB(B) — the projected annual NORMAL deduction: what is actually
+        // deducted, so the THRESHOLDED PCB(A). See the note on PcbArBreakdown.
+        var pcbB = ytdPcb + pcbA * monthsRemaining;
 
         var beforeRounding = Math.Max(0m, cs - pcbB - ytdZakat);
 
