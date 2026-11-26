@@ -865,6 +865,9 @@ export type PayrollEmployee = {
   // False for an org member with no EmployeeProfile row at all. Distinct from
   // "these sections are short": nothing has been filled in for them yet.
   hasPayrollProfile: boolean;
+
+  // The profile's recurring allowances and deductions, paid every run.
+  fixedAllowances: FixedAllowanceRow[];
 };
 
 export const getPayrollEmployees = (includeArchived = false) =>

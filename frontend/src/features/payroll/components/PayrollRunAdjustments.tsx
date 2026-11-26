@@ -7,6 +7,7 @@ import {
   getPayrollEmployees,
   getRunAdjustments,
   type AdjustmentCategory,
+  type FixedAllowanceRow,
   type PayrollEmployee,
   type PayrollRunAdjustment,
 } from "../api";
@@ -161,8 +162,8 @@ export function PayrollRunAdjustments({
             <>
               {withSomething.length === 0 ? (
                 <p className={`${HINT} mb-3`}>
-                  Nothing set for anyone this month. Everyone is paid straight off their
-                  profile.
+                  No one-off adjustments this month. Everyone is paid from their profile:
+                  their salary plus the recurring items under “Every month”.
                 </p>
               ) : null}
 
@@ -177,11 +178,12 @@ export function PayrollRunAdjustments({
                 <p className={HINT}>No one on this run matches “{query.trim()}”.</p>
               ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[620px] border-collapse">
+                <table className="w-full min-w-[760px] border-collapse">
                   <thead>
                     <tr className="border-b border-border/70">
                       <th className={TH}>Employee</th>
                       <th className={TH}>Set for this month</th>
+                      <th className={TH}>Every month (from profile)</th>
                       <th className={TH} aria-label="Edit" />
                     </tr>
                   </thead>
@@ -218,6 +220,14 @@ export function PayrollRunAdjustments({
                             ) : (
                               <span className="text-sm text-muted-foreground">—</span>
                             )}
+                          </td>
+
+                          <td className={TD}>
+                            <RecurringItems
+                              rows={employee.fixedAllowances ?? []}
+                              overrides={adjustment?.fixedAllowanceOverrides ?? {}}
+                              categories={categories}
+                            />
                           </td>
 
                           <td className={`${TD} text-right`}>
@@ -274,6 +284,62 @@ export function PayrollRunAdjustments({
         />
       ) : null}
     </>
+  );
+}
+
+// The profile's recurring items, as this run will pay them: an override for
+// this month shows the new amount beside the usual one, a skip says so.
+function RecurringItems({
+  rows,
+  overrides,
+  categories,
+}: {
+  rows: FixedAllowanceRow[];
+  overrides: PayrollRunAdjustment["fixedAllowanceOverrides"];
+  categories: AdjustmentCategory[];
+}) {
+  if (rows.length === 0) {
+    return <span className="text-sm text-muted-foreground">—</span>;
+  }
+  const byCode = new Map(categories.map((category) => [category.code, category]));
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {rows.map((row) => {
+        const category = byCode.get(row.category);
+        const label = row.name?.trim() || category?.label || row.category;
+        const sign = category?.kind === "DEDUCTION" ? "−" : "";
+        const override = overrides[String(row.index)];
+        const skipped = override?.skip === true;
+        const changed = !skipped && override?.amount != null && override.amount !== row.amount;
+
+        return (
+          <span
+            key={row.index}
+            className={`${BADGE} border-border/70 bg-muted/40 text-muted-foreground`}
+            title={skipped ? "Not paid this month" : changed ? "Changed for this month" : "Paid every month"}
+          >
+            {skipped ? (
+              <>
+                <span className="line-through">
+                  {label} {sign}RM {rm(row.amount)}
+                </span>
+                <span className="ml-1">· not this month</span>
+              </>
+            ) : changed ? (
+              <>
+                {label} {sign}RM {rm(override.amount ?? row.amount)}
+                <span className="ml-1">(usually RM {rm(row.amount)})</span>
+              </>
+            ) : (
+              <>
+                {label} {sign}RM {rm(row.amount)}
+              </>
+            )}
+          </span>
+        );
+      })}
+    </div>
   );
 }
 

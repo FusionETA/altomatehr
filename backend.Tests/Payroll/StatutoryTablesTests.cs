@@ -169,6 +169,25 @@ public class StatutoryTablesTests
         Assert.Equal((220m, 0m), result);
     }
 
+    // Part E is banded like Part A. Rows straight from KWSP's Third Schedule
+    // (effective 1 Oct 2025, Part E): 4% of the band's upper limit, rounded up.
+    [Theory]
+    [InlineData(1950, 79)]      // 1,940.01–1,960.00 → 79 (exact 4% would give 78)
+    [InlineData(1940, 78)]      // 1,920.01–1,940.00 → 78
+    [InlineData(65, 4)]         // 60.01–80.00 → 4
+    [InlineData(4999, 200)]     // 4,980.01–5,000.00 → 200
+    [InlineData(5000.01, 204)]  // 5,000.01–5,100.00 → 204 (RM 100 bands from here)
+    [InlineData(14950, 600)]    // 14,900.01–15,000.00 → 600
+    [InlineData(19950, 800)]    // 19,900.01–20,000.00 → 800
+    public void EpfPartE_FollowsTheGazettedTable(double wage, double employer)
+    {
+        var result = StatutoryTables.LookupEpfBand(
+            (decimal)wage, employerRateLow: 4m, employerRateHigh: 4m, employeeRate: 0m,
+            flatRateUsesTable: true);
+
+        Assert.Equal(((decimal)employer, 0m), result);
+    }
+
     // Part F — post-1998 non-Malaysian: 2% / 2% flat at every wage.
     [Fact]
     public void EpfPartF_FlatRate_BothSides()

@@ -24,7 +24,11 @@ public static class PayrollCalculatorWorking
         {
             case EpfBranch.MALAYSIAN_CITIZEN_60_PLUS:
                 lines.Add("From age 60 there is no employee EPF.");
-                lines.Add($"Employer {Pct(rates.Employer)}% = {Rm(r.EpfEmployer)}.");
+                // Up to RM 20,000 Part E is KWSP's band table, so the figure can be
+                // a ringgit above an exact 4% (RM 1,950 → RM 79 from the RM 1,960 band).
+                lines.Add(request.MonthlySalary + request.Bonus <= 20000m
+                    ? $"Employer {Pct(rates.Employer)}%: KWSP's contribution table gives {Rm(r.EpfEmployer)}."
+                    : $"Employer {Pct(rates.Employer)}% = {Rm(r.EpfEmployer)}.");
                 break;
 
             case EpfBranch.POST_1998_NON_MALAYSIAN:

@@ -71,6 +71,11 @@ public class PayrollEmployeeRowDto
     // fine on one and not the other, so the roster carries both.
     public IReadOnlyList<string> ProfileIncompleteSections { get; set; } = [];
 
+    // The recurring allowances and deductions on the profile, paid every run.
+    // A draft run lists them beside the month's one-off adjustments, so an
+    // admin doesn't read "nothing set" as "nothing paid".
+    public IReadOnlyList<FixedAllowanceRowDto> FixedAllowances { get; set; } = [];
+
     // False for an org member with no EmployeeProfile row at all — nothing has
     // been filled in for them yet, which is a different message from "these
     // three sections are short".

@@ -224,11 +224,11 @@ public static class StatutoryTables
     //   Part E (Malaysian citizen 60+):               employer 4 flat,  employee 0
     //   Part F (post-1998 non-Malaysian, any age):    employer 2 flat,  employee 2
     //
-    // Parts E and F are gazetted as flat percentages with NO band table, so the
-    // off-table rule applies to them at every wage. We detect that by the absence
-    // of a rate cliff (employerRateLow == employerRateHigh) rather than by naming
-    // the part — banding a flat-rate branch overstates the contribution by up to
-    // RM 1, which is a real defect the reference app hit in production.
+    // Part E is a flat 4% but IS gazetted as a band table (RM 20 bands to
+    // RM 5,000, RM 100 bands to RM 20,000), so the caller asks for the table with
+    // `flatRateUsesTable`. Part F (2%) is the only part with NO band table: the
+    // off-table rule applies to it at every wage, and banding it would overstate
+    // the contribution by up to RM 1, a defect the reference app hit in production.
     public static (decimal Employer, decimal Employee) LookupEpfBand(
         decimal wage,
         decimal employerRateLow,
@@ -240,15 +240,22 @@ public static class StatutoryTables
         // so a one-off bonus doesn't push an under-RM-5,000 employee up a tier —
         // pass the regular-monthly portion here while leaving `wage` at the full
         // combined amount.
-        decimal? rateDeterminingWage = null)
+        decimal? rateDeterminingWage = null,
+        // Part E (citizens 60+) is a flat 4% but still a gazetted band table —
+        // RM 20 bands to RM 5,000, RM 100 bands to RM 20,000, each at 4% of the
+        // band's upper limit, rounded up (Third Schedule, 1 Oct 2025: all 401
+        // rows; RM 1,940.01–1,960.00 → RM 79, not ceil(4% × 1,950) = 78).
+        // Part F (non-citizens from 1 Aug 1998) is the only flat part with NO
+        // table: 2% of the wage, rounded up.
+        bool flatRateUsesTable = false)
     {
         if (wage <= EpfDeMinimisWage) return (0m, 0m);
 
         var rateWage = rateDeterminingWage ?? wage;
         var hasCliff = employerRateLow != employerRateHigh;
 
-        // Flat-rate branch (Parts E / F): exact percentage, rounded up each side.
-        if (!hasCliff) return (CeilRinggit(wage, employerRateHigh), CeilRinggit(wage, employeeRate));
+        // Part F: exact percentage, rounded up each side.
+        if (!hasCliff && !flatRateUsesTable) return (CeilRinggit(wage, employerRateHigh), CeilRinggit(wage, employeeRate));
 
         decimal bandUpper;
         decimal employerRate;

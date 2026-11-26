@@ -151,6 +151,27 @@ public class EpfCalculatorTests
         Assert.Equal(0m, result.Employee);
     }
 
+    // Ayu Borneo, October 2026: a 68-year-old citizen on RM 1,950. KWSP's
+    // Part E table gives RM 79 (band 1,940.01–1,960.00); SQL Payroll agrees.
+    [Fact]
+    public void PartE_UsesTheBandTable_NotTheExactPercentage()
+    {
+        var result = EpfCalculator.Calculate(Profile(wage: 1950m, ageAtPeriodEnd: 68));
+
+        Assert.Equal(EpfBranch.MALAYSIAN_CITIZEN_60_PLUS, result.Branch);
+        Assert.Equal(79m, result.Employer);
+        Assert.Equal(0m, result.Employee);
+    }
+
+    // Above RM 20,000 the table stops and the exact 4% applies, rounded up.
+    [Fact]
+    public void PartE_AboveTwentyThousand_IsExactPercentage()
+    {
+        var result = EpfCalculator.Calculate(Profile(wage: 20010m, ageAtPeriodEnd: 62));
+
+        Assert.Equal(801m, result.Employer);   // ceil(4% × 20,010) = ceil(800.40)
+    }
+
     [Fact]
     public void PartF_Post1998NonMalaysian_IsFlatTwoPercentEachSide()
     {
