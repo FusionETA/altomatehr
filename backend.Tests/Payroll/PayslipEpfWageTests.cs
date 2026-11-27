@@ -5,9 +5,10 @@ using AltomateHR.Api.Modules.Policies.Entities;
 
 namespace AltomateHR.Api.Tests.Payroll;
 
-// The EPF wage — what KWSP's i-Akaun file calls "Member Wage". The calculator
-// stamps it; PayslipEpfWage rebuilds it for payslips written before it was
-// stored. These pin the two to each other, so a routing change in the
+// The EPF wage — what KWSP's i-Akaun file calls "Member Wage" — and the
+// SOCSO/EIS wage, PERKESO's "Employee salary". The calculator stamps both;
+// PayslipEpfWage / PayslipSocsoWage rebuild them for payslips written before
+// they were stored. These pin the two to each other, so a routing change in the
 // calculator that the rebuild doesn't follow fails here rather than in a file
 // someone uploads.
 public class PayslipEpfWageTests
@@ -81,6 +82,7 @@ public class PayslipEpfWageTests
         });
 
         Assert.Equal(r.EpfWage, PayslipEpfWage.Rebuild(r.ProratedPay, Stored(r)));
+        Assert.Equal(r.SocsoWage, PayslipSocsoWage.Rebuild(r.ProratedPay, r.OtPay, Stored(r)));
     }
 
     // The case that was reported: RM 8,000 basic, an EPF-able allowance, one
@@ -102,6 +104,31 @@ public class PayslipEpfWageTests
         Assert.Equal(8993.72m, r.GrossPay);
         Assert.Equal(8300m, r.EpfWage);
         Assert.Equal(8300m, PayslipEpfWage.Rebuild(r.ProratedPay, Stored(r)));
+
+        // The same claim and allowance stay out of the SOCSO/EIS wage.
+        Assert.Equal(8300m, r.SocsoWage);
+        Assert.Equal(8300m, PayslipSocsoWage.Rebuild(r.ProratedPay, r.OtPay, Stored(r)));
+    }
+
+    // Overtime is a SOCSO/EIS wage (unlike EPF), so it is in the PERKESO
+    // salary — and in the rebuild.
+    [Fact]
+    public void Overtime_IsInTheSocsoWageButNotTheEpfWage()
+    {
+        var r = PayslipCalculator.Calculate(Make() with { OtNormalHours = 10m });
+
+        Assert.True(r.OtPay > 0m);
+        Assert.Equal(8000m, r.EpfWage);
+        Assert.Equal(Money.Round2(8000m + r.OtPay), r.SocsoWage);
+        Assert.Equal(r.SocsoWage, PayslipSocsoWage.Rebuild(r.ProratedPay, r.OtPay, Stored(r)));
+    }
+
+    [Fact]
+    public void AStoredSocsoWage_WinsOverTheRebuild()
+    {
+        var payslip = new Payslip { ProratedPay = 8000m, OtPay = 100m, SocsoWage = 7777m };
+
+        Assert.Equal(7777m, PayslipSocsoWage.For(payslip, []));
     }
 
     [Fact]

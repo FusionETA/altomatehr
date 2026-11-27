@@ -20,13 +20,28 @@ public static class PayslipEpfWage
     public static decimal For(Payslip payslip, IEnumerable<PayslipLineItem> lineItems) =>
         payslip.EpfWage ?? Rebuild(payslip.ProratedPay, lineItems);
 
-    public static decimal Rebuild(decimal proratedPay, IEnumerable<PayslipLineItem> lineItems)
+    public static decimal Rebuild(decimal proratedPay, IEnumerable<PayslipLineItem> lineItems) =>
+        PayslipWageLines.Rebuild(proratedPay, lineItems, line => line.SubjectToEpf);
+}
+
+// How a payslip's line items move one agency's wage base, given which flag that
+// agency reads — the routing PayslipCalculator.RouteAllowance / RouteDeduction
+// apply, for every agency alike:
+//
+//   + every cash ALLOWANCE flagged subject to it (benefits in kind never are)
+//   − every DEDUCTION whose catalogue category reduces the base and is subject
+//
+// Reimbursements (claims) never move any base.
+internal static class PayslipWageLines
+{
+    public static decimal Rebuild(
+        decimal start, IEnumerable<PayslipLineItem> lineItems, Func<PayslipLineItem, bool> subject)
     {
-        var wage = proratedPay;
+        var wage = start;
 
         foreach (var line in lineItems)
         {
-            if (!line.SubjectToEpf) continue;
+            if (!subject(line)) continue;
             var meta = PayrollAdjustmentCategories.Find(line.Category);
 
             switch (line.Kind)

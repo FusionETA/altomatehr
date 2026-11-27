@@ -192,6 +192,13 @@ does the loading.
   `{id}_{name}_{MM-YYYY}.pdf`) and the edge-case field rules (untrimmed EPF
   number, null-coalescing SOCSO id, its tax-ref normaliser) are ported as
   they were, deliberately — "tidying" one changes what gets filed.
+  **Two deliberate exceptions — the wage fields.** v1 wrote gross pay as the
+  EPF CSV's "Member Wage" and the PERKESO TXT's "Employee salary", so reimbursed
+  claims (and, for EPF, OT and non-EPF allowances) showed up as wages the
+  contributions beside them didn't match. They now carry the wage each agency
+  was contributed on: `Payslip.EpfWage` / `Payslip.SocsoWage`, stamped by the
+  calculator, rebuilt from line items for older payslips (`PayslipEpfWage`,
+  `PayslipSocsoWage`). Never write `GrossPay` into a statutory wage field.
 - **A named run's files carry its name.** A month with several runs must
   never hand out two files with the same name, so a run's `Name` (letters and
   digits only — `PayrollPeriodLabel.FileTag`) is added before the extension:

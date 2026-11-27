@@ -2018,6 +2018,7 @@ public class PayrollRunService : IPayrollRunService
             SkbbkEmployee = r.SkbbkEmployee,
             SkbbkWage = r.SkbbkWage,
             EpfWage = r.EpfWage,
+            SocsoWage = r.SocsoWage,
             Pcb = r.Pcb,
             PcbNormal = r.PcbNormal,
             PcbAdditional = r.PcbAdditional,

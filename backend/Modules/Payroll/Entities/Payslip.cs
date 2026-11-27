@@ -164,6 +164,17 @@ public class Payslip : ITenantScoped
     // those from the snapshotted line items.
     [Precision(12, 2)] public decimal? EpfWage { get; set; }
 
+    // The wage SOCSO and EIS were contributed on: basic, overtime, and every
+    // allowance flagged subject to SOCSO, less base-reducing deductions. No
+    // reimbursed claims. It is the "Employee salary" PERKESO's ASSIST file asks
+    // for. (SOCSO and EIS share one wage definition — every catalogue category
+    // flags the two alike.)
+    //
+    // Null on payslips generated before it was stored; PayslipSocsoWage
+    // rebuilds those from the snapshotted line items. Not SkbbkWage: rows
+    // migrated from v1 carry v1's value there, which may be zero.
+    [Precision(12, 2)] public decimal? SocsoWage { get; set; }
+
     [Precision(12, 2)] public decimal Pcb { get; set; }
 
     // Court-ordered tax arrears, held apart from Pcb. The MTD spec's X —
