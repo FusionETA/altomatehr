@@ -8,8 +8,8 @@ namespace AltomateHR.Api.Modules.Payroll;
 // PayslipCalculator stamps it onto `Payslip.SocsoWage`, and that stored figure
 // always wins. Payslips generated before the column existed have none, so it is
 // rebuilt from the prorated basic, the overtime (a SOCSO/EIS wage, unlike EPF)
-// and the line items' subject-to-SOCSO flags. PayslipSocsoWageTests pins the
-// rebuild to the calculator.
+// and the line items' subject-to-SOCSO flags. PayslipEpfWageTests pins the
+// rebuild to the calculator, for both wages.
 public static class PayslipSocsoWage
 {
     public static decimal For(Payslip payslip, IEnumerable<PayslipLineItem> lineItems) =>
