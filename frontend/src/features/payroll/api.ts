@@ -1057,12 +1057,14 @@ export type AnnualEmployeeRow = {
   qualifyingChildren: number;
   annualChildRelief: number;
   pcbBorneByEmployer: boolean;
+  // Salary, overtime, leave pay and taxable allowances (EA B1a/c/d/f, B6).
+  // All three figures come from the Form EA lines, so together they are EA's
+  // total — no reimbursed claims, no tax-exempt allowances.
   grossSalary: number;
-  // Bonus, commission, fees, arrears, director fee — reported apart from
-  // salary on both Form EA and CP8D.
+  // Fees, commission and bonus (EA B1b) — reported apart from salary.
   bonusAndCommission: number;
-  // Benefits in kind. Never part of gross or net, but still part of the
-  // employee's reportable income.
+  // Benefits in kind, accommodation and ESOS (EA B3, B4, B1e). Never part of
+  // gross or net, but still part of the employee's reportable income.
   totalBik: number;
   totalPcb: number;
   totalCp38: number;

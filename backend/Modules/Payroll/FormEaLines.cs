@@ -109,6 +109,10 @@ public static class FormEaLines
 
             f.F += exempt;
             f.Add(line, taxable, item.Label);
+
+            // Inside B1a, but CP21 / CP22A list leave pay with commission and
+            // bonus (their line 2-3), so it is also kept apart.
+            if (item.Category == PayrollAdjustmentCategories.WagesLeavePay) f.LeavePay += taxable;
         }
 
         f.B1a += payslip.GrossPay - payslip.TotalReimbursements - cashLines;
@@ -131,6 +135,10 @@ public sealed class FormEaFigures
     public decimal B3 { get; set; }    // benefits in kind
     public decimal B4 { get; set; }    // value of living accommodation
     public decimal B6 { get; set; }    // compensation for loss of employment
+
+    // The leave-pay part of B1a (not a line of its own on EA). CP21 / CP22A
+    // report it on their line 2-3 with commission and bonus.
+    public decimal LeavePay { get; set; }
 
     public decimal D3ZakatViaSalary { get; set; }
     public decimal D5aTp1Relief { get; set; }
@@ -180,6 +188,7 @@ public sealed class FormEaFigures
     {
         B1a += other.B1a; B1b += other.B1b; B1c += other.B1c; B1d += other.B1d;
         B1e += other.B1e; B1f += other.B1f; B3 += other.B3; B4 += other.B4; B6 += other.B6;
+        LeavePay += other.LeavePay;
         D3ZakatViaSalary += other.D3ZakatViaSalary;
         D5aTp1Relief += other.D5aTp1Relief;
         D5bZakatSelfPaid += other.D5bZakatSelfPaid;
@@ -195,6 +204,7 @@ public sealed class FormEaFigures
             B1a = Money.Round2(B1a), B1b = Money.Round2(B1b), B1c = Money.Round2(B1c),
             B1d = Money.Round2(B1d), B1e = Money.Round2(B1e), B1f = Money.Round2(B1f),
             B3 = Money.Round2(B3), B4 = Money.Round2(B4), B6 = Money.Round2(B6),
+            LeavePay = Money.Round2(LeavePay),
             D3ZakatViaSalary = Money.Round2(D3ZakatViaSalary),
             D5aTp1Relief = Money.Round2(D5aTp1Relief),
             D5bZakatSelfPaid = Money.Round2(D5bZakatSelfPaid),

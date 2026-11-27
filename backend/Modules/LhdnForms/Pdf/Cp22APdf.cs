@@ -96,20 +96,22 @@ public static class Cp22APdf
             col.Item().PaddingBottom(3).Text(
                 $"From 1 January {p.Year} to {(e.LeaveDate is not null ? FmtDate(e.LeaveDate) : "cessation date")}. RM.")
                 .FontSize(8.5f).FontColor("#64748b");
-            col.Item().Element(c => AmtRow(c, "1. Salary, wages, overtime", p.Ytd.GrossSalary));
-            col.Item().Element(c => AmtRow(c, "2-3. Leave pay / commission / bonus", p.Ytd.BonusAndCommission));
-            col.Item().Element(c => AmtRow(c, "4. Gratuity (incl. tax-exempt portion)", null));
-            col.Item().Element(c => AmtRow(c, "5. Compensation for loss of employment (incl. tax-exempt portion)", null));
-            col.Item().Element(c => AmtRow(c, "6. Cash allowances incl. tax borne by employer", e.FixedAllowancesTotal));
+            // Every row from the year's Form EA lines, so the TOTAL is EA's
+            // total: no reimbursed claims, no exempt allowances.
+            var ea = p.Ytd.Ea;
+            col.Item().Element(c => AmtRow(c, "1. Salary, wages, overtime", ea.B1a - ea.LeavePay));
+            col.Item().Element(c => AmtRow(c, "2-3. Leave pay / commission / bonus", ea.LeavePay + ea.B1b));
+            col.Item().Element(c => AmtRow(c, "4. Gratuity (incl. tax-exempt portion)", ea.B1f));
+            col.Item().Element(c => AmtRow(c, "5. Compensation for loss of employment (incl. tax-exempt portion)", ea.B6));
+            col.Item().Element(c => AmtRow(c, "6. Cash allowances incl. tax borne by employer", ea.B1c + ea.B1d));
             col.Item().Element(c => AmtRow(c, "7. Pension from employer", null));
-            col.Item().Element(c => AmtRow(c, "8. BIK subject to tax", p.Ytd.TotalBik));
-            col.Item().Element(c => AmtRow(c, "9. Value of employer-provided accommodation", null));
+            col.Item().Element(c => AmtRow(c, "8. BIK subject to tax", ea.B3));
+            col.Item().Element(c => AmtRow(c, "9. Value of employer-provided accommodation", ea.B4));
             col.Item().Element(c => AmtRow(c, "10. Allowances in kind (food, clothing, lodging, servants)", null));
             col.Item().Element(c => AmtRow(c, "11. Car and driver", null));
             col.Item().Element(c => AmtRow(c, "12. Other payments", null));
-            col.Item().Element(c => AmtRow(c, "13. ESOS / ESPP share scheme benefits", null));
-            col.Item().Element(c => TotalAmtRow(c, "TOTAL / JUMLAH",
-                p.Ytd.GrossSalary + p.Ytd.BonusAndCommission + p.Ytd.TotalBik));
+            col.Item().Element(c => AmtRow(c, "13. ESOS / ESPP share scheme benefits", ea.B1e));
+            col.Item().Element(c => TotalAmtRow(c, "TOTAL / JUMLAH", ea.Total));
 
             col.Item().Element(c => SectionHeader(c, "C. Unreported Income from Preceding Years"));
             col.Item().PaddingBottom(3).Text(

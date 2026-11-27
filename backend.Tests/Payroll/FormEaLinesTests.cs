@@ -189,4 +189,15 @@ public class FormEaLinesTests
         Assert.Equal(500m, f.F);
         Assert.Equal(f.Total, f.SalaryAndAllowances + f.FeesCommissionBonus + f.BenefitsInKindTotal);
     }
+
+    // Leave pay is salary on EA (B1a) but sits with commission and bonus on
+    // CP21 / CP22A (line 2-3), so it is also kept apart.
+    [Fact]
+    public void LeavePay_IsInB1a_AndAlsoKeptApart()
+    {
+        var f = FormEaLines.For(Slip(7500m), [Allowance(C.WagesLeavePay, 2500m)]);
+
+        Assert.Equal(7500m, f.B1a);
+        Assert.Equal(2500m, f.LeavePay);
+    }
 }

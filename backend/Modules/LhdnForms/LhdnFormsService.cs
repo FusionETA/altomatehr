@@ -225,6 +225,7 @@ public class LhdnFormsService : ILhdnFormsService
                 GrossSalary = row.GrossSalary,
                 BonusAndCommission = row.BonusAndCommission,
                 TotalBik = row.TotalBik,
+                Ea = row.Ea,
                 TotalPcb = row.TotalPcb,
                 TotalZakat = row.TotalZakat,
                 TotalEpfEmployee = row.TotalEpfEmployee,

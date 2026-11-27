@@ -71,6 +71,11 @@ public class LhdnFormYtd
     public decimal GrossSalary { get; set; }
     public decimal BonusAndCommission { get; set; }
     public decimal TotalBik { get; set; }
+
+    // The year's income by Form EA line. CP21, CP22A and TP3 print their rows
+    // from these, so they report the same income as EA: no reimbursed claims,
+    // and exempt allowances in F rather than in income.
+    public Payroll.FormEaFigures Ea { get; set; } = new();
     public decimal TotalPcb { get; set; }
     public decimal TotalZakat { get; set; }
     public decimal TotalEpfEmployee { get; set; }
