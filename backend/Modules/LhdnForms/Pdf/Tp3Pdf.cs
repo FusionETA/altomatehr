@@ -82,7 +82,7 @@ public static class Tp3Pdf
                 $"Accumulated deductions for the period worked at this employer during {p.Year}. RM.")
                 .FontSize(8.5f).FontColor("#64748b");
             col.Item().Element(c => AmtRow(c,
-                "C1. Total monthly gross + additional remuneration (incl. allowances / perquisites / gifts / BIK)",
+                "C1. Total monthly gross + additional remuneration (incl. taxable allowances / perquisites / gifts / BIK)",
                 accumulatedGross));
             col.Item().Element(c => AmtRow(c, "C2. Tax-exempt allowances / perquisites / gifts / benefits", p.Ytd.Ea.F));
             col.Item().PaddingLeft(12).PaddingTop(1).Text(
