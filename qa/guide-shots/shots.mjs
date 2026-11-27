@@ -1013,6 +1013,17 @@ const admin = {
     await settle(page, 1500);
     await shoot(page, "admin", "attendance-today");
   },
+  "attendance-history-export": async (page) => {
+    await go(page, "attendance");
+    await inDemoCo(page);
+    await page.getByText(/No clock-in/).first().waitFor({ timeout: 15000 });
+    await clickText(page, "History");
+    await settle(page, 1500);
+    await page.getByRole("button", { name: /Export/ }).first().click();
+    await page.getByText("Approval trail as").first().waitFor({ timeout: 15000 });
+    await settle(page, 800);
+    await shoot(page, "admin", "attendance-history-export");
+  },
   "leave-balances": async (page) => {
     await go(page, "leave");
     await clickText(page, "Balances");

@@ -8,7 +8,7 @@
 //
 // Bookmark: the last commit on main these notes already cover. The next update
 // writes up everything after it — from any branch — then moves it forward.
-// whats-new-covered-up-to: 59b6853
+// whats-new-covered-up-to: 33a5c26
 
 // A line is for everyone, or — wrapped in admins(…) — for admins and owners
 // only. Employees and supervisors never see an admins line, so it doesn't
@@ -36,9 +36,11 @@ export const WHATS_NEW: WhatsNewEntry[] = [
       "On your Payslips page, you can now Show, Copy, or Change your password. When you change it, payslips you download from then on open with the new one; copies you already have still open with the old.",
       admins("In Payroll → Settings → Payslip password, choose On or Off. The old password options (IC number, last 6 of IC, date of birth, or company-wide) are gone."),
       admins("On a payroll run's Payslips table, Show to see an employee's password, or Reset to give them a new random one to pass on. Both are recorded in the activity log. With locking off, Show still appears for people who already have a password."),
+      admins("Attendance → Overview → History: Export can now download attendance records (hours summary and daily records) as CSV, Excel or PDF. It uses the screen's dates and filters."),
     ],
     improved: [
       admins("Payslip passwords are never emailed. If an employee can't see theirs in the app (they don't sign in), you can look it up and pass it on from the run's Payslips table."),
+      admins("Attendance → Overview → History: the team filter now narrows the records table, and the project filter shows people on that project's teams, as the other reports do."),
     ],
   },
   {
