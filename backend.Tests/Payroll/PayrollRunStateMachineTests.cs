@@ -39,7 +39,8 @@ public class PayrollRunStateMachineTests : IDisposable
     private readonly PayrollRunClaimRepository _runClaims;
     private readonly PayslipRepository _payslips;
     private readonly PayrollRunRepository _runs;
-    // Real AES-GCM, for each payslip's random PDF password.
+    private readonly PayslipPasswordService _passwords;
+    // Real AES-GCM, for each person's payslip password.
     private readonly AltomateHR.Api.Common.ISecretBox _secrets = new AltomateHR.Api.Common.SecretBox(
         new Microsoft.Extensions.Configuration.ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["Secrets:PortalCredentialsKey"] = "a-test-key" })
@@ -64,6 +65,15 @@ public class PayrollRunStateMachineTests : IDisposable
         _adjustments = new PayrollRunAdjustmentRepository(_db);
         _runClaims = new PayrollRunClaimRepository(_db);
         _runs = new PayrollRunRepository(_db);
+
+        _passwords = new PayslipPasswordService(
+            new EmployeeProfileRepository(_db),
+            new PayslipRepository(_db),
+            new UserRepository(_db),
+            new PayrollSettingsService(new PayrollSettingsRepository(_db), _audit),
+            _secrets,
+            _audit,
+            _currentUser);
 
         var directory = TestDirectory.Over(
             new OrganizationMembershipRepository(_db),
@@ -101,8 +111,7 @@ public class PayrollRunStateMachineTests : IDisposable
                 new StubPayrollOrganizations(),
                 _currentUser,
                 new PayrollSettingsService(new PayrollSettingsRepository(_db), _audit),
-                secrets: _secrets,
-                audit: _audit),
+                passwords: _passwords),
             _hours,
             _leave,
             _currentUser,
@@ -437,8 +446,8 @@ public class PayrollRunStateMachineTests : IDisposable
 
     // ─── Payslip passwords ──────────────────────────────────────────────
 
-    private Task<PayslipPasswordSaveResult> LockPayslipsAsync(PayslipPasswordRule rule) =>
-        Settings().SavePayslipPasswordAsync(new SavePayslipPasswordDto { LockPayslips = true, PayslipPasswordRule = rule });
+    private Task<PayslipPasswordSaveResult> LockPayslipsAsync(bool on = true) =>
+        Settings().SavePayslipPasswordAsync(new SavePayslipPasswordDto { LockPayslips = on });
 
     private PayrollSettingsService Settings() => new(new PayrollSettingsRepository(_db), _audit);
 
@@ -453,6 +462,16 @@ public class PayrollRunStateMachineTests : IDisposable
 
     private static bool IsEncrypted(byte[] pdf) =>
         System.Text.Encoding.Latin1.GetString(pdf).Contains("/Encrypt");
+
+    // Signed in as that employee, for their own Payslips page.
+    private void SignInAs(string userId) => _currentUser.UserId = userId;
+
+    private async Task<byte[]> PayslipAsync(string runId, string profileId)
+    {
+        var file = await _statutory.RenderPayslipPdfAsync(runId, profileId);
+        Assert.True(file.Ok, file.Error);
+        return file.Content!;
+    }
 
     [Fact]
     public async Task PayslipsAreOpen_UntilTheCompanyLocksThem()
@@ -474,20 +493,16 @@ public class PayrollRunStateMachineTests : IDisposable
         AddEmployee("usr-1", "Aisyah Binti Rahman");
         var run = await SubmittedRunAsync(2026, 1);
         var profileId = (await _db.Payslips.SingleAsync()).EmployeeProfileId;
-        await LockPayslipsAsync(PayslipPasswordRule.IC_DIGITS);
+        await LockPayslipsAsync();
 
         var single = await _statutory.RenderPayslipPdfAsync(run.Id, profileId);
         Assert.True(single.Ok, single.Error);
         Assert.True(IsEncrypted(single.Content!));
-        Assert.Equal(PayslipLock.Hint(PayslipPasswordRule.IC_DIGITS), single.PasswordHint);
+        Assert.Equal(PayslipLock.Hint, single.PasswordHint);
 
         var zip = await _statutory.RenderAllPayslipsZipAsync(run.Id);
         Assert.True(zip.Ok, zip.Error);
-        using var archive = new System.IO.Compression.ZipArchive(new MemoryStream(zip.Content!));
-        await using var entry = Assert.Single(archive.Entries).Open();
-        using var copy = new MemoryStream();
-        await entry.CopyToAsync(copy);
-        Assert.True(IsEncrypted(copy.ToArray()));
+        Assert.True(IsEncrypted(FirstPdfIn(zip.Content!)));
 
         // Only payslips: the summary in the same run stays open.
         Assert.False(IsEncrypted((await _statutory.RenderSummaryPdfAsync(run.Id)).Content!));
@@ -499,169 +514,163 @@ public class PayrollRunStateMachineTests : IDisposable
         AddEmployee("usr-1", "Aisyah Binti Rahman");
         var run = await GeneratedRunAsync(2026, 1);
         var profileId = (await _db.Payslips.SingleAsync()).EmployeeProfileId;
-        await LockPayslipsAsync(PayslipPasswordRule.IC_LAST6);
+        await LockPayslipsAsync();
 
-        var preview = await _statutory.RenderPayslipPdfAsync(run.Id, profileId);
-        Assert.True(preview.Ok, preview.Error);
-        Assert.True(IsEncrypted(preview.Content!));
+        Assert.True(IsEncrypted(await PayslipAsync(run.Id, profileId)));
     }
 
-    // A password nobody can know would lock the employee out of their own
-    // payslip, so a missing field refuses — naming the person.
+    // ─── One password per person ────────────────────────────────────────
+
+    // Random to begin with, made the first time it's needed, then the same in
+    // every copy of every month: the single download, the ZIP, and what the
+    // employee and the admin are shown. It needs no employee data at all.
     [Fact]
-    public async Task NoDateOfBirth_UnderTheDobRule_RefusesNamingThePerson()
+    public async Task EachPerson_HasOnePassword_ForEveryCopyOfEveryPayslip()
     {
         var profile = AddEmployee("usr-1", "Aisyah Binti Rahman");
-        var run = await SubmittedRunAsync(2026, 1);
-        profile.DateOfBirth = null;
-        await _db.SaveChangesAsync();
-        await LockPayslipsAsync(PayslipPasswordRule.DOB_DDMMYYYY);
-
-        var single = await _statutory.RenderPayslipPdfAsync(run.Id, profile.Id);
-        Assert.False(single.Ok);
-        Assert.Contains("Aisyah Binti Rahman", single.Error);
-        Assert.Contains("date of birth", single.Error);
-
-        var zip = await _statutory.RenderAllPayslipsZipAsync(run.Id);
-        Assert.False(zip.Ok);
-        Assert.Contains("Aisyah Binti Rahman", zip.Error);
-    }
-
-    // ─── A random password for every payslip ────────────────────────────
-
-    // One payslip, one password: made the first time it's locked, then the
-    // same in every copy — the single download, the ZIP, and what the
-    // employee and the admin are shown.
-    [Fact]
-    public async Task TheRandomRule_GivesEachPayslipOnePassword_TheSameInEveryCopy()
-    {
-        var profile = AddEmployee("usr-1", "Aisyah Binti Rahman");
-        var run = await SubmittedRunAsync(2026, 1);
-        // Needs no employee data at all.
+        var january = await SubmittedRunAsync(2026, 1);
+        var february = await SubmittedRunAsync(2026, 2);
         profile.IdNumber = null;
         profile.DateOfBirth = null;
         await _db.SaveChangesAsync();
-        await LockPayslipsAsync(PayslipPasswordRule.RANDOM);
+        await LockPayslipsAsync();
 
-        var first = await _statutory.RenderPayslipPdfAsync(run.Id, profile.Id);
-        Assert.True(first.Ok, first.Error);
-        var shown = await _statutory.GetPayslipPasswordAsync(run.Id, profile.Id, byAdmin: false);
+        var jan = await PayslipAsync(january.Id, profile.Id);
+        var shown = await _passwords.RevealAsync(january.Id, profile.Id);
         Assert.True(shown.Ok);
         Assert.Matches("^[A-Z2-9]{4}-[A-Z2-9]{4}$", shown.Password);
 
-        Assert.False(PayslipLockTests.Opens(first.Content!, null));
-        Assert.True(PayslipLockTests.Opens(first.Content!, shown.Password));
+        Assert.False(PayslipLockTests.Opens(jan, null));
+        Assert.True(PayslipLockTests.Opens(jan, shown.Password));
+        Assert.True(PayslipLockTests.Opens(await PayslipAsync(february.Id, profile.Id), shown.Password));
+        Assert.True(PayslipLockTests.Opens(FirstPdfIn((await _statutory.RenderAllPayslipsZipAsync(february.Id)).Content!), shown.Password));
 
-        var again = await _statutory.RenderPayslipPdfAsync(run.Id, profile.Id);
-        Assert.True(PayslipLockTests.Opens(again.Content!, shown.Password));
+        SignInAs("usr-1");
+        Assert.Equal(shown.Password, (await _passwords.GetMineAsync()).Password);
+        Assert.Equal(shown.Password, (await _passwords.RevealAsync(february.Id, profile.Id)).Password);
 
-        var zip = await _statutory.RenderAllPayslipsZipAsync(run.Id);
-        Assert.True(zip.Ok, zip.Error);
-        Assert.True(PayslipLockTests.Opens(FirstPdfIn(zip.Content!), shown.Password));
-
-        Assert.Equal(shown.Password,
-            (await _statutory.GetPayslipPasswordAsync(run.Id, profile.Id, byAdmin: true)).Password);
-
-        // Stored encrypted, never as typed.
-        var stored = (await _db.Payslips.SingleAsync()).PdfPasswordEncrypted;
+        // Stored encrypted on the profile, never as typed.
+        var stored = (await _db.EmployeeProfiles.SingleAsync()).PayslipPasswordEncrypted;
         Assert.NotNull(stored);
         Assert.DoesNotContain(shown.Password!, stored);
     }
 
-    // Next month's payslip has a password of its own.
     [Fact]
-    public async Task EachPayslip_HasADifferentPassword()
+    public async Task TwoPeople_HaveDifferentPasswords()
     {
-        var profile = AddEmployee("usr-1", "Aisyah Binti Rahman");
-        var january = await SubmittedRunAsync(2026, 1);
-        var february = await SubmittedRunAsync(2026, 2);
-        await LockPayslipsAsync(PayslipPasswordRule.RANDOM);
+        var aisyah = AddEmployee("usr-1", "Aisyah Binti Rahman");
+        var ben = AddEmployee("usr-2", "Ben Tan");
+        (await _db.OrganizationMemberships.SingleAsync(m => m.UserId == "usr-2")).EmployeeNumber = "E-002";
+        await _db.SaveChangesAsync();
+        var run = await SubmittedRunAsync(2026, 1);
+        await LockPayslipsAsync();
 
-        var jan = await _statutory.GetPayslipPasswordAsync(january.Id, profile.Id, byAdmin: false);
-        var feb = await _statutory.GetPayslipPasswordAsync(february.Id, profile.Id, byAdmin: false);
-
-        Assert.NotEqual(jan.Password, feb.Password);
+        Assert.NotEqual(
+            (await _passwords.RevealAsync(run.Id, aisyah.Id)).Password,
+            (await _passwords.RevealAsync(run.Id, ben.Id)).Password);
     }
 
-    // A re-run rebuilds the payslips, but each person's password travels to
-    // their new one — a copy handed out before (an approved month reverted
-    // and re-run, a re-imported year) still opens with what the page shows.
+    // A re-run rebuilds the payslips; the password is the person's, so it's
+    // untouched and a copy handed out before still opens.
     [Fact]
-    public async Task AReRun_KeepsEachPersonsPassword()
+    public async Task AReRun_KeepsThePersonsPassword()
     {
         var profile = AddEmployee("usr-1", "Aisyah Binti Rahman");
         var run = await GeneratedRunAsync(2026, 1);
-        await LockPayslipsAsync(PayslipPasswordRule.RANDOM);
-        var before = (await _statutory.GetPayslipPasswordAsync(run.Id, profile.Id, byAdmin: false)).Password;
-        var copy = (await _statutory.RenderPayslipPdfAsync(run.Id, profile.Id)).Content!;
+        await LockPayslipsAsync();
+        var before = (await _passwords.RevealAsync(run.Id, profile.Id)).Password;
+        var copy = await PayslipAsync(run.Id, profile.Id);
 
         Assert.True((await _service.GenerateAsync(run.Id)).Ok);
 
-        var after = (await _statutory.GetPayslipPasswordAsync(run.Id, profile.Id, byAdmin: false)).Password;
-        Assert.Equal(before, after);
-        Assert.True(PayslipLockTests.Opens(copy, after));
+        Assert.Equal(before, (await _passwords.RevealAsync(run.Id, profile.Id)).Password);
+        Assert.True(PayslipLockTests.Opens(copy, before));
     }
 
-    // RANDOM → IC: payslips already locked with their own password keep it —
-    // new copies too, and it can still be shown. Only payslips not yet
-    // locked follow the new rule.
+    // ─── The employee changes theirs ────────────────────────────────────
+
+    // Every copy from then on — any month — opens with the new one. A copy
+    // they already had keeps the password it was made with.
     [Fact]
-    public async Task ChangingTheRule_LeavesPayslipsAlreadyLockedAsTheyWere()
+    public async Task TheEmployee_ChangesTheirPassword_AndEveryNewCopyOpensWithIt()
     {
         var profile = AddEmployee("usr-1", "Aisyah Binti Rahman");
         var january = await SubmittedRunAsync(2026, 1);
-        await LockPayslipsAsync(PayslipPasswordRule.RANDOM);
-        var janPassword = (await _statutory.GetPayslipPasswordAsync(january.Id, profile.Id, byAdmin: false)).Password;
-        Assert.NotNull(janPassword);
-
-        await LockPayslipsAsync(PayslipPasswordRule.IC_DIGITS);
         var february = await SubmittedRunAsync(2026, 2);
+        await LockPayslipsAsync();
+        SignInAs("usr-1");
+        var random = (await _passwords.GetMineAsync()).Password;
+        var oldCopy = await PayslipAsync(january.Id, profile.Id);
 
-        var janCopy = (await _statutory.RenderPayslipPdfAsync(january.Id, profile.Id)).Content!;
-        Assert.True(PayslipLockTests.Opens(janCopy, janPassword));
-        Assert.Equal(janPassword,
-            (await _statutory.GetPayslipPasswordAsync(january.Id, profile.Id, byAdmin: false)).Password);
+        var changed = await _passwords.ChangeMineAsync("my-own-payslips");
+        Assert.True(changed.Ok, changed.Error);
 
-        var febCopy = (await _statutory.RenderPayslipPdfAsync(february.Id, profile.Id)).Content!;
-        Assert.True(PayslipLockTests.Opens(febCopy, "900101145567"));
-        Assert.False((await _statutory.GetPayslipPasswordAsync(february.Id, profile.Id, byAdmin: false)).Ok);
+        Assert.Equal("my-own-payslips", (await _passwords.GetMineAsync()).Password);
+        Assert.True(PayslipLockTests.Opens(await PayslipAsync(january.Id, profile.Id), "my-own-payslips"));
+        Assert.True(PayslipLockTests.Opens(await PayslipAsync(february.Id, profile.Id), "my-own-payslips"));
+        Assert.True(PayslipLockTests.Opens(oldCopy, random));
+
+        // Recorded, never with the password.
+        var entry = Assert.Single(_audit.Written, e => e.Action == AuditActions.PayslipPasswordChange);
+        Assert.DoesNotContain("my-own-payslips", entry.Summary);
     }
 
-    // IC → RANDOM: a payslip already handed out locked with the IC isn't
-    // given a random password the copies in people's inboxes don't open with.
     [Fact]
-    public async Task APayslipLockedWithTheIc_StaysOnTheIc_AfterSwitchingToRandom()
+    public async Task ATooShortPassword_IsRefused_AndNothingChanges()
+    {
+        var profile = AddEmployee("usr-1", "Aisyah Binti Rahman");
+        await SubmittedRunAsync(2026, 1);
+        await LockPayslipsAsync();
+        SignInAs("usr-1");
+        var before = (await _passwords.GetMineAsync()).Password;
+
+        var refused = await _passwords.ChangeMineAsync("short");
+
+        Assert.False(refused.Ok);
+        Assert.Contains("at least 8", refused.Error);
+        Assert.Equal(before, (await _passwords.GetMineAsync()).Password);
+    }
+
+    // The payslip password goes with every file they forward; their sign-in
+    // password must never be the one that does.
+    [Fact]
+    public async Task TheirSignInPassword_IsRefused()
+    {
+        AddEmployee("usr-1", "Aisyah Binti Rahman");
+        await SubmittedRunAsync(2026, 1);
+        (await _db.Users.SingleAsync(u => u.Id == "usr-1")).PasswordHash = PasswordHasher.HashBcrypt("sign-in-pass-1");
+        await _db.SaveChangesAsync();
+        SignInAs("usr-1");
+
+        var refused = await _passwords.ChangeMineAsync("sign-in-pass-1");
+
+        Assert.False(refused.Ok);
+        Assert.Contains("sign in with", refused.Error);
+    }
+
+    // With locking off and no password yet there's nothing to open, so
+    // nothing to show. Once they have one, it's shown even with locking since
+    // switched off — copies they already have still need it.
+    [Fact]
+    public async Task APassword_IsShownOnlyOnceThereIsSomethingItOpens()
     {
         var profile = AddEmployee("usr-1", "Aisyah Binti Rahman");
         var run = await SubmittedRunAsync(2026, 1);
-        await LockPayslipsAsync(PayslipPasswordRule.IC_DIGITS);
-        Assert.True((await _statutory.RenderPayslipPdfAsync(run.Id, profile.Id)).Ok);
+        SignInAs("usr-1");
 
-        await LockPayslipsAsync(PayslipPasswordRule.RANDOM);
+        Assert.False((await _passwords.GetMineAsync()).Ok);
+        Assert.False((await _passwords.RevealAsync(run.Id, profile.Id)).Ok);
 
-        Assert.False((await _statutory.GetPayslipPasswordAsync(run.Id, profile.Id, byAdmin: false)).Ok);
-        var copy = (await _statutory.RenderPayslipPdfAsync(run.Id, profile.Id)).Content!;
-        Assert.True(PayslipLockTests.Opens(copy, "900101145567"));
+        await LockPayslipsAsync();
+        var password = (await _passwords.GetMineAsync()).Password;
+        Assert.NotNull(password);
+
+        await LockPayslipsAsync(on: false);
+        Assert.Equal(password, (await _passwords.GetMineAsync()).Password);
+        Assert.True(PayslipLockTests.Opens(await PayslipAsync(run.Id, profile.Id), null));
     }
 
-    // Switching locking off doesn't strand copies already handed out: their
-    // random password can still be shown.
-    [Fact]
-    public async Task SwitchingLockingOff_StillShowsPasswordsAlreadyUsed()
-    {
-        var profile = AddEmployee("usr-1", "Aisyah Binti Rahman");
-        var run = await SubmittedRunAsync(2026, 1);
-        await LockPayslipsAsync(PayslipPasswordRule.RANDOM);
-        var password = (await _statutory.GetPayslipPasswordAsync(run.Id, profile.Id, byAdmin: false)).Password;
-
-        await Settings().SavePayslipPasswordAsync(new SavePayslipPasswordDto
-        {
-            LockPayslips = false, PayslipPasswordRule = PayslipPasswordRule.RANDOM,
-        });
-
-        Assert.Equal(password, (await _statutory.GetPayslipPasswordAsync(run.Id, profile.Id, byAdmin: false)).Password);
-        Assert.True(PayslipLockTests.Opens((await _statutory.RenderPayslipPdfAsync(run.Id, profile.Id)).Content!, null));
-    }
+    // ─── A payroll admin ────────────────────────────────────────────────
 
     // An admin's look is audited; the employee's own isn't.
     [Fact]
@@ -669,26 +678,70 @@ public class PayrollRunStateMachineTests : IDisposable
     {
         var profile = AddEmployee("usr-1", "Aisyah Binti Rahman");
         var run = await SubmittedRunAsync(2026, 1);
-        await LockPayslipsAsync(PayslipPasswordRule.RANDOM);
+        await LockPayslipsAsync();
 
-        await _statutory.GetPayslipPasswordAsync(run.Id, profile.Id, byAdmin: false);
+        SignInAs("usr-1");
+        await _passwords.GetMineAsync();
         Assert.DoesNotContain(_audit.Written, e => e.Action == AuditActions.PayrollPayslipPasswordReveal);
 
-        await _statutory.GetPayslipPasswordAsync(run.Id, profile.Id, byAdmin: true);
+        SignInAs("usr-admin");
+        await _passwords.RevealAsync(run.Id, profile.Id);
         var entry = Assert.Single(_audit.Written, e => e.Action == AuditActions.PayrollPayslipPasswordReveal);
         Assert.Contains("Aisyah Binti Rahman", entry.Summary);
     }
 
-    // Under the other rules there's nothing to show: they know their IC.
+    // For someone who forgot theirs: a new random one, shown to the admin to
+    // pass on, and every new copy opens with it. Audited.
     [Fact]
-    public async Task ThereIsNoPasswordToShow_UnderTheOtherRules()
+    public async Task AnAdminReset_GivesANewRandomPassword()
     {
         var profile = AddEmployee("usr-1", "Aisyah Binti Rahman");
         var run = await SubmittedRunAsync(2026, 1);
+        await LockPayslipsAsync();
+        SignInAs("usr-1");
+        Assert.True((await _passwords.ChangeMineAsync("forgotten-one")).Ok);
 
-        Assert.False((await _statutory.GetPayslipPasswordAsync(run.Id, profile.Id, byAdmin: true)).Ok);
-        await LockPayslipsAsync(PayslipPasswordRule.IC_DIGITS);
-        Assert.False((await _statutory.GetPayslipPasswordAsync(run.Id, profile.Id, byAdmin: true)).Ok);
+        SignInAs("usr-admin");
+        var reset = await _passwords.ResetAsync(run.Id, profile.Id);
+
+        Assert.True(reset.Ok, reset.Error);
+        Assert.Matches("^[A-Z2-9]{4}-[A-Z2-9]{4}$", reset.Password);
+        Assert.True(PayslipLockTests.Opens(await PayslipAsync(run.Id, profile.Id), reset.Password));
+        Assert.Contains(_audit.Written, e => e.Action == AuditActions.PayrollPayslipPasswordReset);
+    }
+
+    // With locking switched off, the run's table still has to find whoever
+    // has a password — copies sent while it was on need it — and only them.
+    [Fact]
+    public async Task WhoHasAPassword_IsKnown_EvenWithLockingSwitchedOff()
+    {
+        var aisyah = AddEmployee("usr-1", "Aisyah Binti Rahman");
+        AddEmployee("usr-2", "Ben Tan");
+        (await _db.OrganizationMemberships.SingleAsync(m => m.UserId == "usr-2")).EmployeeNumber = "E-002";
+        await _db.SaveChangesAsync();
+        var run = await SubmittedRunAsync(2026, 1);
+
+        Assert.Empty(await _passwords.HoldersOnRunAsync(run.Id));
+
+        await LockPayslipsAsync();
+        await PayslipAsync(run.Id, aisyah.Id);   // Aisyah's is made; Ben's not yet
+        await LockPayslipsAsync(on: false);
+
+        Assert.Equal([aisyah.Id], await _passwords.HoldersOnRunAsync(run.Id));
+        Assert.True((await _passwords.RevealAsync(run.Id, aisyah.Id)).Ok);
+    }
+
+    // From a run's page, only someone on that run.
+    [Fact]
+    public async Task SomeoneNotOnTheRun_IsNotFound()
+    {
+        AddEmployee("usr-1", "Aisyah Binti Rahman");
+        var run = await SubmittedRunAsync(2026, 1);
+        await LockPayslipsAsync();
+
+        Assert.False((await _passwords.RevealAsync(run.Id, "someone-else")).Ok);
+        Assert.False((await _passwords.ResetAsync(run.Id, "someone-else")).Ok);
+        Assert.DoesNotContain(_audit.Written, e => e.Action == AuditActions.PayrollPayslipPasswordReset);
     }
 
     // Saving the password setting is not a payroll input: drafts stay fresh.
@@ -698,7 +751,7 @@ public class PayrollRunStateMachineTests : IDisposable
         AddEmployee("usr-1", "Aisyah Binti Rahman");
         var run = await GeneratedRunAsync(2026, 1);
 
-        await LockPayslipsAsync(PayslipPasswordRule.IC_DIGITS);
+        await LockPayslipsAsync();
 
         Assert.Null((await _db.PayrollRuns.SingleAsync(r => r.Id == run.Id)).LastMutatedAt);
     }

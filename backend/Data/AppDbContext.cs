@@ -356,7 +356,6 @@ public class AppDbContext : DbContext
         var payrollSettings = modelBuilder.Entity<PayrollSettings>();
         payrollSettings.HasIndex(s => s.OrganizationId).IsUnique();
         payrollSettings.Property(s => s.WorkingDaysRule).HasConversion<string>().HasMaxLength(20);
-        payrollSettings.Property(s => s.PayslipPasswordRule).HasConversion<string>().HasMaxLength(20);
 
         var companyInfo = modelBuilder.Entity<PayrollCompanyInfo>();
         companyInfo.HasIndex(c => c.OrganizationId).IsUnique();
@@ -383,7 +382,6 @@ public class AppDbContext : DbContext
         // index it needs; the run's own detail page uses the unique one above.
         payslip.HasIndex(p => new { p.OrganizationId, p.EmployeeProfileId });
         payslip.Property(p => p.SnapshotSalaryType).HasConversion<string>().HasMaxLength(20);
-        payslip.Property(p => p.PdfPasswordRule).HasConversion<string>().HasMaxLength(20);
 
         var lineItem = modelBuilder.Entity<PayslipLineItem>();
         lineItem.HasIndex(li => li.PayslipId);

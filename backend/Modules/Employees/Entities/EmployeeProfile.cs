@@ -154,6 +154,15 @@ public class EmployeeProfile : ITenantScoped
     public string? LeaveEntitlementJson { get; set; }            // JSON (owned by payroll/leave)
     public string? PayrollDocumentsJson { get; set; }            // JSON list of document refs
 
+    // The password that opens this person's payslip PDFs when the company
+    // locks them (PayrollSettings.LockPayslips). ONE per person per company:
+    // random to begin with (PayslipLock.NewRandomPassword, made the first
+    // time it's needed), then whatever the employee changes it to on their
+    // Payslips page. Every copy of every payslip is locked with the current
+    // one. Encrypted with ISecretBox, never hashed — it has to be applied to
+    // the file. Read and written only by PayslipPasswordService.
+    [MaxLength(512)] public string? PayslipPasswordEncrypted { get; set; }
+
     // ---- Lifecycle ----
     public bool IsArchived { get; set; }
     public DateTime? ArchivedAt { get; set; }

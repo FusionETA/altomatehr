@@ -163,7 +163,6 @@ export function PayrollSettingsForm() {
   function onPayslipPasswordSaved(saved: PayrollSettings) {
     const patch = {
       lockPayslips: saved.lockPayslips,
-      payslipPasswordRule: saved.payslipPasswordRule,
       payslipPasswordHint: saved.payslipPasswordHint,
     };
     setSettings((current) => (current ? { ...current, ...patch } : current));
@@ -224,7 +223,6 @@ export function PayrollSettingsForm() {
         updatedAt: _updated,
         abPayEnabled: _abPayEnabled,
         lockPayslips: _lock,
-        payslipPasswordRule: _rule,
         payslipPasswordHint: _hint,
         ...settingsBody
       } = settings;

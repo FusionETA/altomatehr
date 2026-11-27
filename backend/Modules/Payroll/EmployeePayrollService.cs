@@ -36,15 +36,18 @@ public class EmployeePayrollService : IEmployeePayrollService
 
     public async Task<IReadOnlyList<EmployeePayslipSummaryDto>> GetMyPayslipsAsync()
     {
-        var profileId = await MyProfileIdAsync();
-        if (profileId is null) return [];
+        var profile = await MyProfileAsync();
+        if (profile is null) return [];
 
-        var rows = await _payslips.GetForEmployeeAsync(profileId);
+        var rows = await _payslips.GetForEmployeeAsync(profile.Id);
 
-        // What opens each payslip's PDF, by the rule IT was locked with (or the
-        // company's current one if it hasn't been locked yet) — so an older
-        // payslip handed out under another rule says how to open that copy.
+        // Locked now, or locked before (they have a password, so copies they
+        // already have need it): say how to open them. One password, so the
+        // same for every row.
         var settings = _settings is null ? null : await _settings.GetEffectiveAsync();
+        var hint = settings is { LockPayslips: true } || profile.PayslipPasswordEncrypted is not null
+            ? PayslipLock.Hint
+            : null;
 
         return [.. rows.Select(row => new EmployeePayslipSummaryDto
         {
@@ -61,10 +64,7 @@ public class EmployeePayrollService : IEmployeePayrollService
             // the company pays for them is not — matches the detail view.
             Pcb = row.Payslip.Pcb - row.Payslip.PcbBorneByEmployer + row.Payslip.VoluntaryPcb,
             SubmittedAt = row.Run.SubmittedAt,
-            PdfPasswordHint = PasswordHint(settings, row.Payslip),
-            PdfPasswordOnPage = row.Payslip.PdfPasswordRule == PayslipPasswordRule.RANDOM
-                                || (row.Payslip.PdfPasswordRule is null
-                                    && settings is { LockPayslips: true, PayslipPasswordRule: PayslipPasswordRule.RANDOM }),
+            PdfPasswordHint = hint,
         })];
     }
 
@@ -84,28 +84,6 @@ public class EmployeePayrollService : IEmployeePayrollService
         if (payslip is null) return new StatutoryFileResult(false, null, null, null, null);
 
         return await _statutory.RenderPayslipPdfAsync(payslip.PayrollRunId, payslip.EmployeeProfileId);
-    }
-
-    // Locked now: the payslip's own rule (or the current one). Locking since
-    // switched off: only a RANDOM payslip still needs telling — copies already
-    // handed out need the password shown on the page; the others are copies
-    // they can open with their IC / date of birth, and new ones aren't locked.
-    private static string? PasswordHint(PayrollSettings? settings, Payslip payslip)
-    {
-        if (settings is null) return null;
-        if (settings.LockPayslips) return PayslipLock.Hint(payslip.PdfPasswordRule ?? settings.PayslipPasswordRule);
-        return payslip.PdfPasswordRule == PayslipPasswordRule.RANDOM ? PayslipLock.Hint(PayslipPasswordRule.RANDOM) : null;
-    }
-
-    public async Task<PayslipPasswordResult> GetMyPayslipPasswordAsync(string payslipId)
-    {
-        var payslip = await MineAsync(payslipId);
-        if (payslip is null) return PayslipPasswordResult.NotFound;
-
-        // Their own payslip, so not audited — it's no more than the PDF they
-        // can already download.
-        return await _statutory.GetPayslipPasswordAsync(
-            payslip.PayrollRunId, payslip.EmployeeProfileId, byAdmin: false);
     }
 
     public async Task<StatutoryFileResult> RenderMyTp1FormAsync(string payslipId)

@@ -61,9 +61,13 @@ public static class AuditActions
     public const string PayrollPortalCredentialReveal = "payroll.portal-credential.reveal";
     public const string PayrollPortalCredentialDelete = "payroll.portal-credential.delete";
 
-    // A payroll admin looked at one payslip's own password (RANDOM payslip-
-    // password rule): it opens that person's payslip.
+    // A person's payslip password (one per person, EmployeeProfile): a
+    // payroll admin looking at it opens every payslip they have, and resetting
+    // it is what lets someone back in who forgot theirs. The employee changing
+    // their own is recorded too — never the password itself.
     public const string PayrollPayslipPasswordReveal = "payroll.payslip-password.reveal";
+    public const string PayrollPayslipPasswordReset = "payroll.payslip-password.reset";
+    public const string PayslipPasswordChange = "payslip-password.change";
 
     // Seeding a year of history writes SUBMITTED payslips that every later
     // month's PCB reads from. Worth recording who did it and when.
@@ -234,6 +238,9 @@ public static class AuditActions
         [XeroAppDelete] = "Xero app deleted",
         [XeroAppChoiceSet] = "Xero app changed",
         [SupportLoginUnblock] = "Sign-in unblocked by support",
+        [PayrollPayslipPasswordReveal] = "Payslip password shown to an admin",
+        [PayrollPayslipPasswordReset] = "Payslip password reset by an admin",
+        [PayslipPasswordChange] = "Payslip password changed",
         [AuthLogin] = "Signed in",
         [AuthLoginFailed] = "Failed sign-in",
         [AuthPasswordChange] = "Password changed",

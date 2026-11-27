@@ -818,8 +818,9 @@ const admin = {
     await page.evaluate(() => window.scrollBy(0, -160));
     await shoot(page, "admin", "payroll-payslips-search");
   },
-  // Needs the RANDOM payslip password rule on (Payroll -> Settings -> Payslip password).
-  // A run's Payslips table: one row's "PDF password" line after pressing Show.
+  // Needs payslip passwords switched on (Payroll -> Settings -> Payslip password).
+  // A run's Payslips table: one row's "PDF password" line after pressing Show,
+  // with the Reset button beside Copy.
   "payroll-payslip-password-row": async (page) => {
     await inDemoCo(page);
     await go(page, "payroll");
@@ -972,7 +973,9 @@ const admin = {
     await clickText(page, "Payslip password");
     await page.getByText("Save payslip password").first().waitFor({ timeout: 15000 });
     await settle(page, 800);
-    await scrollTo(page, "Password-protect payslips", 60);
+    await scrollTo(page, "Password-protect payslips", 215);
+    // Needs payslip passwords switched on, so the Yes box is ticked and the
+    // "Staff who don't sign in" warning shows under the list.
     await page.getByText(/Staff who don't sign in/).first().waitFor({ timeout: 10000 });
     await shoot(page, "admin", "payroll-settings-payslip-password");
   },
@@ -1320,17 +1323,30 @@ const evan = {
     await shoot(page, "employee", "overtime-form");
     await page.keyboard.press("Escape");
   },
+  // Needs payslip passwords switched on. The one "Payslip password" box at the
+  // top of the Payslips page, opened with Show.
   "payslips-password-note": async (page) => {
     await go(page, "payslips");
-    await page.getByText(/Payslip PDFs are password-protected/).first().waitFor({ timeout: 15000 });
-    // Random rule: open the newest card's own password so the row shows.
+    await page.getByText(/Your payslip PDFs are password-protected/).first().waitFor({ timeout: 15000 });
     await page.getByRole("button", { name: "Show", exact: true }).first().click();
     await page.getByRole("button", { name: "Copy the PDF password" }).first().waitFor({ timeout: 15000 });
     await settle(page, 400);
-    // Scroll so the note is at the top with the first card's password row below it.
-    await page.evaluate(() => { document.body.style.zoom = "0.7"; window.scrollTo(0, 0); });
+    await page.evaluate(() => window.scrollTo(0, 0));
     await settle(page, 400);
     await shoot(page, "employee", "payslips-password-note");
+  },
+  // The "Change payslip password" form, filled in but never saved.
+  "payslips-password-change": async (page) => {
+    await go(page, "payslips");
+    await page.getByText(/Your payslip PDFs are password-protected/).first().waitFor({ timeout: 15000 });
+    await page.getByRole("button", { name: "Change", exact: true }).first().click();
+    await page.getByText("Change payslip password").first().waitFor({ timeout: 10000 });
+    const boxes = page.locator('input[type="password"]').filter({ visible: true });
+    await boxes.nth(0).fill("demo-payslip-pw");
+    await boxes.nth(1).fill("demo-payslip-pw");
+    await shoot(page, "employee", "payslips-password-change");
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await settle(page, 400);
   },
   "payslip-breakdown": async (page) => {
     await go(page, "payslips");

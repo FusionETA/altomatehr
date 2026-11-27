@@ -20,10 +20,9 @@ public class PayrollSettingsDto
     // Payslip password (PayslipLock). Saved on its own endpoint —
     // PUT /payroll/settings/payslip-password — not with the rest, so a
     // client that doesn't know about it can never switch it off.
+    // Each employee's own password (EmployeeProfile.PayslipPasswordEncrypted).
     public bool LockPayslips { get; set; }
-    public PayslipPasswordRule PayslipPasswordRule { get; set; }
-    // What employees are told the password is, e.g. "your IC number with no
-    // dashes (or your passport number)". Never the password itself.
+    // What employees are told opens the PDF. Never the password itself.
     public string PayslipPasswordHint { get; set; } = string.Empty;
 
     public bool SyncClaimsToXeroOnSubmit { get; set; }
@@ -84,19 +83,25 @@ public class SavePayrollSettingsDto
     [MaxLength(20)] public string? EcpPayorBic { get; set; }
 }
 
-// Turn payslip passwords on or off, and choose what they are.
+// Turn payslip passwords on or off. What they are is each employee's own.
 public class SavePayslipPasswordDto
 {
     public bool LockPayslips { get; set; }
-
-    [Required]
-    public PayslipPasswordRule PayslipPasswordRule { get; set; } = PayslipPasswordRule.IC_DIGITS;
 }
 
-// A payslip's own password (RANDOM rule), as GET …/pdf-password returns it.
+// A person's payslip password, as the Show and Reset endpoints return it.
 public class PayslipPdfPasswordDto
 {
     public string Password { get; set; } = string.Empty;
+}
+
+// An employee choosing their own payslip password (PUT /payslips/password).
+// The length and other checks are PayslipLock.Problem's, so the message names
+// the rule that failed.
+public class ChangePayslipPasswordDto
+{
+    [Required]
+    public string NewPassword { get; set; } = string.Empty;
 }
 
 // "Payroll at this company started in <month> <year>" — for a company that
