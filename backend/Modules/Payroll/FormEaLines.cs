@@ -150,6 +150,16 @@ public sealed class FormEaFigures
     // accommodation (12) and ESOS (13) — so nothing is declared twice.
     public decimal Cp8dGross => B1a + B1b + B1c + B1d + B1f + B6;
 
+    // The three income figures the other LHDN forms print — the CP8D PDF's
+    // total income, CP21 and CP22A's lines 1 / 2-3 / BIK, TP3's accumulated
+    // gross — carved out of these same lines so every form reports one income.
+    // Together they are exactly Total: no reimbursed claim (never on the form)
+    // and no exempt allowance (that is F, not income). They used to be built
+    // from GrossPay, which carries both.
+    public decimal SalaryAndAllowances => B1a + B1c + B1d + B1f + B6;
+    public decimal FeesCommissionBonus => B1b;
+    public decimal BenefitsInKindTotal => B1e + B3 + B4;
+
     public void Add(FormEaLines.Line line, decimal amount, string label)
     {
         switch (line)

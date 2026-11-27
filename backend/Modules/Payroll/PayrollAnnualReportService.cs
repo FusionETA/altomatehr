@@ -234,9 +234,6 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
         // employee's profile has since been deleted.
         public Payslip Snapshot { get; set; } = null!;
 
-        public decimal Gross { get; set; }
-        public decimal Bonus { get; set; }
-        public decimal Bik { get; set; }
         public decimal Pcb { get; set; }
         public decimal Mtd { get; set; }
         public decimal Cp38 { get; set; }
@@ -277,30 +274,10 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
         acc.Socso += payslip.SocsoEmployee + payslip.SkbbkEmployee;
         acc.Eis += payslip.EisEmployee;
 
-        // Bonus / commission and benefits in kind are reported APART from
-        // salary on both forms, so they are pulled out of the line items and
-        // gross is what remains.
-        var bonus = 0m;
-        var bik = 0m;
-
-        foreach (var item in lineItems)
-        {
-            if (item.Kind != PayslipLineKind.ALLOWANCE) continue;
-
-            var meta = PayrollAdjustmentCategories.Find(item.Category);
-            if (meta is null) continue;
-
-            if (meta.NonCash) bik += item.Amount;
-            else if (meta.IsAdditionalRemuneration) bonus += item.Amount;
-        }
-
-        acc.Bonus += bonus;
-        acc.Bik += bik;
+        // The year's income, by Form EA line. Salary, bonus and BIK for every
+        // other form are read off these (ToRow) rather than off GrossPay, which
+        // carries reimbursed claims and exempt allowances that are not income.
         acc.Ea.Add(FormEaLines.For(payslip, lineItems));
-
-        // Gross on the payslip already includes the bonus and excludes BIK,
-        // so the salary line is gross less what is reported separately.
-        acc.Gross += payslip.GrossPay - bonus;
     }
 
     private static AnnualEmployeeRow ToRow(
@@ -319,6 +296,7 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
             : acc.Snapshot.SnapshotName;
 
         var children = ParseChildren(profile?.ChildReliefJson);
+        var ea = acc.Ea.Rounded();
 
         return new AnnualEmployeeRow
         {
@@ -340,9 +318,11 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
             QualifyingChildren = children.Count(c => c.PcbDeduction != ChildPcbDeductionLevel.NONE),
             AnnualChildRelief = children.Sum(PcbReliefs.ForChild),
 
-            GrossSalary = Money.Round2(acc.Gross),
-            BonusAndCommission = Money.Round2(acc.Bonus),
-            TotalBik = Money.Round2(acc.Bik),
+            // From the EA lines, so CP8D, CP21, CP22A and TP3 report the same
+            // income as Form EA — no claims, no exempt allowances.
+            GrossSalary = ea.SalaryAndAllowances,
+            BonusAndCommission = ea.FeesCommissionBonus,
+            TotalBik = ea.BenefitsInKindTotal,
             TotalPcb = Money.Round2(acc.Pcb),
             TotalCp38 = Money.Round2(acc.Cp38),
             TotalZakat = Money.Round2(acc.Zakat),
@@ -352,7 +332,7 @@ public class PayrollAnnualReportService : IPayrollAnnualReportService
             Months = [.. acc.Months.Select(kv => new AnnualMonth(
                 kv.Key, Money.Round2(kv.Value.Pcb), Money.Round2(kv.Value.Cp38), Money.Round2(kv.Value.Zakat),
                 kv.Value.Receipt))],
-            Ea = acc.Ea.Rounded(),
+            Ea = ea,
             JoinDate = profile?.JoinDate,
             LeaveDate = profile?.LeaveDate,
             TotalMtdRemitted = Money.Round2(acc.Mtd),

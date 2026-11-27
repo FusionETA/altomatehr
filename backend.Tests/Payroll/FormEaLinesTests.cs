@@ -164,4 +164,29 @@ public class FormEaLinesTests
         Assert.Equal(300m, year.F);
         Assert.Equal(2, year.B1cDetails.Count);
     }
+
+    // ─── The income every other LHDN form prints ───────────────────────
+
+    // CP8D's PDF, CP21, CP22A and TP3 used GrossPay − bonus, which kept the
+    // claim and the exempt allowance in "salary". Read off the EA lines, the
+    // three figures exclude both and add up to Form EA's total.
+    [Fact]
+    public void FormIncome_LeavesOutClaimsAndExemptAllowances_AndSumsToTheEaTotal()
+    {
+        // 8,000 basic + 300 standard allowance + 500 official travel (exempt)
+        // + 1,000 bonus + 193.72 claim; plus a 400 car BIK (non-cash).
+        var f = FormEaLines.For(Slip(9993.72m, reimbursements: 193.72m),
+        [
+            Allowance(C.AllowanceStandard, 300m),
+            Allowance(C.AllowanceTravelOfficial, 500m, subjectToPcb: false),
+            Allowance(C.WagesBonusNonAnnual, 1000m),
+            Allowance(C.BikCar, 400m),
+        ]);
+
+        Assert.Equal(8300m, f.SalaryAndAllowances);
+        Assert.Equal(1000m, f.FeesCommissionBonus);
+        Assert.Equal(400m, f.BenefitsInKindTotal);
+        Assert.Equal(500m, f.F);
+        Assert.Equal(f.Total, f.SalaryAndAllowances + f.FeesCommissionBonus + f.BenefitsInKindTotal);
+    }
 }
