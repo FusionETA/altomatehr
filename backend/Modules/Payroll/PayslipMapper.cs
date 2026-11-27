@@ -107,7 +107,6 @@ public static class PayslipMapper
             ?.Concat(PayslipDisplayLines.OutsideTotalDeductions(p, lineItems)
                 .Select(l => new PayslipDisplayLineDto { Label = l.Label, Amount = l.Amount }))
             .ToList(),
-        PdfPasswordRule = p.PdfPasswordRule,
         NotInPayLines = PayslipDisplayLines.NotInPay(lineItems)
             .Select(l => new PayslipDisplayLineDto { Label = l.Label, Amount = l.Amount })
             .ToList(),

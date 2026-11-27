@@ -155,10 +155,8 @@ public class PayrollSettingsService : IPayrollSettingsService
         // the payroll defaults, so ConfiguredAt stays as it was.
         settings ??= new PayrollSettings { CreatedAt = now };
 
-        var changed = settings.LockPayslips != dto.LockPayslips
-                      || settings.PayslipPasswordRule != dto.PayslipPasswordRule;
+        var changed = settings.LockPayslips != dto.LockPayslips;
         settings.LockPayslips = dto.LockPayslips;
-        settings.PayslipPasswordRule = dto.PayslipPasswordRule;
         settings.UpdatedAt = now;
 
         if (isFirstSave) await _repo.AddAsync(settings);
@@ -171,11 +169,11 @@ public class PayrollSettingsService : IPayrollSettingsService
             await _audit.WriteAsync(new AuditEvent(
                 AuditActions.PayrollSettingsUpdate,
                 dto.LockPayslips
-                    ? $"Payslip password on — {PayslipLock.Hint(dto.PayslipPasswordRule)}"
+                    ? "Payslip password on — each employee's own"
                     : "Payslip password off",
                 TargetType: "PayrollSettings",
                 TargetId: settings.Id,
-                Metadata: new { settings.LockPayslips, Rule = settings.PayslipPasswordRule.ToString() }));
+                Metadata: new { settings.LockPayslips }));
         }
 
         var saved = ToDto(settings, settings.ConfiguredAt is not null);
@@ -247,8 +245,7 @@ public class PayrollSettingsService : IPayrollSettingsService
         AutoApplySocsoEisRelief = s.AutoApplySocsoEisRelief,
         DockApprovedUnpaidLeave = s.DockApprovedUnpaidLeave,
         LockPayslips = s.LockPayslips,
-        PayslipPasswordRule = s.PayslipPasswordRule,
-        PayslipPasswordHint = PayslipLock.Hint(s.PayslipPasswordRule),
+        PayslipPasswordHint = PayslipLock.Hint,
         SyncClaimsToXeroOnSubmit = s.SyncClaimsToXeroOnSubmit,
         SyncPayrollToXeroOnSubmit = s.SyncPayrollToXeroOnSubmit,
         XeroMappingJson = s.XeroMappingJson,

@@ -58,15 +58,6 @@ public interface IPayslipRepository
     // that the run is submitted before returning anything.
     Task<(Payslip Payslip, PayrollRun Run)?> GetWithRunAsync(string payslipId);
 
-    // Stamp how a payslip is locked (Payslip.PdfPasswordRule, and for RANDOM
-    // its encrypted password) unless it's already stamped, and return the
-    // stamp it has now. Two first downloads at once then agree on ONE stamp —
-    // every file handed out opens the way the portal says. Default keeps test
-    // doubles compiling.
-    Task<(PayslipPasswordRule? Rule, string? Encrypted)> StampPdfLockIfNoneAsync(
-        string payslipId, PayslipPasswordRule rule, string? encrypted) =>
-        Task.FromResult<(PayslipPasswordRule?, string?)>((rule, encrypted));
-
     Task<List<PayslipLineItem>> GetLineItemsAsync(string payslipId);
 
     // Every payslip in this year's months before `beforeMonth`, with its run —

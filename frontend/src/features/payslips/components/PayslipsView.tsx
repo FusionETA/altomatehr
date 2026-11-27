@@ -8,11 +8,12 @@ import { rmWithUnit, shortDate } from "@/features/payroll/lib/payroll-format";
 import {
   downloadMyPayslipPdf,
   downloadMyTp1Form,
-  getMyPayslipPdfPassword,
+  getMyPayslipPassword,
   getMyPayslips,
   type PayslipSummary,
 } from "../api";
-import { PayslipPasswordRow } from "@/shared/components/PayslipPasswordRow";
+import { PayslipPasswordButton, PayslipPasswordRow } from "@/shared/components/PayslipPasswordRow";
+import { ChangePayslipPasswordModal } from "./ChangePayslipPasswordModal";
 import { EaFormsCard } from "./EaFormsCard";
 import { PayslipDetailModal } from "./PayslipDetailModal";
 
@@ -30,6 +31,12 @@ export function PayslipsView() {
   const [error, setError] = useState<string | null>(null);
 
   const [year, setYear] = useState<string | null>(null);
+
+  // The payslip password: the Change form, and a count that remounts the row
+  // so it goes back to hidden (and fetches the new one) after a change.
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordVersion, setPasswordVersion] = useState(0);
+  const [passwordSaved, setPasswordSaved] = useState(false);
 
   const payslipsQuery = useCachedQuery("/payslips", getMyPayslips);
   const payslips = useMemo(() => payslipsQuery.data ?? [], [payslipsQuery.data]);
@@ -124,17 +131,39 @@ export function PayslipsView() {
         />
       ) : null}
 
-      {/* The company locks payslip PDFs: say once what opens them. The same
-          hint is on every payslip, so it isn't repeated on each card. */}
+      {/* The payslip password: one for every payslip PDF, so it sits once
+          at the top rather than on each card. Random until they change it. */}
       {payslips[0]?.pdfPasswordHint ? (
-        <p className="mb-4 flex items-start gap-2 rounded-2xl border border-border/60 bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          <LockKeyhole aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>
-            {payslips[0].pdfPasswordOnPage
-              ? "Payslip PDFs are password-protected, and each payslip has its own password. Press Show next to a payslip to see it."
-              : `Payslip PDFs are password-protected. Open them with ${payslips[0].pdfPasswordHint}.`}
-          </span>
-        </p>
+        <section className="mb-4 rounded-2xl border border-border/60 bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+          <p className="flex items-start gap-2">
+            <LockKeyhole aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              Your payslip PDFs are password-protected. The same password opens all of them.
+            </span>
+          </p>
+          <PayslipPasswordRow
+            key={passwordVersion}
+            load={getMyPayslipPassword}
+            label="Payslip password"
+            className="mt-2 pl-6"
+          >
+            <PayslipPasswordButton
+              data-track="payslips.password-change"
+              onClick={() => {
+                setPasswordSaved(false);
+                setChangingPassword(true);
+              }}
+            >
+              Change
+            </PayslipPasswordButton>
+          </PayslipPasswordRow>
+          {passwordSaved ? (
+            <p className="mt-2 pl-6 text-xs">
+              Saved. Payslips you download from now on open with your new password; copies you
+              already have still open with the old one.
+            </p>
+          ) : null}
+        </section>
       ) : null}
 
       <ul className="space-y-3">
@@ -204,20 +233,6 @@ export function PayslipsView() {
                   TP1
                 </button>
               </div>
-
-              {/* This payslip's own PDF password (RANDOM rule), on request. An
-                  older payslip locked another way says how to open it, when
-                  that differs from the note at the top. */}
-              {payslip.pdfPasswordOnPage ? (
-                <PayslipPasswordRow
-                  load={() => getMyPayslipPdfPassword(payslip.id)}
-                  className="mt-3"
-                />
-              ) : payslip.pdfPasswordHint && payslip.pdfPasswordHint !== payslips[0]?.pdfPasswordHint ? (
-                <p className="mt-3 text-xs text-muted-foreground">
-                  This PDF opens with {payslip.pdfPasswordHint}.
-                </p>
-              ) : null}
             </div>
           </li>
         ))}
@@ -225,6 +240,17 @@ export function PayslipsView() {
 
       {selected ? (
         <PayslipDetailModal summary={selected} onClose={() => setSelected(null)} />
+      ) : null}
+
+      {changingPassword ? (
+        <ChangePayslipPasswordModal
+          onClose={() => setChangingPassword(false)}
+          onChanged={() => {
+            setChangingPassword(false);
+            setPasswordVersion((v) => v + 1);
+            setPasswordSaved(true);
+          }}
+        />
       ) : null}
     </>
   );

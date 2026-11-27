@@ -1,4 +1,4 @@
-import { apiGet, apiGetFile } from "@/shared/lib/api-client";
+import { apiGet, apiGetFile, apiPut } from "@/shared/lib/api-client";
 import type { Payslip } from "@/features/payroll/api";
 
 // The employee's OWN payslips. Every read here is scoped to the caller's
@@ -23,20 +23,26 @@ export type PayslipSummary = {
   pcb: number;
   /** When the run went live: the date this payslip became real. */
   submittedAt: string | null;
-  /** Set when the company password-protects payslips: what opens the PDF,
-   *  e.g. "your IC number with no dashes (or your passport number)". */
+  /** Set when the PDF is password-protected (or was, for copies already
+   *  downloaded): opened with the employee's payslip password, shown on
+   *  request via getMyPayslipPassword. The same on every row. */
   pdfPasswordHint: string | null;
-  /** True when each payslip has its own random password (RANDOM rule),
-   *  shown next to the PDF via getMyPayslipPdfPassword. */
-  pdfPasswordOnPage: boolean;
 };
 
 export const getMyPayslips = () => apiGet<PayslipSummary[]>("/payslips");
 
-// The password that opens one of my payslip PDFs (RANDOM rule). Fetched on
-// request, not with the list.
-export const getMyPayslipPdfPassword = (id: string) =>
-  apiGet<{ password: string }>(`/payslips/${id}/pdf-password`);
+// My payslip password: one for all my payslip PDFs. Random until I change it.
+// Fetched on request, not with the list.
+export const getMyPayslipPassword = () => apiGet<{ password: string }>("/payslips/password");
+
+// Matches the server's rule (PayslipLock.Problem); the server has the final say.
+export const PAYSLIP_PASSWORD_MIN_LENGTH = 8;
+export const PAYSLIP_PASSWORD_MAX_LENGTH = 64;
+
+// Choose my own. Payslips downloaded from now on open with it; copies I
+// already have keep the old one.
+export const changeMyPayslipPassword = (newPassword: string) =>
+  apiPut<void>("/payslips/password", { newPassword });
 
 // The full breakdown, same shape the admin run detail uses.
 export const getMyPayslip = (id: string) => apiGet<Payslip>(`/payslips/${id}`);

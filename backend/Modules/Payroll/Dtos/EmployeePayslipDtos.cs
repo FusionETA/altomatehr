@@ -22,14 +22,10 @@ public class EmployeePayslipSummaryDto
     // When the run went live. The date the payslip became real.
     public DateTime? SubmittedAt { get; set; }
 
-    // Set when the company password-protects payslips: what opens the PDF,
-    // e.g. "your IC number with no dashes (or your passport number)". Never
-    // the password itself.
+    // Set when the PDF is password-protected (or was, for copies they already
+    // have): what opens it — their payslip password, shown on request by
+    // GET /payslips/password. Never the password itself. The same on every row.
     public string? PdfPasswordHint { get; set; }
-
-    // True under the RANDOM rule: this payslip has a password of its own,
-    // shown on request (GET /payslips/{id}/pdf-password) next to its PDF.
-    public bool PdfPasswordOnPage { get; set; }
 }
 
 // A year the employee was paid in, for their own Form EA.
