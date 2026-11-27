@@ -8,6 +8,11 @@ namespace AltomateHR.Api.Modules.Payroll;
 //   Member EPF No., Member IC No., Member Name, Member Wage,
 //   Employer Contribution Amount, Member Contribution Amount
 //
+// Member Wage is the wage EPF was CONTRIBUTED on (PayslipEpfWage) — not gross
+// pay. Gross carries reimbursed claims and overtime, neither of which is an EPF
+// wage, so a file reporting gross shows a wage the contributions beside it
+// don't match.
+//
 // Wage carries 2 decimals; the two contribution columns are WHOLE ringgit —
 // KWSP's Third Schedule rounds contributions up to the ringgit and the engine
 // has already done that, so these are exact, not rounded here.
@@ -29,7 +34,13 @@ public static class EpfContributionCsv
 
     // `generatedOn` only names the file ({DDMMYYYY}-EPF_iAkaun-{YYYY}_{MM}.csv,
     // the previous system's pattern); the content never depends on it.
-    public static StatutoryFileResult Render(StatutoryRunPayload payload, DateOnly generatedOn)
+    //
+    // `lineItems` (by payslip id) is only read for a payslip generated before
+    // its EPF wage was stored, to rebuild that wage.
+    public static StatutoryFileResult Render(
+        StatutoryRunPayload payload,
+        DateOnly generatedOn,
+        IReadOnlyDictionary<string, IReadOnlyList<Entities.PayslipLineItem>>? lineItems = null)
     {
         // KWSP's i-Akaun upload refuses the WHOLE file over one non-numeric
         // EPF number ("EPF number format is invalid") — a placeholder like
@@ -71,9 +82,13 @@ public static class EpfContributionCsv
                 StatutoryFileFields.CsvField(
                     StatutoryFileFields.AlphanumericOnly(row.IdNumber)),
                 StatutoryFileFields.CsvField(row.EmployeeName),
-                // Informational on the upload — the contributions above are
-                // what KWSP actually books.
-                row.Payslip.GrossPay.ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
+                // Informational on the upload — the contributions beside it are
+                // what KWSP actually books — but it must be the wage they were
+                // worked out on, not gross with claims in it.
+                PayslipEpfWage.For(
+                        row.Payslip,
+                        lineItems?.GetValueOrDefault(row.Payslip.Id) ?? [])
+                    .ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
                 WholeRinggit(row.Payslip.EpfEmployer),
                 WholeRinggit(row.Payslip.EpfEmployee)));
 

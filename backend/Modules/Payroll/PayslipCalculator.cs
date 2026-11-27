@@ -256,6 +256,9 @@ public static class PayslipCalculator
         public required decimal EisEmployer { get; init; }
         public required decimal SkbbkEmployee { get; init; }
         public required decimal SkbbkWage { get; init; }
+
+        // The wage EPF was contributed on — what the i-Akaun file reports.
+        public required decimal EpfWage { get; init; }
         public required decimal Pcb { get; init; }
         public required decimal PcbNormal { get; init; }
         public required decimal PcbAdditional { get; init; }
@@ -614,6 +617,7 @@ public static class PayslipCalculator
             // wage — but stored in its own column so a historical payslip stays
             // readable if PERKESO ever separates them.
             SkbbkWage = socsoWage,
+            EpfWage = epfWage,
             Pcb = pcb,
             PcbNormal = pcbResult.PcbNormal,
             PcbAdditional = pcbResult.PcbAdditional,
