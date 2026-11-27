@@ -56,7 +56,10 @@ public static class Tp3Pdf
         container.Column(col =>
         {
             var e = p.Employee;
-            var accumulatedGross = p.Ytd.GrossSalary + p.Ytd.BonusAndCommission + p.Ytd.TotalBik;
+            // Taxable remuneration (EA's total) in C1; the exempt part (EA's F)
+            // in C2 — a new employer needs both to know how much of each
+            // exemption ceiling this year has already used.
+            var accumulatedGross = p.Ytd.Ea.Total;
 
             col.Item().Element(c => SectionHeader(c, "SECTION A: Employer Information"));
             col.Item().PaddingBottom(3).Text(
@@ -79,13 +82,13 @@ public static class Tp3Pdf
                 $"Accumulated deductions for the period worked at this employer during {p.Year}. RM.")
                 .FontSize(8.5f).FontColor("#64748b");
             col.Item().Element(c => AmtRow(c,
-                "C1. Total monthly gross + additional remuneration (incl. allowances / perquisites / gifts / BIK)",
+                "C1. Total monthly gross + additional remuneration (incl. taxable allowances / perquisites / gifts / BIK)",
                 accumulatedGross));
-            col.Item().Element(c => AmtRow(c, "C2. Tax-exempt allowances / perquisites / gifts / benefits", null));
+            col.Item().Element(c => AmtRow(c, "C2. Tax-exempt allowances / perquisites / gifts / benefits", p.Ytd.Ea.F));
             col.Item().PaddingLeft(12).PaddingTop(1).Text(
                 "C2 i–v: travel allowance, child-care allowance, employer's discounted products, long-service " +
-                "awards, other tax-exempt benefits. AltomateHR does not categorise tax-exempt portions separately " +
-                "— the employee fills these in by hand if any.").FontSize(8.5f).FontColor("#64748b");
+                "awards, other tax-exempt benefits. The total above is from payroll; split it across i–v by hand " +
+                "if the new employer asks.").FontSize(8.5f).FontColor("#64748b");
             col.Item().Element(c => AmtRow(c, "C3. Total approved EPF contributions (employee share)", p.Ytd.TotalEpfEmployee));
             col.Item().Element(c => AmtRow(c, "C4 i). Total Zakat (via payroll)", p.Ytd.TotalZakat));
             col.Item().Element(c => AmtRow(c, "C4 ii). Relief for departure levy (Umrah / religious travel)", null));

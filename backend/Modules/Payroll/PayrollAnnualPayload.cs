@@ -95,15 +95,21 @@ public sealed record AnnualEmployeeRow
     public bool PcbBorneByEmployer { get; init; }
 
     // ---- The year's money ----
+    //
+    // These three are cut from `Ea` (FormEaFigures.SalaryAndAllowances /
+    // FeesCommissionBonus / BenefitsInKindTotal), so together they are Form
+    // EA's total: reimbursed claims and exempt allowances are not income and
+    // appear in none of them. Not GrossPay — that carries both.
+
+    // Salary, wages, overtime, leave pay and taxable allowances (EA B1a, B1c,
+    // B1d, B1f, B6).
     public decimal GrossSalary { get; init; }
 
-    // Bonus, commission, fees, arrears, director fee — the line items their
-    // category marks as additional remuneration. Reported apart from salary
-    // on both Form EA and CP8D.
+    // Fees, commission and bonus (EA B1b). Reported apart from salary.
     public decimal BonusAndCommission { get; init; }
 
-    // Benefits in kind and perquisites. Never part of gross or net, but they
-    // ARE part of the employee's reportable income for the year.
+    // Benefits in kind, living accommodation and ESOS (EA B3, B4, B1e). Never
+    // part of gross or net, but they ARE reportable income for the year.
     public decimal TotalBik { get; init; }
 
     public decimal TotalPcb { get; init; }

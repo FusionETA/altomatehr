@@ -67,18 +67,21 @@ public static class Cp21Pdf
             col.Item().PaddingBottom(3).Text(
                 $"If not returning, state emoluments + approved-fund contributions for the year of departure " +
                 $"({p.Year}). RM.").FontSize(8.5f).FontColor("#64748b");
-            col.Item().Element(c => AmtRow(c, "1. Salary, wages, overtime / Gaji, upah, kerja lebih masa", p.Ytd.GrossSalary));
-            col.Item().Element(c => AmtRow(c, "2-3. Leave pay / commission / bonus", p.Ytd.BonusAndCommission));
-            col.Item().Element(c => AmtRow(c, "4. Gratuity / Ganjaran", null));
-            col.Item().Element(c => AmtRow(c, "5. Compensation for loss of employment", null));
-            col.Item().Element(c => AmtRow(c, "6. Cash allowances incl. tax borne by employer", e.FixedAllowancesTotal));
+            // Every row from the year's Form EA lines, so the TOTAL is EA's
+            // total: no reimbursed claims, no exempt allowances. CP21 has no
+            // ESOS row, so a share-scheme benefit is an "other payment".
+            var ea = p.Ytd.Ea;
+            col.Item().Element(c => AmtRow(c, "1. Salary, wages, overtime / Gaji, upah, kerja lebih masa", ea.B1a - ea.LeavePay));
+            col.Item().Element(c => AmtRow(c, "2-3. Leave pay / commission / bonus", ea.LeavePay + ea.B1b));
+            col.Item().Element(c => AmtRow(c, "4. Gratuity / Ganjaran", ea.B1f));
+            col.Item().Element(c => AmtRow(c, "5. Compensation for loss of employment", ea.B6));
+            col.Item().Element(c => AmtRow(c, "6. Cash allowances incl. tax borne by employer", ea.B1c + ea.B1d));
             col.Item().Element(c => AmtRow(c, "7. Pension from employer", null));
-            col.Item().Element(c => AmtRow(c, "8. BIK subject to tax", p.Ytd.TotalBik));
-            col.Item().Element(c => AmtRow(c, "9. Value of employer-provided accommodation", null));
+            col.Item().Element(c => AmtRow(c, "8. BIK subject to tax", ea.B3));
+            col.Item().Element(c => AmtRow(c, "9. Value of employer-provided accommodation", ea.B4));
             col.Item().Element(c => AmtRow(c, "10. Allowances in kind (food, clothing, lodging, servants)", null));
-            col.Item().Element(c => AmtRow(c, "11. Other payments", null));
-            col.Item().Element(c => TotalAmtRow(c, "TOTAL / JUMLAH",
-                p.Ytd.GrossSalary + p.Ytd.BonusAndCommission + p.Ytd.TotalBik));
+            col.Item().Element(c => AmtRow(c, "11. Other payments", ea.B1e));
+            col.Item().Element(c => TotalAmtRow(c, "TOTAL / JUMLAH", ea.Total));
 
             col.Item().Element(c => SectionHeader(c, "C. Income of Preceding Years Not Declared"));
             col.Item().PaddingBottom(3).Text($"Fill in by hand if any preceding-year income was paid out in {p.Year}.")
