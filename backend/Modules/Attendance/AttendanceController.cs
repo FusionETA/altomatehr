@@ -250,7 +250,7 @@ public class AttendanceController : ControllerBase
 
         var result = await _attendance.ExportSummaryAsync(
             start, end, TabularFormats.Parse(format),
-            scope.EmployeeId, scope.EmployeeIds);
+            scope.EmployeeId, scope.EmployeeIds, scope.FileSubject);
 
         Response.Headers.CacheControl = "no-store";
         return File(result.Content, result.ContentType, result.FileName);

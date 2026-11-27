@@ -491,11 +491,14 @@ export function AdminAttendance() {
     [todayRows],
   );
 
+  // Project and team narrow by MEMBERSHIP (scopedIds), as every other Overview
+  // report and the History export do — not by the project a record was clocked
+  // on, which let this table and the file under its Export button disagree.
   const historyRows = useMemo(() => {
     const term = (filter.q ?? "").trim().toLowerCase();
     return records
       .filter((r) => r.date >= from && r.date <= to)
-      .filter((r) => !filter.projectId || r.projectId === filter.projectId)
+      .filter((r) => !scopedIds || scopedIds.has(r.employeeId))
       .filter((r) =>
         !term
           ? true
@@ -506,7 +509,7 @@ export function AdminAttendance() {
           ? (b.timeIn ?? "").localeCompare(a.timeIn ?? "")
           : b.date.localeCompare(a.date),
       );
-  }, [records, filter, emails, from, to, name]);
+  }, [records, filter.q, scopedIds, emails, from, to, name]);
 
   // ---- Employees / Overtime rows ----
   //

@@ -1649,7 +1649,8 @@ public class AttendanceService : IAttendanceService
             // rather than passed on as a team id: a team id only ever narrowed
             // the summary sheet, and the record list under it still carried
             // the whole org.
-            return new(true, null, await _scope.ResolveAsync(projectId, teamId, q));
+            var ids = await _scope.ResolveAsync(projectId, teamId, q);
+            return new(true, null, ids, ids is null ? null : "filtered");
         }
 
         // A non-admin naming someone: allowed only inside their own set, and
@@ -1665,7 +1666,8 @@ public class AttendanceService : IAttendanceService
         // A supervisor's reports, or an admin's filters. Narrower than the org,
         // wider than one person — so the calendar stays off and the record
         // list carries it.
-        IReadOnlyCollection<string>? employeeIds = null)
+        IReadOnlyCollection<string>? employeeIds = null,
+        string? subjectLabel = null)
     {
         var start = from.Date;
         var end = to.Date;
@@ -1748,7 +1750,7 @@ public class AttendanceService : IAttendanceService
         // you have to open one by one.
         var subject = employeeId is not null
             ? Slug(employees.NameOf(employeeId))
-            : employeeIds is not null ? "team" : "all";
+            : employeeIds is not null ? (subjectLabel ?? "team") : "all";
 
         var fileName = $"attendance-{subject}-{start:yyyy-MM-dd}-to-{end:yyyy-MM-dd}";
         if (format != TabularFormat.Pdf) return TabularExportResult.From(sheets, format, fileName);

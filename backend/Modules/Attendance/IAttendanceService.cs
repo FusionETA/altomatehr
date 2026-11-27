@@ -72,7 +72,8 @@ public interface IAttendanceService
     Task<TabularExportResult> ExportSummaryAsync(
         DateTime from, DateTime to, TabularFormat format,
         string? employeeId = null,
-        IReadOnlyCollection<string>? employeeIds = null);
+        IReadOnlyCollection<string>? employeeIds = null,
+        string? subjectLabel = null);
 
     TabularExportResult BuildImportTemplate(TabularFormat format);
 

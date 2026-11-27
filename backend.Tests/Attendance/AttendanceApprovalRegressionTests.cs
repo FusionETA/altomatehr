@@ -1308,6 +1308,7 @@ public class AttendanceApprovalRegressionTests
         Assert.Equal(("proj-a", "team-a", "ali"), resolver.LastCall);
         Assert.Equal([Report], scope.EmployeeIds!.ToArray());
         Assert.Null(scope.EmployeeId);
+        Assert.Equal("filtered", scope.FileSubject);
     }
 
     [Fact]
