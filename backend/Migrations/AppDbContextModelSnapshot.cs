@@ -1507,6 +1507,10 @@ namespace AltomateHR.Api.Migrations
                         .HasMaxLength(80)
                         .HasColumnType("varchar(80)");
 
+                    b.Property<string>("PayslipPasswordEncrypted")
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
+
                     b.Property<bool>("PcbBorneByEmployer")
                         .HasColumnType("tinyint(1)");
 
@@ -3423,11 +3427,6 @@ namespace AltomateHR.Api.Migrations
                     b.Property<int?>("PayrollStartYear")
                         .HasColumnType("int");
 
-                    b.Property<string>("PayslipPasswordRule")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
-
                     b.Property<bool>("SyncClaimsToXeroOnSubmit")
                         .HasColumnType("tinyint(1)");
 
@@ -3574,14 +3573,6 @@ namespace AltomateHR.Api.Migrations
                     b.Property<decimal>("PcbNormal")
                         .HasPrecision(12, 2)
                         .HasColumnType("decimal(12,2)");
-
-                    b.Property<string>("PdfPasswordEncrypted")
-                        .HasMaxLength(512)
-                        .HasColumnType("varchar(512)");
-
-                    b.Property<string>("PdfPasswordRule")
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
 
                     b.Property<int>("PeriodMonth")
                         .HasColumnType("int");

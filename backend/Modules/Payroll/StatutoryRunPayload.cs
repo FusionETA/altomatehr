@@ -39,8 +39,6 @@ public sealed record StatutoryEmployeeRow
 
     public string? IdNumber { get; init; }
     public IdType? IdType { get; init; }
-    // Read live, like the IC — the payslip password's date-of-birth rule.
-    public DateTime? DateOfBirth { get; init; }
     public string? EpfNumber { get; init; }
     public string? SocsoNumber { get; init; }
     public string? SsfwNumber { get; init; }
@@ -85,8 +83,8 @@ public sealed record StatutoryEmployeeRow
         && (HasPr || string.Equals(Nationality?.Trim(), "Malaysian", StringComparison.OrdinalIgnoreCase));
 }
 
-// A payslip's RANDOM password (StatutoryFileService.GetPayslipPasswordAsync),
-// or why not. Ok=false with no Error is "not found".
+// A person's payslip password (PayslipPasswordService), or why not.
+// Ok=false with no Error is "not found".
 public sealed record PayslipPasswordResult(bool Ok, string? Password, string? Error)
 {
     public static readonly PayslipPasswordResult NotFound = new(false, null, null);

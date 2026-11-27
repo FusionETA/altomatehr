@@ -21,8 +21,13 @@ namespace AltomateHR.Api.Modules.Payroll;
 public class PayslipsController : ControllerBase
 {
     private readonly IEmployeePayrollService _payroll;
+    private readonly IPayslipPasswordService _passwords;
 
-    public PayslipsController(IEmployeePayrollService payroll) => _payroll = payroll;
+    public PayslipsController(IEmployeePayrollService payroll, IPayslipPasswordService passwords)
+    {
+        _payroll = payroll;
+        _passwords = passwords;
+    }
 
     [RequireScope("payroll:read")]
     [HttpGet]
@@ -65,18 +70,30 @@ public class PayslipsController : ControllerBase
         return File(result.Content!, result.ContentType!, result.FileName);
     }
 
-    // The password that opens this payslip's PDF, under the RANDOM
-    // payslip-password rule — shown on the employee's Payslips page on
-    // request, so opening the page doesn't fetch every one. Their own payslip
-    // only; people only.
+    // The caller's payslip password — one for all their payslips — shown on
+    // their Payslips page on request, so opening the page doesn't fetch it.
+    // 404 while they have none and payslips aren't locked. People only: no
+    // integration reads or sets it.
     [HumanOnly]
     [RequireScope("payroll:read")]
-    [HttpGet("{id}/pdf-password")]
-    public async Task<IActionResult> PdfPassword(string id)
+    [HttpGet("password")]
+    public async Task<IActionResult> GetPassword()
     {
-        var result = await _payroll.GetMyPayslipPasswordAsync(id);
+        var result = await _passwords.GetMineAsync();
         if (!result.Ok) return result.Error is null ? NotFound() : Conflict(new { error = result.Error });
         return Ok(new Dtos.PayslipPdfPasswordDto { Password = result.Password! });
+    }
+
+    // The caller chooses their own. Every payslip downloaded from now on
+    // opens with it; copies they already have keep their old one.
+    [HumanOnly]
+    [RequireScope("payroll:write")]
+    [HttpPut("password")]
+    public async Task<IActionResult> ChangePassword(Dtos.ChangePayslipPasswordDto dto)
+    {
+        var result = await _passwords.ChangeMineAsync(dto.NewPassword);
+        if (!result.Ok) return result.Error is null ? NotFound() : BadRequest(new { error = result.Error });
+        return NoContent();
     }
 
     // The caller's own Borang PCB/TP1 for this payslip's month.

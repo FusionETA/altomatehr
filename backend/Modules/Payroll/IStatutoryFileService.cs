@@ -27,11 +27,6 @@ public interface IStatutoryFileService
     // One employee's payslip.
     Task<StatutoryFileResult> RenderPayslipPdfAsync(string runId, string employeeProfileId);
 
-    // A payslip's own password under the RANDOM payslip-password rule.
-    // `byAdmin` audits the look. Default keeps test doubles compiling.
-    Task<PayslipPasswordResult> GetPayslipPasswordAsync(string runId, string employeeProfileId, bool byAdmin) =>
-        Task.FromResult(PayslipPasswordResult.NotFound);
-
     // Every payslip on the run, as a ZIP of one PDF per employee. Finance
     // teams forward these individually, so a single concatenated PDF would
     // have to be split before it was usable.

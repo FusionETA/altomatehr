@@ -442,6 +442,7 @@ builder.Services.AddScoped<IPayrollRunMemberRepository, PayrollRunMemberReposito
 builder.Services.AddScoped<IUnpaidLeaveSettlementRepository, UnpaidLeaveSettlementRepository>();
 builder.Services.AddScoped<IPayrollRunClaimService, PayrollRunClaimService>();
 builder.Services.AddScoped<IStatutoryFileService, StatutoryFileService>();
+builder.Services.AddScoped<IPayslipPasswordService, PayslipPasswordService>();
 builder.Services.AddScoped<ITp1FormService, Tp1FormService>();
 builder.Services.AddScoped<IPayslipEmailService, PayslipEmailService>();
 builder.Services.AddScoped<IPolicyLeaveEntitlementRepository, PolicyLeaveEntitlementRepository>();

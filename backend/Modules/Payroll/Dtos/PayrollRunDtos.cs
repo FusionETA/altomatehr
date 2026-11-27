@@ -234,10 +234,6 @@ public class PayslipDto
 
     // On the payslip but not in pay: benefits in kind and TP1 reliefs.
     public List<PayslipDisplayLineDto> NotInPayLines { get; set; } = [];
-
-    // The payslip-password rule this payslip was first locked with; null until
-    // then. RANDOM means it has a password of its own to show.
-    public PayslipPasswordRule? PdfPasswordRule { get; set; }
 }
 
 public class PayslipOvertimeRowDto

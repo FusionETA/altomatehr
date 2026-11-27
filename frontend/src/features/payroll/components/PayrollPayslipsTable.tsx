@@ -1,15 +1,16 @@
 import { useMemo, useState } from "react";
 import { Download, FileText, LoaderCircle, LockKeyhole, Mail, Sliders, TriangleAlert } from "lucide-react";
 import { useCachedQuery } from "@/shared/lib/use-cached-query";
-import { PayslipPasswordRow } from "@/shared/components/PayslipPasswordRow";
+import { PayslipPasswordButton, PayslipPasswordRow } from "@/shared/components/PayslipPasswordRow";
+import { useConfirm } from "@/shared/components/ConfirmDialog";
 import {
   downloadPayslipPdf,
   downloadTp1Form,
   emailPayslip,
   getPayrollSettings,
   getPayslipPdfPassword,
+  resetPayslipPdfPassword,
   type AdjustmentCategory,
-  type PayslipPasswordRule,
   type Payslip,
   type PayslipLineItem,
 } from "../api";
@@ -80,18 +81,11 @@ export function PayrollPayslipsTable({
 
   const totals = useMemo(() => sum(payslips), [payslips]);
 
-  // Payslip PDFs may be password-protected — say what opens them, since the
-  // admin's own downloads are locked too. Same cache key as Payroll settings.
+  // Payslip PDFs may be password-protected — with each employee's own
+  // password — and the admin's own downloads are locked too, so each row can
+  // show it. Same cache key as Payroll settings.
   const settingsQuery = useCachedQuery("/payroll/settings", getPayrollSettings);
-  const passwordHint = settingsQuery.data?.lockPayslips
-    ? ADMIN_PASSWORD_HINT[settingsQuery.data.payslipPasswordRule]
-    : null;
-  // Rows whose payslip has a random password of its own: locked with one
-  // already (whatever the rule is now), or about to be under today's rule.
-  const randomNow =
-    settingsQuery.data?.lockPayslips === true && settingsQuery.data.payslipPasswordRule === "RANDOM";
-  const hasOwnPassword = (payslip: Payslip) =>
-    payslip.pdfPasswordRule === "RANDOM" || (payslip.pdfPasswordRule === null && randomNow);
+  const locked = settingsQuery.data?.lockPayslips === true;
 
   // Ten rows a page, like the other admin tables — a 19-person run was one
   // very long scroll to reach the totals. The footer and the remittance
@@ -176,11 +170,12 @@ export function PayrollPayslipsTable({
           {payslips.length} employee(s). Select a row for the full breakdown. Scroll
           sideways for the employer's side.
         </p>
-        {passwordHint ? (
+        {locked ? (
           <p className={`${HINT} flex items-start gap-1.5`}>
             <LockKeyhole aria-hidden className="mt-px h-3.5 w-3.5 shrink-0" />
             <span>
-              Payslip PDFs are password-protected: each opens with {passwordHint}.
+              Payslip PDFs are password-protected with each employee's own payslip password — press
+              Show on their row to see it.
             </span>
           </p>
         ) : null}
@@ -271,9 +266,12 @@ export function PayrollPayslipsTable({
                 // Same gate as emailing: an approved month only.
                 tp1Busy={downloading === `tp1-${payslip.id}`}
                 onTp1={canEmail ? () => void getTp1(payslip) : undefined}
-                loadPassword={
-                  hasOwnPassword(payslip)
-                    ? () => getPayslipPdfPassword(runId, payslip.employeeProfileId)
+                password={
+                  locked
+                    ? {
+                        load: () => getPayslipPdfPassword(runId, payslip.employeeProfileId),
+                        reset: () => resetPayslipPdfPassword(runId, payslip.employeeProfileId),
+                      }
                     : undefined
                 }
               />
@@ -366,7 +364,7 @@ function Row({
   onTp1,
   emailBusy,
   emailErrorMessage,
-  loadPassword,
+  password,
 }: {
   payslip: Payslip;
   nonCash: Set<string>;
@@ -380,8 +378,9 @@ function Row({
   onTp1?: () => void;
   emailBusy: boolean;
   emailErrorMessage: string | null;
-  // Under the random-password rule: this payslip's own PDF password.
-  loadPassword?: () => Promise<{ password: string }>;
+  // While payslips are locked: the employee's payslip password, to show or
+  // reset to a new random one.
+  password?: PasswordActions;
 }) {
   const hourly = payslip.snapshotSalaryType === "HOURLY";
 
@@ -518,7 +517,7 @@ function Row({
          <p className="mt-1 text-[10px] font-medium text-destructive">{emailErrorMessage}</p>
        ) : null}
 
-       {loadPassword ? <PayslipPasswordRow load={loadPassword} className="mt-1.5" /> : null}
+       {password ? <AdminPasswordRow {...password} name={payslip.snapshotName} /> : null}
       </td>
 
       {/* Days and the OT columns are a MONTHLY concept — an hourly employee
@@ -619,13 +618,67 @@ const isNonCash = (line: PayslipLineItem, nonCash: Set<string>) =>
 const hours = (value: number | null): string =>
   value === null || value === 0 ? "" : String(Math.round(value * 10) / 10);
 
-// The payslip password rule, as an admin reads it (employees get "your …").
-const ADMIN_PASSWORD_HINT: Record<PayslipPasswordRule, string> = {
-  IC_DIGITS: "the employee's IC number with no dashes (or their passport number)",
-  IC_LAST6: "the last 6 digits of the employee's IC number (or passport number)",
-  DOB_DDMMYYYY: "the employee's date of birth as DDMMYYYY",
-  RANDOM: "its own random password — press Show on the employee's row",
+type PasswordActions = {
+  load: () => Promise<{ password: string }>;
+  reset: () => Promise<{ password: string }>;
 };
+
+// The employee's payslip password on their row: Show / Copy, and Reset for
+// someone who forgot theirs. The reset's new password is shown straight away
+// so it can be passed on — it is never emailed. Both are audited server-side.
+function AdminPasswordRow({ load, reset, name }: PasswordActions & { name: string }) {
+  const [confirm, confirmDialog] = useConfirm();
+  const [shown, setShown] = useState<{ version: number; password: string | null }>({
+    version: 0,
+    password: null,
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function resetToRandom() {
+    const ok = await confirm({
+      title: `Reset ${name || "this employee"}'s payslip password?`,
+      message:
+        "They get a new random password. Payslips downloaded or emailed from now on open with it; copies they already have still open with the old one. Tell them the new one — it isn't emailed.",
+      confirmLabel: "Reset password",
+      destructive: true,
+    });
+    if (!ok) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { password } = await reset();
+      setShown((s) => ({ version: s.version + 1, password }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not reset the password.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <PayslipPasswordRow
+        key={shown.version}
+        load={load}
+        initialPassword={shown.password}
+        className="mt-1.5"
+      >
+        <PayslipPasswordButton
+          onClick={() => void resetToRandom()}
+          disabled={busy}
+          title="Replace it with a new random password"
+          data-track="payroll.payslip-password-reset"
+        >
+          {busy ? <LoaderCircle aria-hidden className="h-3 w-3 animate-spin" /> : null}
+          Reset
+        </PayslipPasswordButton>
+      </PayslipPasswordRow>
+      {error ? <p className="mt-1 text-[10px] font-medium text-destructive">{error}</p> : null}
+      {confirmDialog}
+    </>
+  );
+}
 
 function sum(payslips: Payslip[]) {
   return payslips.reduce(

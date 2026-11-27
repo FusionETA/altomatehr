@@ -37,9 +37,8 @@ export type PayrollSettings = {
   // unpaid leave comes as pay lines on the run (e.g. from ABPay's timesheet).
   dockApprovedUnpaidLeave: boolean;
   // Payslip passwords — saved on their own (savePayslipPassword), never with
-  // the rest of the settings.
+  // the rest of the settings. Each employee has their own password.
   lockPayslips: boolean;
-  payslipPasswordRule: PayslipPasswordRule;
   // What employees are told opens the PDF. Never the password itself.
   payslipPasswordHint: string;
   syncClaimsToXeroOnSubmit: boolean;
@@ -66,20 +65,23 @@ export type SavePayrollSettings = Omit<
   | "updatedAt"
   | "abPayEnabled"
   | "lockPayslips"
-  | "payslipPasswordRule"
   | "payslipPasswordHint"
 >;
 
-// What a password-protected payslip opens with.
-export type PayslipPasswordRule = "IC_DIGITS" | "IC_LAST6" | "DOB_DDMMYYYY" | "RANDOM";
+// Turn payslip passwords on or off. What opens each PDF is that employee's
+// own payslip password — random until they change it on their Payslips page.
+export const savePayslipPassword = (lockPayslips: boolean) =>
+  apiPut<PayrollSettings>("/payroll/settings/payslip-password", { lockPayslips });
 
-export const savePayslipPassword = (lockPayslips: boolean, payslipPasswordRule: PayslipPasswordRule) =>
-  apiPut<PayrollSettings>("/payroll/settings/payslip-password", { lockPayslips, payslipPasswordRule });
-
-// One payslip's own password (RANDOM rule), for a payroll admin. Audited on
-// the server.
+// One employee's payslip password (the same for all their payslips), for a
+// payroll admin on a run they're on. Audited on the server.
 export const getPayslipPdfPassword = (runId: string, employeeProfileId: string) =>
   apiGet<{ password: string }>(`/payroll/runs/${runId}/payslips/${employeeProfileId}/pdf-password`);
+
+// Replaces it with a new random one — for someone who forgot theirs — and
+// returns it so the admin can pass it on. Audited on the server.
+export const resetPayslipPdfPassword = (runId: string, employeeProfileId: string) =>
+  apiPost<{ password: string }>(`/payroll/runs/${runId}/payslips/${employeeProfileId}/pdf-password/reset`);
 
 export const getPayrollSettings = () =>
   apiGet<PayrollSettings>("/payroll/settings");
@@ -314,9 +316,6 @@ export type Payslip = {
   deductionLines: PayslipDisplayLine[] | null;
   // On the payslip but not in pay: benefits in kind and TP1 reliefs.
   notInPayLines: PayslipDisplayLine[];
-  // The payslip-password rule it was first locked with; null until then.
-  // RANDOM means it has a password of its own to show.
-  pdfPasswordRule: PayslipPasswordRule | null;
 };
 
 export type PayslipOvertimeRow = {
@@ -839,7 +838,6 @@ export type PayrollEmployee = {
 
   idNumber: string | null;
   idType: IdType | null;
-  // For the payslip password's date-of-birth rule.
   dateOfBirth: string | null;
   nationality: string | null;
   hasPr: boolean;

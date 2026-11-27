@@ -41,6 +41,45 @@ public class EmployeeProfileRepository : IEmployeeProfileRepository
         _db.EmployeeProfiles.IgnoreQueryFilters()
             .Where(p => p.OrganizationId == organizationId).ToListAsync();
 
+    public Task<EmployeeProfile?> GetByIdAsync(string id) =>
+        _db.EmployeeProfiles.FirstOrDefaultAsync(p => p.Id == id);
+
+    public async Task<string?> SetPayslipPasswordIfNoneAsync(string profileId, string encrypted)
+    {
+        if (_db.Database.IsRelational())
+        {
+            // One conditional UPDATE: whoever is second changes nothing. The
+            // tenant filter applies, so another org's profile is never touched.
+            await _db.EmployeeProfiles
+                .Where(p => p.Id == profileId && p.PayslipPasswordEncrypted == null)
+                .ExecuteUpdateAsync(s => s.SetProperty(p => p.PayslipPasswordEncrypted, encrypted));
+        }
+        else
+        {
+            // The in-memory test provider has no ExecuteUpdate.
+            var profile = await _db.EmployeeProfiles.FirstOrDefaultAsync(p => p.Id == profileId);
+            if (profile is not null && profile.PayslipPasswordEncrypted is null)
+            {
+                profile.PayslipPasswordEncrypted = encrypted;
+                await _db.SaveChangesAsync();
+            }
+        }
+
+        return await _db.EmployeeProfiles.AsNoTracking()
+            .Where(p => p.Id == profileId)
+            .Select(p => p.PayslipPasswordEncrypted)
+            .FirstOrDefaultAsync();
+    }
+
+    public async Task SetPayslipPasswordAsync(string profileId, string encrypted)
+    {
+        var profile = await _db.EmployeeProfiles.FirstOrDefaultAsync(p => p.Id == profileId);
+        if (profile is null) return;
+        profile.PayslipPasswordEncrypted = encrypted;
+        profile.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+    }
+
     public async Task<EmployeeProfile> AddAsync(EmployeeProfile profile)
     {
         var now = DateTime.UtcNow;

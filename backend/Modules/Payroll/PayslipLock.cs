@@ -13,56 +13,39 @@ namespace AltomateHR.Api.Modules.Payroll;
 // Applied to the finished bytes, so PayslipPdf itself never changes.
 public static class PayslipLock
 {
-    // The employee's password under an employee-detail rule. Null when the
-    // field the rule needs is missing — the caller refuses, naming the
-    // person, rather than guessing a password nobody could know.
-    //
-    // RANDOM isn't derived from anything: it's the payslip's own
-    // (Payslip.PdfPasswordEncrypted, made by NewRandomPassword), so this
-    // returns null for it and the caller reads the stored one.
-    public static string? PasswordFor(PayslipPasswordRule rule, string? idNumber, DateTime? dateOfBirth)
+    // What the employee is told opens the file — never the password itself.
+    // One password per person (EmployeeProfile.PayslipPasswordEncrypted).
+    public const string Hint =
+        "your payslip password, shown at the top of your Payslips page in AltomateHR";
+
+    // ─── A password the employee chooses ────────────────────────────────
+
+    public const int MinLength = 8;
+    public const int MaxLength = 64;
+
+    // Why `password` can't be someone's payslip password, or null when it can.
+    // Typed into a PDF viewer on a phone, so: long enough not to be guessed
+    // against a forwarded file offline, short enough to type, and no spaces
+    // at either end that nobody would know were there.
+    public static string? Problem(string? password)
     {
-        switch (rule)
-        {
-            case PayslipPasswordRule.RANDOM:
-                return null;
-
-            case PayslipPasswordRule.DOB_DDMMYYYY:
-                return dateOfBirth?.ToString("ddMMyyyy");
-
-            case PayslipPasswordRule.IC_LAST6:
-            {
-                var id = Normalise(idNumber);
-                return id is null ? null : id.Length <= 6 ? id : id[^6..];
-            }
-
-            default: // IC_DIGITS
-                return Normalise(idNumber);
-        }
+        if (string.IsNullOrEmpty(password) || password.Length < MinLength)
+            return $"Your payslip password must be at least {MinLength} characters.";
+        if (password.Length > MaxLength)
+            return $"Your payslip password can be at most {MaxLength} characters.";
+        if (char.IsWhiteSpace(password[0]) || char.IsWhiteSpace(password[^1]))
+            return "Your payslip password can't start or end with a space.";
+        if (password.Any(char.IsControl))
+            return "Your payslip password can only use letters, numbers, symbols and spaces.";
+        return null;
     }
 
-    // What the employee is told the password is — never the password itself.
-    public static string Hint(PayslipPasswordRule rule) => rule switch
-    {
-        PayslipPasswordRule.IC_LAST6 =>
-            "the last 6 digits of your IC number (or passport number)",
-        PayslipPasswordRule.DOB_DDMMYYYY =>
-            "your date of birth as DDMMYYYY (for example 01011990)",
-        PayslipPasswordRule.RANDOM =>
-            "the password shown next to this payslip on your Payslips page in AltomateHR (each payslip has its own)",
-        _ => "your IC number with no dashes (or your passport number)",
-    };
-
-    // The field an admin must fill in before an employee-detail rule can work.
-    public static string MissingField(PayslipPasswordRule rule) =>
-        rule == PayslipPasswordRule.DOB_DDMMYYYY ? "date of birth" : "IC / passport number";
-
-    // ─── Random passwords (the RANDOM rule) ─────────────────────────────
+    // ─── The random password everyone starts with ──────────────────────
 
     // No look-alikes: no 0/O, 1/I/L — it's read off a screen and typed.
     private const string RandomAlphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
-    // A new random password for one payslip, e.g. "K7PM-X4QR": 8 characters
+    // A new random password for one person, e.g. "K7PM-X4QR": 8 characters
     // from 31 (about 40 bits — far beyond guessing one PDF offline in any
     // useful time), with a dash in the middle so it's easy to read off a
     // screen. The dash is PART of the password: what the employee sees is
@@ -71,15 +54,6 @@ public static class PayslipLock
     {
         var chars = RandomNumberGenerator.GetString(RandomAlphabet, 8);
         return $"{chars[..4]}-{chars[4..]}";
-    }
-
-    // "900101-01-0001" → "900101010001"; a passport keeps its letters,
-    // upper-cased: "a1234 5678" → "A12345678". Null when nothing is left.
-    private static string? Normalise(string? idNumber)
-    {
-        if (string.IsNullOrWhiteSpace(idNumber)) return null;
-        var kept = new string(idNumber.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
-        return kept.Length == 0 ? null : kept;
     }
 
     // The payslip, locked. Opening it needs `password`; printing is allowed,

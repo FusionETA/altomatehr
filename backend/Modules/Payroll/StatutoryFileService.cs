@@ -26,11 +26,9 @@ public class StatutoryFileService : IStatutoryFileService
     // with none, that export is refused (the app always supplies it).
     private readonly IApiKeyService? _apiKeys;
 
-    // For the RANDOM payslip-password rule: each payslip's own password is
-    // stored encrypted, and an admin's look at it is audited. Optional for the
-    // same reason; with no secrets, RANDOM payslips are refused.
-    private readonly Common.ISecretBox? _secrets;
-    private readonly Audit.IAuditService? _audit;
+    // Each person's payslip password, for locking their payslips. Optional for
+    // the same reason; with none, a company that locks payslips is refused.
+    private readonly IPayslipPasswordService? _passwords;
 
     public StatutoryFileService(
         IPayrollRunRepository runs,
@@ -41,12 +39,10 @@ public class StatutoryFileService : IStatutoryFileService
         Common.ICurrentUser currentUser,
         IPayrollSettingsService settings,
         IApiKeyService? apiKeys = null,
-        Common.ISecretBox? secrets = null,
-        Audit.IAuditService? audit = null)
+        IPayslipPasswordService? passwords = null)
     {
         _apiKeys = apiKeys;
-        _secrets = secrets;
-        _audit = audit;
+        _passwords = passwords;
         _runs = runs;
         _payslips = payslips;
         _companyInfo = companyInfo;
@@ -154,11 +150,8 @@ public class StatutoryFileService : IStatutoryFileService
         var settings = await _settings.GetEffectiveAsync();
         if (settings.LockPayslips)
         {
-            var (password, missingField) = await PayslipPasswordAsync(settings, row);
-            if (password is null)
-                return StatutoryFileResult.Refused(missingField
-                    ? NoPayslipPassword(RuleFor(settings, row.Payslip), [row.EmployeeName])
-                    : NoRandomPassword);
+            var password = await PasswordForAsync(row);
+            if (password is null) return StatutoryFileResult.Refused(PayslipPasswordService.Unreadable);
             pdf = PayslipLock.Lock(pdf, password);
         }
 
@@ -166,114 +159,14 @@ public class StatutoryFileService : IStatutoryFileService
             true, PayslipFileName(model, row, preview: IsPreview(model.Run)),
             pdf, PayslipPdf.ContentType, null)
         {
-            PasswordHint = settings.LockPayslips ? PayslipLock.Hint(RuleFor(settings, row.Payslip)) : null,
+            PasswordHint = settings.LockPayslips ? PayslipLock.Hint : null,
         };
     }
 
-    // The rule a payslip is locked with: the one it was FIRST locked with
-    // (Payslip.PdfPasswordRule), else the company's current one. A rule change
-    // never re-locks a payslip already handed out a different way.
-    private static PayslipPasswordRule RuleFor(PayrollSettings settings, Payslip payslip) =>
-        payslip.PdfPasswordRule ?? settings.PayslipPasswordRule;
-
-    // The password that locks this row's payslip. Null with `MissingField`
-    // when the rule needs an IC / date of birth the person hasn't got; null
-    // without it when a RANDOM password can't be made or read on this server.
-    //
-    // The first lock stamps the payslip (StampPdfLockIfNoneAsync) with its
-    // rule — and for RANDOM a password of its own — so every copy after that
-    // opens the same way, whatever the company's rule later becomes.
-    private async Task<(string? Password, bool MissingField)> PayslipPasswordAsync(
-        PayrollSettings settings, StatutoryEmployeeRow row)
-    {
-        var payslip = row.Payslip;
-        var rule = RuleFor(settings, payslip);
-        var stamped = payslip.PdfPasswordRule is not null;
-
-        if (rule == PayslipPasswordRule.RANDOM)
-        {
-            if (_secrets is null) return (null, false);
-            if (stamped) return (_secrets.Decrypt(payslip.PdfPasswordEncrypted), false);
-
-            var made = _secrets.Encrypt(PayslipLock.NewRandomPassword());
-            return await StampAsync(payslip, rule, made)
-                ? (_secrets.Decrypt(payslip.PdfPasswordEncrypted), false)
-                : await PayslipPasswordAsync(settings, row);
-        }
-
-        var derived = PayslipLock.PasswordFor(rule, row.IdNumber, row.DateOfBirth);
-        if (derived is null) return (null, true);
-        if (!stamped && !await StampAsync(payslip, rule, null))
-            return await PayslipPasswordAsync(settings, row);
-        return (derived, false);
-    }
-
-    // Stamps the payslip unless another request already did; true when the
-    // stamp it ends up with is this rule. False means someone else stamped a
-    // different one first — the caller goes again and follows theirs.
-    private async Task<bool> StampAsync(Payslip payslip, PayslipPasswordRule rule, string? encrypted)
-    {
-        var (stampedRule, stampedPassword) = await _payslips.StampPdfLockIfNoneAsync(payslip.Id, rule, encrypted);
-        // The payslip vanished mid-request (a concurrent re-run): lock with
-        // what we have rather than loop.
-        if (stampedRule is null) { payslip.PdfPasswordRule = rule; payslip.PdfPasswordEncrypted = encrypted; return true; }
-        payslip.PdfPasswordRule = stampedRule;
-        payslip.PdfPasswordEncrypted = stampedPassword;
-        return stampedRule == rule;
-    }
-
-    // RANDOM with no way to make or read the password (no secrets key, or one
-    // saved under a key this server no longer has).
-    private const string NoRandomPassword =
-        "This payslip's password can't be read on this server, so it can't be locked. Contact support.";
-
-    // A payslip's RANDOM password, for the employee's Payslips page or a
-    // payroll admin on the run page. Found when the payslip was locked with
-    // RANDOM — whatever the company's rule is now, even with locking since
-    // switched off, so copies already handed out can still be opened — or
-    // when it hasn't been locked yet and the company now locks with RANDOM
-    // (made now, so it matches every file handed out afterwards). `byAdmin`
-    // records the look in the audit log: it opens someone else's payslip.
-    public async Task<PayslipPasswordResult> GetPayslipPasswordAsync(
-        string runId, string employeeProfileId, bool byAdmin)
-    {
-        var settings = await _settings.GetEffectiveAsync();
-
-        var model = await LoadDocumentAsync(runId);
-        var row = model?.Rows.FirstOrDefault(r =>
-            string.Equals(r.Payslip.EmployeeProfileId, employeeProfileId, StringComparison.Ordinal));
-        if (model is null || row is null) return PayslipPasswordResult.NotFound;
-
-        var hasRandom = row.Payslip.PdfPasswordRule == PayslipPasswordRule.RANDOM
-                        || (row.Payslip.PdfPasswordRule is null && settings.LockPayslips
-                            && settings.PayslipPasswordRule == PayslipPasswordRule.RANDOM);
-        if (!hasRandom) return PayslipPasswordResult.NotFound;
-
-        var (password, _) = await PayslipPasswordAsync(settings, row);
-        if (password is null) return new(false, null, NoRandomPassword);
-
-        if (byAdmin && _audit is not null)
-        {
-            await _audit.WriteAsync(new Audit.AuditEvent(
-                Audit.AuditActions.PayrollPayslipPasswordReveal,
-                $"Showed {row.EmployeeName}'s payslip password — {PayrollPeriodLabel.ForRun(model.Run)}",
-                TargetType: "PayrollRun",
-                TargetId: model.Run.Id,
-                Metadata: new { EmployeeName = row.EmployeeName, EmployeeProfileId = employeeProfileId }));
-        }
-
-        return new(true, password, null);
-    }
-
-    // Refused rather than guessed: a password nobody can know locks the
-    // employee out of their own payslip.
-    private static string NoPayslipPassword(PayslipPasswordRule rule, IReadOnlyList<string> names)
-    {
-        var field = PayslipLock.MissingField(rule);
-        return names.Count == 1
-            ? $"Payslips are password-protected with each employee's {field}, and {names[0]} has none. Add it to their profile, then try again."
-            : $"Payslips are password-protected with each employee's {field}. Add it for {string.Join(", ", names)}, then try again.";
-    }
+    // The person's own payslip password (PayslipPasswordService): the same
+    // for every copy of every payslip of theirs, made random the first time.
+    private Task<string?> PasswordForAsync(StatutoryEmployeeRow row) =>
+        _passwords?.ForLockingAsync(row.Payslip.EmployeeProfileId) ?? Task.FromResult<string?>(null);
 
     public async Task<StatutoryFileResult> RenderAllPayslipsZipAsync(string runId)
     {
@@ -297,22 +190,18 @@ public class StatutoryFileService : IStatutoryFileService
                 StringComparer.Ordinal);
 
         // Each payslip in the ZIP is locked with its own employee's password.
-        // Someone the rule has nothing for refuses the whole ZIP, naming them:
-        // a ZIP quietly missing a person reads as complete.
+        // One that can't be read refuses the whole ZIP: a ZIP quietly missing
+        // a person, or holding them unlocked, reads as complete.
         var settings = await _settings.GetEffectiveAsync();
         var passwords = new Dictionary<string, string>(StringComparer.Ordinal);
         if (settings.LockPayslips)
         {
-            var missing = new List<string>();
             foreach (var row in model.Rows)
             {
-                var (password, missingField) = await PayslipPasswordAsync(settings, row);
-                if (password is not null) passwords[row.Payslip.Id] = password;
-                else if (missingField) missing.Add(row.EmployeeName);
-                else return StatutoryFileResult.Refused(NoRandomPassword);
+                var password = await PasswordForAsync(row);
+                if (password is null) return StatutoryFileResult.Refused(PayslipPasswordService.Unreadable);
+                passwords[row.Payslip.Id] = password;
             }
-            if (missing.Count > 0)
-                return StatutoryFileResult.Refused(NoPayslipPassword(settings.PayslipPasswordRule, missing));
         }
 
         // Two employees can sanitise to the same name; the second becomes
@@ -1061,7 +950,6 @@ public class StatutoryFileService : IStatutoryFileService
                            ?? string.Empty,
             IdNumber = profile?.IdNumber,
             IdType = profile?.IdType,
-            DateOfBirth = profile?.DateOfBirth,
             EpfNumber = profile?.EpfNumber,
             SocsoNumber = profile?.SocsoNumber,
             SsfwNumber = profile?.SsfwNumber,

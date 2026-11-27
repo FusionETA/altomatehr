@@ -34,6 +34,20 @@ public interface IEmployeeProfileRepository
     // sign-in reads it to tell a current employer from a former one.
     Task<List<EmployeeProfile>> GetByUserAcrossOrgsAsync(string userId) => Task.FromResult(new List<EmployeeProfile>());
 
+    // One profile in the current org by its id (null if none). Default keeps
+    // hand-written test doubles compiling; the real repository overrides.
+    Task<EmployeeProfile?> GetByIdAsync(string id) => Task.FromResult<EmployeeProfile?>(null);
+
+    // The person's payslip password (EmployeeProfile.PayslipPasswordEncrypted),
+    // for PayslipPasswordService only. Sets it unless one is already set and
+    // returns the one stored now — two first downloads at once then agree on
+    // ONE password. Null when the profile isn't in this org.
+    Task<string?> SetPayslipPasswordIfNoneAsync(string profileId, string encrypted) =>
+        Task.FromResult<string?>(encrypted);
+
+    // Replaces it: the employee's change, or an admin's reset to random.
+    Task SetPayslipPasswordAsync(string profileId, string encrypted) => Task.CompletedTask;
+
     Task<EmployeeProfile> AddAsync(EmployeeProfile profile);
     Task UpdateAsync(EmployeeProfile profile);
 }
