@@ -74,7 +74,7 @@ import {
   formatMinutes,
   formatWorkingDays,
 } from "../lib/attendance-format";
-import { ApprovalTrailExport } from "./ApprovalTrailExport";
+import { HistoryExport } from "./HistoryExport";
 import { ExportButton } from "@/shared/components/ExportButton";
 import { ShiftEditor } from "./ShiftEditor";
 import {
@@ -679,11 +679,11 @@ export function AdminAttendance() {
               downloads nothing is worse than no button. */}
           {tab === "history" ? (
             <div className="shrink-0">
-              <ApprovalTrailExport
+              <HistoryExport
                 from={from}
                 to={to}
                 filter={filter}
-                rowCount={audit.length}
+                auditCount={audit.length}
               />
             </div>
           ) : null}

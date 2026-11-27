@@ -484,6 +484,21 @@ export type ExportFormat = "csv" | "xlsx" | "pdf";
 // The approval trail as a file. Goes through the same reportQuery as the
 // on-screen report, so the export mirrors exactly what the admin is looking at
 // rather than everything.
+// Everyone's daily attendance records plus the hours summary over them, as a
+// file — the History tab's other half. Same endpoint the per-employee PDF uses,
+// left un-narrowed to one person, and sent the same filters as the screen so
+// the server narrows it through the same resolver the reports use.
+export const exportAttendanceRecords = (
+  format: ExportFormat,
+  from: string,
+  to: string,
+  filter: AdminAttendanceFilter = {},
+) =>
+  apiGetFile(
+    `/attendance/export/summary?${reportQuery(from, to, filter)}&format=${format}`,
+    `attendance-${from}-to-${to}.${format}`,
+  );
+
 export const exportApprovalAudit = (
   format: ExportFormat,
   from: string,
