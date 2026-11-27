@@ -56,9 +56,19 @@ public class StatutoryFileService : IStatutoryFileService
     // system dated it off its server clock and that server (Vercel) runs in
     // UTC — so between midnight and 8am Malaysian time it named the file with
     // the previous day, and so does this.
-    public async Task<StatutoryFileResult> RenderEpfCsvAsync(string runId) =>
-        await RenderAsync(runId, payload =>
-            EpfContributionCsv.Render(payload, DateOnly.FromDateTime(DateTime.UtcNow)));
+    //
+    // Line items ride along only so a payslip generated before its EPF wage was
+    // stored can have it rebuilt (PayslipEpfWage).
+    public async Task<StatutoryFileResult> RenderEpfCsvAsync(string runId)
+    {
+        var lineItems = (await _payslips.GetLineItemsForRunAsync(runId))
+            .GroupBy(li => li.PayslipId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<Entities.PayslipLineItem>)g.ToList(),
+                StringComparer.Ordinal);
+
+        return await RenderAsync(runId, payload =>
+            EpfContributionCsv.Render(payload, DateOnly.FromDateTime(DateTime.UtcNow), lineItems));
+    }
 
     public async Task<StatutoryFileResult> RenderPerkesoTxtAsync(string runId) =>
         await RenderAsync(runId, payload => PerkesoContributionTxt.Render(payload, PerkesoLayout.SocsoEis));

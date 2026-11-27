@@ -28,6 +28,7 @@ public class StatutoryFileTests
 
     private static Payslip Payslip(
         decimal gross = 5000m,
+        decimal? epfWage = 5000m,
         decimal epfEmployee = 550m,
         decimal epfEmployer = 650m,
         decimal socsoEmployee = 24.75m,
@@ -46,6 +47,7 @@ public class StatutoryFileTests
         UserId = "usr-1",
         SnapshotName = name,
         GrossPay = gross,
+        EpfWage = epfWage,
         EpfEmployee = epfEmployee,
         EpfEmployer = epfEmployer,
         SocsoEmployee = socsoEmployee,
@@ -138,6 +140,49 @@ public class StatutoryFileTests
         // Contributions are WHOLE ringgit — KWSP's Third Schedule already
         // rounded them up, so the file must not re-decimalise them.
         Assert.Equal("12345678,900101145567,Aisyah Binti Rahman,5000.00,650,550", lines[1]);
+    }
+
+    // Member Wage is the wage EPF was worked out on. Gross carries reimbursed
+    // claims (and OT), which aren't EPF wages — RM 8,993.72 gross against
+    // contributions worked out on RM 8,300 was the reported file.
+    [Fact]
+    public void EpfCsv_MemberWageIsTheEpfWageNotGross()
+    {
+        var lines = Lines(EpfContributionCsv.Render(Payload([
+            Row(payslip: Payslip(gross: 8993.72m, epfWage: 8300m, epfEmployee: 913m, epfEmployer: 996m)),
+        ]), GeneratedOn));
+
+        Assert.Equal("12345678,900101145567,Aisyah Binti Rahman,8300.00,996,913", lines[1]);
+    }
+
+    // A payslip generated before the EPF wage was stored has it rebuilt from
+    // its line items: basic + EPF-able allowances; the claim and the non-EPF
+    // allowance stay out.
+    [Fact]
+    public void EpfCsv_RebuildsTheWageForAPayslipThatPredatesIt()
+    {
+        var payslip = Payslip(gross: 8993.72m, epfWage: null, epfEmployee: 913m, epfEmployer: 996m);
+        payslip.ProratedPay = 8000m;
+
+        PayslipLineItem Line(PayslipLineKind kind, decimal amount, string? category, bool epf) => new()
+        {
+            PayslipId = payslip.Id, Kind = kind, Label = "x", Amount = amount,
+            Category = category, SubjectToEpf = epf,
+        };
+
+        var lineItems = new Dictionary<string, IReadOnlyList<PayslipLineItem>>
+        {
+            [payslip.Id] =
+            [
+                Line(PayslipLineKind.ALLOWANCE, 300m, PayrollAdjustmentCategories.AllowanceStandard, true),
+                Line(PayslipLineKind.ALLOWANCE, 500m, PayrollAdjustmentCategories.AllowanceTravelOfficial, false),
+                Line(PayslipLineKind.REIMBURSEMENT, 193.72m, null, false),
+            ],
+        };
+
+        var lines = Lines(EpfContributionCsv.Render(Payload([Row(payslip: payslip)]), GeneratedOn, lineItems));
+
+        Assert.Equal("12345678,900101145567,Aisyah Binti Rahman,8300.00,996,913", lines[1]);
     }
 
     // i-Akaun rejects a row with no EPF number, so the file omits it rather

@@ -3489,6 +3489,10 @@ namespace AltomateHR.Api.Migrations
                         .HasPrecision(12, 2)
                         .HasColumnType("decimal(12,2)");
 
+                    b.Property<decimal?>("EpfWage")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
                     b.Property<decimal?>("ExpectedHours")
                         .HasPrecision(8, 2)
                         .HasColumnType("decimal(8,2)");

@@ -155,6 +155,15 @@ public class Payslip : ITenantScoped
     [Precision(12, 2)] public decimal SkbbkEmployee { get; set; }
     [Precision(12, 2)] public decimal SkbbkWage { get; set; }
 
+    // The wage EPF was contributed on: basic plus every allowance flagged
+    // subject to EPF, less base-reducing deductions. No overtime (EPF Act 1991
+    // s.2), no reimbursed claims. It is the "Member Wage" KWSP's i-Akaun file
+    // asks for — NOT GrossPay, which carries claims and OT.
+    //
+    // Null on payslips generated before it was stored; PayslipEpfWage rebuilds
+    // those from the snapshotted line items.
+    [Precision(12, 2)] public decimal? EpfWage { get; set; }
+
     [Precision(12, 2)] public decimal Pcb { get; set; }
 
     // Court-ordered tax arrears, held apart from Pcb. The MTD spec's X —
