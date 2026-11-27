@@ -5,8 +5,8 @@ namespace AltomateHR.Api.Modules.Payroll;
 // The wage EPF was contributed on, for a payslip already written.
 //
 // PayslipCalculator stamps it onto `Payslip.EpfWage`, and that stored figure
-// always wins. Payslips generated before the column existed (and imported
-// months) have none, so it is rebuilt from what they DID snapshot: the prorated
+// always wins. Payslips generated before the column existed have none, so it
+// is rebuilt from what they DID snapshot: the prorated
 // basic and each line item's category and subject-to-EPF flag — the same
 // routing PayslipCalculator.RouteAllowance / RouteDeduction applies:
 //
