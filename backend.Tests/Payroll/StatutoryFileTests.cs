@@ -29,6 +29,7 @@ public class StatutoryFileTests
     private static Payslip Payslip(
         decimal gross = 5000m,
         decimal? epfWage = 5000m,
+        decimal? socsoWage = 5000m,
         decimal epfEmployee = 550m,
         decimal epfEmployer = 650m,
         decimal socsoEmployee = 24.75m,
@@ -48,6 +49,7 @@ public class StatutoryFileTests
         SnapshotName = name,
         GrossPay = gross,
         EpfWage = epfWage,
+        SocsoWage = socsoWage,
         EpfEmployee = epfEmployee,
         EpfEmployer = epfEmployer,
         SocsoEmployee = socsoEmployee,
@@ -283,6 +285,52 @@ public class StatutoryFileTests
 
     // Two files, as before: the v1 layout never carries SKBBK, whatever the
     // period — those bytes are filler.
+    [Fact]
+    public void PerkesoTxt_SalaryIsTheSocsoWageNotGross()
+    {
+        // Gross 8,993.72 carries a RM 193.72 claim and a non-SOCSO allowance;
+        // SOCSO/EIS were worked out on 8,300.
+        var payload = Payload([Row(payslip: Payslip(gross: 8993.72m, socsoWage: 8300m))]);
+
+        var line = Assert.Single(Lines(PerkesoContributionTxt.Render(payload, PerkesoLayout.SocsoEis)));
+
+        Assert.Equal("        830000", line[200..214]);
+    }
+
+    // A payslip generated before the SOCSO wage was stored has it rebuilt:
+    // basic + overtime + SOCSO-able allowances; the claim and the non-SOCSO
+    // allowance stay out.
+    [Fact]
+    public void PerkesoTxt_RebuildsTheSalaryForAPayslipThatPredatesIt()
+    {
+        var payslip = Payslip(gross: 9093.72m, socsoWage: null);
+        payslip.ProratedPay = 8000m;
+        payslip.OtPay = 100m;
+
+        PayslipLineItem Line(PayslipLineKind kind, decimal amount, string? category, bool socso) => new()
+        {
+            PayslipId = payslip.Id, Kind = kind, Label = "x", Amount = amount,
+            Category = category, SubjectToSocso = socso,
+        };
+
+        var lineItems = new Dictionary<string, IReadOnlyList<PayslipLineItem>>
+        {
+            [payslip.Id] =
+            [
+                Line(PayslipLineKind.ALLOWANCE, 300m, PayrollAdjustmentCategories.AllowanceStandard, true),
+                Line(PayslipLineKind.ALLOWANCE, 500m, PayrollAdjustmentCategories.AllowanceTravelOfficial, false),
+                Line(PayslipLineKind.REIMBURSEMENT, 193.72m, null, false),
+            ],
+        };
+
+        foreach (var layout in new[] { PerkesoLayout.SocsoEis, PerkesoLayout.SocsoEisSkbbk })
+        {
+            var line = Assert.Single(Lines(PerkesoContributionTxt.Render(
+                Payload([Row(payslip: payslip)]), layout, lineItems)));
+            Assert.Equal("        840000", line[200..214]);
+        }
+    }
+
     [Fact]
     public void PerkesoTxt_V1LayoutLeavesTheSkbbkBytesAsFiller()
     {

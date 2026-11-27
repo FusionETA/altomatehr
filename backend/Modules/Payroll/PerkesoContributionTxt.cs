@@ -11,7 +11,7 @@ namespace AltomateHR.Api.Modules.Payroll;
 //   033-044  IC / foreign-worker number alphanumeric, left,  space-pad
 //   045-194  Employee name              alphanumeric, left,  space-pad
 //   195-200  Contribution month         MMYYYY
-//   201-214  Employee salary            sen, right, space-pad
+//   201-214  Employee salary            sen, right, space-pad   ← the SOCSO wage
 //   215-220  SOCSO employer share       sen, right, space-pad
 //   221-226  SOCSO employee share       sen, right, space-pad
 //   227-232  EIS employer share         sen, right, space-pad
@@ -30,7 +30,11 @@ namespace AltomateHR.Api.Modules.Payroll;
 // WHICH layout is the caller's choice, as in the previous system: both files
 // are offered, because PERKESO accepted either during the Jun–Sep 2026 grace
 // window and admins pick the one their portal account is on. Output — bytes,
-// skip rule and file name — matches the previous system's for each.
+// skip rule and file name — matches the previous system's for each, with ONE
+// deliberate exception: Employee salary is the wage SOCSO/EIS were worked out
+// on (PayslipSocsoWage), not gross pay as v1 wrote it. Gross carries reimbursed
+// claims, which are not wages, so v1's file showed a salary the contributions
+// beside it didn't match.
 public enum PerkesoLayout
 {
     // SOCSO + EIS, spec v1.0. File SOCSO_EIS_MMYYYY.txt.
@@ -45,7 +49,12 @@ public static class PerkesoContributionTxt
 
     private const int RowWidth = 278;
 
-    public static StatutoryFileResult Render(StatutoryRunPayload payload, PerkesoLayout layout)
+    // `lineItems` (by payslip id) is only read for a payslip generated before
+    // its SOCSO wage was stored, to rebuild that wage.
+    public static StatutoryFileResult Render(
+        StatutoryRunPayload payload,
+        PerkesoLayout layout,
+        IReadOnlyDictionary<string, IReadOnlyList<Entities.PayslipLineItem>>? lineItems = null)
     {
         var includeSkbbk = layout == PerkesoLayout.SocsoEisSkbbk;
 
@@ -111,7 +120,7 @@ public static class PerkesoContributionTxt
                 .Append(StatutoryFileFields.PadRight(identification, 12))
                 .Append(StatutoryFileFields.PadRight(row.EmployeeName, 150))
                 .Append(contributionMonth)
-                .Append(Sen(p.GrossPay, 14))
+                .Append(Sen(PayslipSocsoWage.For(p, lineItems?.GetValueOrDefault(p.Id) ?? []), 14))
                 .Append(Sen(p.SocsoEmployer, 6))
                 .Append(Sen(p.SocsoEmployee, 6))
                 .Append(Sen(p.EisEmployer, 6))

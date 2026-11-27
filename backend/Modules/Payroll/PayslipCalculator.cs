@@ -259,6 +259,9 @@ public static class PayslipCalculator
 
         // The wage EPF was contributed on — what the i-Akaun file reports.
         public required decimal EpfWage { get; init; }
+
+        // The wage SOCSO and EIS were contributed on — what the PERKESO file reports.
+        public required decimal SocsoWage { get; init; }
         public required decimal Pcb { get; init; }
         public required decimal PcbNormal { get; init; }
         public required decimal PcbAdditional { get; init; }
@@ -618,6 +621,7 @@ public static class PayslipCalculator
             // readable if PERKESO ever separates them.
             SkbbkWage = socsoWage,
             EpfWage = epfWage,
+            SocsoWage = socsoWage,
             Pcb = pcb,
             PcbNormal = pcbResult.PcbNormal,
             PcbAdditional = pcbResult.PcbAdditional,

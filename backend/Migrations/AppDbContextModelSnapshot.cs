@@ -3650,6 +3650,10 @@ namespace AltomateHR.Api.Migrations
                         .HasPrecision(12, 2)
                         .HasColumnType("decimal(12,2)");
 
+                    b.Property<decimal?>("SocsoWage")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
+
                     b.Property<string>("StatutoryWarnings")
                         .HasMaxLength(300)
                         .HasColumnType("varchar(300)");

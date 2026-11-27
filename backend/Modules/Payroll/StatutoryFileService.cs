@@ -61,20 +61,33 @@ public class StatutoryFileService : IStatutoryFileService
     // stored can have it rebuilt (PayslipEpfWage).
     public async Task<StatutoryFileResult> RenderEpfCsvAsync(string runId)
     {
-        var lineItems = (await _payslips.GetLineItemsForRunAsync(runId))
-            .GroupBy(li => li.PayslipId, StringComparer.Ordinal)
-            .ToDictionary(g => g.Key, g => (IReadOnlyList<Entities.PayslipLineItem>)g.ToList(),
-                StringComparer.Ordinal);
-
+        var lineItems = await LineItemsByPayslipAsync(runId);
         return await RenderAsync(runId, payload =>
             EpfContributionCsv.Render(payload, DateOnly.FromDateTime(DateTime.UtcNow), lineItems));
     }
 
-    public async Task<StatutoryFileResult> RenderPerkesoTxtAsync(string runId) =>
-        await RenderAsync(runId, payload => PerkesoContributionTxt.Render(payload, PerkesoLayout.SocsoEis));
+    // Line items for the same reason: a payslip from before its SOCSO wage was
+    // stored has it rebuilt (PayslipSocsoWage).
+    public async Task<StatutoryFileResult> RenderPerkesoTxtAsync(string runId)
+    {
+        var lineItems = await LineItemsByPayslipAsync(runId);
+        return await RenderAsync(runId, payload =>
+            PerkesoContributionTxt.Render(payload, PerkesoLayout.SocsoEis, lineItems));
+    }
 
-    public async Task<StatutoryFileResult> RenderPerkesoSkbbkTxtAsync(string runId) =>
-        await RenderAsync(runId, payload => PerkesoContributionTxt.Render(payload, PerkesoLayout.SocsoEisSkbbk));
+    public async Task<StatutoryFileResult> RenderPerkesoSkbbkTxtAsync(string runId)
+    {
+        var lineItems = await LineItemsByPayslipAsync(runId);
+        return await RenderAsync(runId, payload =>
+            PerkesoContributionTxt.Render(payload, PerkesoLayout.SocsoEisSkbbk, lineItems));
+    }
+
+    private async Task<IReadOnlyDictionary<string, IReadOnlyList<Entities.PayslipLineItem>>>
+        LineItemsByPayslipAsync(string runId) =>
+        (await _payslips.GetLineItemsForRunAsync(runId))
+            .GroupBy(li => li.PayslipId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<Entities.PayslipLineItem>)g.ToList(),
+                StringComparer.Ordinal);
 
     public async Task<StatutoryFileResult> RenderPcbTxtAsync(string runId) =>
         await RenderAsync(runId, PcbCp39Txt.Render);
