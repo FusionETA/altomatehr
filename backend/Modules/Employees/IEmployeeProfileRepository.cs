@@ -48,6 +48,10 @@ public interface IEmployeeProfileRepository
     // Replaces it: the employee's change, or an admin's reset to random.
     Task SetPayslipPasswordAsync(string profileId, string encrypted) => Task.CompletedTask;
 
+    // Which of these profiles (in the current org) have a payslip password.
+    Task<List<string>> GetIdsWithPayslipPasswordAsync(IReadOnlyCollection<string> profileIds) =>
+        Task.FromResult(new List<string>());
+
     Task<EmployeeProfile> AddAsync(EmployeeProfile profile);
     Task UpdateAsync(EmployeeProfile profile);
 }

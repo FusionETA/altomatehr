@@ -2,6 +2,7 @@ using AltomateHR.Api.Modules.ApiKeys;
 using AltomateHR.Api.Modules.Organizations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace AltomateHR.Api.Modules.Payroll;
 
@@ -86,9 +87,14 @@ public class PayslipsController : ControllerBase
 
     // The caller chooses their own. Every payslip downloaded from now on
     // opens with it; copies they already have keep their old one.
+    //
+    // Rate-limited like /auth/change-password: it refuses the caller's
+    // sign-in password by name, so it answers "is this my sign-in password?"
+    // and must not be walked.
     [HumanOnly]
     [RequireScope("payroll:write")]
     [HttpPut("password")]
+    [EnableRateLimiting("auth-forgot-password")]
     public async Task<IActionResult> ChangePassword(Dtos.ChangePayslipPasswordDto dto)
     {
         var result = await _passwords.ChangeMineAsync(dto.NewPassword);

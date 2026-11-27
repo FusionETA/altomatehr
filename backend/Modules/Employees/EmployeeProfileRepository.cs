@@ -65,11 +65,30 @@ public class EmployeeProfileRepository : IEmployeeProfileRepository
             }
         }
 
-        return await _db.EmployeeProfiles.AsNoTracking()
+        var kept = await _db.EmployeeProfiles.AsNoTracking()
             .Where(p => p.Id == profileId)
             .Select(p => p.PayslipPasswordEncrypted)
             .FirstOrDefaultAsync();
+
+        // ExecuteUpdate bypasses the change tracker. A copy of this profile
+        // already tracked in this request is brought in line as UNCHANGED —
+        // assigning it as a change would let the request's next SaveChanges
+        // write this value back over a password changed meanwhile.
+        if (_db.EmployeeProfiles.Local.FirstOrDefault(p => p.Id == profileId) is { } tracked)
+        {
+            var column = _db.Entry(tracked).Property(p => p.PayslipPasswordEncrypted);
+            column.CurrentValue = kept;
+            column.OriginalValue = kept;
+            column.IsModified = false;
+        }
+        return kept;
     }
+
+    public Task<List<string>> GetIdsWithPayslipPasswordAsync(IReadOnlyCollection<string> profileIds) =>
+        _db.EmployeeProfiles
+            .Where(p => profileIds.Contains(p.Id) && p.PayslipPasswordEncrypted != null)
+            .Select(p => p.Id)
+            .ToListAsync();
 
     public async Task SetPayslipPasswordAsync(string profileId, string encrypted)
     {

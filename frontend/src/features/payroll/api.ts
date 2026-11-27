@@ -78,6 +78,12 @@ export const savePayslipPassword = (lockPayslips: boolean) =>
 export const getPayslipPdfPassword = (runId: string, employeeProfileId: string) =>
   apiGet<{ password: string }>(`/payroll/runs/${runId}/payslips/${employeeProfileId}/pdf-password`);
 
+// Who on a run has a payslip password (profile ids, never the passwords) —
+// for the run's table while locking is off: copies sent while it was on still
+// need one.
+export const getPayslipPasswordHolders = (runId: string) =>
+  apiGet<{ employeeProfileIds: string[] }>(`/payroll/runs/${runId}/payslip-passwords`);
+
 // Replaces it with a new random one — for someone who forgot theirs — and
 // returns it so the admin can pass it on. Audited on the server.
 export const resetPayslipPdfPassword = (runId: string, employeeProfileId: string) =>

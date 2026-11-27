@@ -99,6 +99,15 @@ public class PayslipPasswordService : IPayslipPasswordService
         return result;
     }
 
+    public async Task<IReadOnlyList<string>> HoldersOnRunAsync(string runId)
+    {
+        var onRun = (await _payslips.GetForRunAsync(runId))
+            .Select(p => p.EmployeeProfileId)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        return onRun.Count == 0 ? [] : await _profiles.GetIdsWithPayslipPasswordAsync(onRun);
+    }
+
     public async Task<PayslipPasswordResult> ResetAsync(string runId, string employeeProfileId)
     {
         var profile = await OnRunAsync(runId, employeeProfileId);
@@ -137,8 +146,8 @@ public class PayslipPasswordService : IPayslipPasswordService
 
         if (_secrets.Encrypt(PayslipLock.NewRandomPassword()) is not { } made) return null;
         // Whoever stores first wins; everyone reads back the one that's kept.
+        // The repository keeps any tracked copy of the profile in step.
         var kept = await _profiles.SetPayslipPasswordIfNoneAsync(profile.Id, made) ?? made;
-        profile.PayslipPasswordEncrypted = kept;
         return _secrets.Decrypt(kept);
     }
 

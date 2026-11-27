@@ -710,6 +710,27 @@ public class PayrollRunStateMachineTests : IDisposable
         Assert.Contains(_audit.Written, e => e.Action == AuditActions.PayrollPayslipPasswordReset);
     }
 
+    // With locking switched off, the run's table still has to find whoever
+    // has a password — copies sent while it was on need it — and only them.
+    [Fact]
+    public async Task WhoHasAPassword_IsKnown_EvenWithLockingSwitchedOff()
+    {
+        var aisyah = AddEmployee("usr-1", "Aisyah Binti Rahman");
+        AddEmployee("usr-2", "Ben Tan");
+        (await _db.OrganizationMemberships.SingleAsync(m => m.UserId == "usr-2")).EmployeeNumber = "E-002";
+        await _db.SaveChangesAsync();
+        var run = await SubmittedRunAsync(2026, 1);
+
+        Assert.Empty(await _passwords.HoldersOnRunAsync(run.Id));
+
+        await LockPayslipsAsync();
+        await PayslipAsync(run.Id, aisyah.Id);   // Aisyah's is made; Ben's not yet
+        await LockPayslipsAsync(on: false);
+
+        Assert.Equal([aisyah.Id], await _passwords.HoldersOnRunAsync(run.Id));
+        Assert.True((await _passwords.RevealAsync(run.Id, aisyah.Id)).Ok);
+    }
+
     // From a run's page, only someone on that run.
     [Fact]
     public async Task SomeoneNotOnTheRun_IsNotFound()

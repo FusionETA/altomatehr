@@ -8,6 +8,7 @@ import {
   downloadTp1Form,
   emailPayslip,
   getPayrollSettings,
+  getPayslipPasswordHolders,
   getPayslipPdfPassword,
   resetPayslipPdfPassword,
   type AdjustmentCategory,
@@ -86,6 +87,26 @@ export function PayrollPayslipsTable({
   // show it. Same cache key as Payroll settings.
   const settingsQuery = useCachedQuery("/payroll/settings", getPayrollSettings);
   const locked = settingsQuery.data?.lockPayslips === true;
+  // Locking since switched off: copies sent while it was on still need the
+  // password, so whoever has one keeps a Show button (no Reset).
+  const unlocked = settingsQuery.data?.lockPayslips === false;
+  const holdersQuery = useCachedQuery(
+    unlocked ? `/payroll/runs/${runId}/payslip-passwords` : null,
+    () => getPayslipPasswordHolders(runId),
+  );
+  const holders = useMemo(
+    () => new Set(unlocked ? (holdersQuery.data?.employeeProfileIds ?? []) : []),
+    [unlocked, holdersQuery.data],
+  );
+  const passwordFor = (payslip: Payslip): PasswordActions | undefined =>
+    locked
+      ? {
+          load: () => getPayslipPdfPassword(runId, payslip.employeeProfileId),
+          reset: () => resetPayslipPdfPassword(runId, payslip.employeeProfileId),
+        }
+      : holders.has(payslip.employeeProfileId)
+        ? { load: () => getPayslipPdfPassword(runId, payslip.employeeProfileId) }
+        : undefined;
 
   // Ten rows a page, like the other admin tables — a 19-person run was one
   // very long scroll to reach the totals. The footer and the remittance
@@ -178,6 +199,14 @@ export function PayrollPayslipsTable({
               Show on their row to see it.
             </span>
           </p>
+        ) : holders.size > 0 ? (
+          <p className={`${HINT} flex items-start gap-1.5`}>
+            <LockKeyhole aria-hidden className="mt-px h-3.5 w-3.5 shrink-0" />
+            <span>
+              Payslip passwords are off, but copies sent while they were on still need one — press
+              Show on that employee's row.
+            </span>
+          </p>
         ) : null}
         <SearchInput
           value={query}
@@ -266,14 +295,7 @@ export function PayrollPayslipsTable({
                 // Same gate as emailing: an approved month only.
                 tp1Busy={downloading === `tp1-${payslip.id}`}
                 onTp1={canEmail ? () => void getTp1(payslip) : undefined}
-                password={
-                  locked
-                    ? {
-                        load: () => getPayslipPdfPassword(runId, payslip.employeeProfileId),
-                        reset: () => resetPayslipPdfPassword(runId, payslip.employeeProfileId),
-                      }
-                    : undefined
-                }
+                password={passwordFor(payslip)}
               />
             ))}
           </tbody>
@@ -378,8 +400,8 @@ function Row({
   onTp1?: () => void;
   emailBusy: boolean;
   emailErrorMessage: string | null;
-  // While payslips are locked: the employee's payslip password, to show or
-  // reset to a new random one.
+  // The employee's payslip password: to show, and while payslips are locked
+  // to reset to a new random one.
   password?: PasswordActions;
 }) {
   const hourly = payslip.snapshotSalaryType === "HOURLY";
@@ -620,7 +642,8 @@ const hours = (value: number | null): string =>
 
 type PasswordActions = {
   load: () => Promise<{ password: string }>;
-  reset: () => Promise<{ password: string }>;
+  // Only while payslips are locked.
+  reset?: () => Promise<{ password: string }>;
 };
 
 // The employee's payslip password on their row: Show / Copy, and Reset for
@@ -636,6 +659,7 @@ function AdminPasswordRow({ load, reset, name }: PasswordActions & { name: strin
   const [error, setError] = useState<string | null>(null);
 
   async function resetToRandom() {
+    if (!reset) return;
     const ok = await confirm({
       title: `Reset ${name || "this employee"}'s payslip password?`,
       message:
@@ -664,15 +688,17 @@ function AdminPasswordRow({ load, reset, name }: PasswordActions & { name: strin
         initialPassword={shown.password}
         className="mt-1.5"
       >
-        <PayslipPasswordButton
-          onClick={() => void resetToRandom()}
-          disabled={busy}
-          title="Replace it with a new random password"
-          data-track="payroll.payslip-password-reset"
-        >
-          {busy ? <LoaderCircle aria-hidden className="h-3 w-3 animate-spin" /> : null}
-          Reset
-        </PayslipPasswordButton>
+        {reset ? (
+          <PayslipPasswordButton
+            onClick={() => void resetToRandom()}
+            disabled={busy}
+            title="Replace it with a new random password"
+            data-track="payroll.payslip-password-reset"
+          >
+            {busy ? <LoaderCircle aria-hidden className="h-3 w-3 animate-spin" /> : null}
+            Reset
+          </PayslipPasswordButton>
+        ) : null}
       </PayslipPasswordRow>
       {error ? <p className="mt-1 text-[10px] font-medium text-destructive">{error}</p> : null}
       {confirmDialog}

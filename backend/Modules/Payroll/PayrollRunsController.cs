@@ -309,6 +309,14 @@ public class PayrollRunsController : ControllerBase
     public async Task<IActionResult> PayslipPassword(string id, string employeeProfileId) =>
         PasswordResult(await _passwords.RevealAsync(id, employeeProfileId));
 
+    // Who on this run has a payslip password (profile ids only). The table
+    // uses it while locking is off: copies sent while it was on still need one.
+    [HumanOnly]
+    [RequireScope("payroll:read")]
+    [HttpGet("{id}/payslip-passwords")]
+    public async Task<IActionResult> PayslipPasswordHolders(string id) =>
+        Ok(new { employeeProfileIds = await _passwords.HoldersOnRunAsync(id) });
+
     // Replaces it with a new random one — for someone who forgot theirs and
     // can't reach the portal — and returns it so the admin can pass it on.
     // Copies already handed out keep opening with the old one. Audited.

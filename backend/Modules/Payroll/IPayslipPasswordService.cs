@@ -22,6 +22,11 @@ public interface IPayslipPasswordService
     // A payroll admin, from a run's payslips: someone on that run. Audited.
     Task<PayslipPasswordResult> RevealAsync(string runId, string employeeProfileId);
 
+    // Who on a run already has one (profile ids, never passwords) — so with
+    // locking since switched off, an admin can still find the password that
+    // opens copies sent while it was on.
+    Task<IReadOnlyList<string>> HoldersOnRunAsync(string runId);
+
     // A payroll admin replaces it with a new random one, and is shown it so
     // they can pass it on. Audited.
     Task<PayslipPasswordResult> ResetAsync(string runId, string employeeProfileId);

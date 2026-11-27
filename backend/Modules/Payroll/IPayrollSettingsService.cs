@@ -22,7 +22,8 @@ public interface IPayrollSettingsService
     // Default keeps hand-written test doubles compiling.
     Task SetPayrollStartAsync(int? year, int? month) => Task.CompletedTask;
 
-    // Payslip passwords (PayrollSettings.LockPayslips / PayslipPasswordRule).
+    // Payslip passwords on or off (PayrollSettings.LockPayslips); each
+    // employee's own password is PayslipPasswordService's.
     // Not a payroll input, so drafts aren't marked stale. Default keeps
     // hand-written test doubles compiling.
     // Error is reserved for a refused save (nothing saved); none today.
