@@ -204,7 +204,7 @@ public class AttendanceController : ControllerBase
     public async Task<IActionResult> GetSelfieStorage() =>
         Ok(await _adminAttendance.GetSelfieStorageAsync());
 
-    // GET /attendance/export/summary?from=&to=&teamId=&employeeId=&format=csv|xlsx|pdf
+    // GET /attendance/export/summary?from=&to=&projectId=&teamId=&q=&employeeId=&format=csv|xlsx|pdf
     //
     // Worked-hours summary plus the daily records behind it, and for a single
     // employee a day-by-day calendar of the whole range.
@@ -222,6 +222,8 @@ public class AttendanceController : ControllerBase
         [FromQuery] string? teamId,
         [FromQuery] string? format,
         [FromQuery] string? employeeId,
+        [FromQuery] string? projectId,
+        [FromQuery] string? q,
         [FromQuery] bool mine = false,
         [FromQuery] bool team = false)
     {
@@ -233,10 +235,12 @@ public class AttendanceController : ControllerBase
         {
             employeeId = GetUserId();
             teamId = null;
+            projectId = null;
+            q = null;
         }
 
         var scope = await _attendance.ResolveExportScopeAsync(
-            GetUserId(), User.IsAdministrative(), employeeId, teamId, mine, team);
+            GetUserId(), User.IsAdministrative(), employeeId, teamId, mine, team, projectId, q);
 
         if (!scope.Allowed) return Forbid();
 
@@ -245,8 +249,8 @@ public class AttendanceController : ControllerBase
             return BadRequest(new { message = "'from' must not be after 'to'." });
 
         var result = await _attendance.ExportSummaryAsync(
-            start, end, scope.TeamId, TabularFormats.Parse(format),
-            scope.EmployeeId, scope.EmployeeIds);
+            start, end, TabularFormats.Parse(format),
+            scope.EmployeeId, scope.EmployeeIds, scope.FileSubject);
 
         Response.Headers.CacheControl = "no-store";
         return File(result.Content, result.ContentType, result.FileName);

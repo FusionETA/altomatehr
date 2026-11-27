@@ -111,7 +111,8 @@ public class AttendanceApprovalRegressionTests
             holidays: new FakeHolidayService(),
             xero: new StubXeroForAttendance(),
             leave: new AltomateHR.Api.Tests.Payroll.StubPayrollLeave(),
-            leaveTypes: new FakeLeaveTypeService());
+            leaveTypes: new FakeLeaveTypeService(),
+            scope: new FakeAttendanceScopeService());
 
         // --- Act: employee clocks out. ---
         var result = await service.ClockOutAsync("emp-1", new ClockOutDto { Lat = ClockLat, Lng = ClockLng });
@@ -809,7 +810,8 @@ public class AttendanceApprovalRegressionTests
         FakeAttendanceSessionRepository? sessions = null,
         FakeProjectService? projects = null,
         FakeOrganizationService? organizations = null,
-        FakePolicyService? policies = null) =>
+        FakePolicyService? policies = null,
+        FakeAttendanceScopeService? scope = null) =>
         new(
             repo: repo ?? new FakeAttendanceRepository(records),
             // Sessions derived from the records, exactly as the multi-shift
@@ -836,7 +838,8 @@ public class AttendanceApprovalRegressionTests
             holidays: new FakeHolidayService(),
             xero: new StubXeroForAttendance(),
             leave: new AltomateHR.Api.Tests.Payroll.StubPayrollLeave(),
-            leaveTypes: new FakeLeaveTypeService());
+            leaveTypes: new FakeLeaveTypeService(),
+            scope: scope ?? new FakeAttendanceScopeService());
 
     private sealed class FakeShiftService : IShiftService
     {
@@ -1095,7 +1098,8 @@ public class AttendanceApprovalRegressionTests
             holidays: new FakeHolidayService(),
             xero: new StubXeroForAttendance(),
             leave: new AltomateHR.Api.Tests.Payroll.StubPayrollLeave(),
-            leaveTypes: new FakeLeaveTypeService());
+            leaveTypes: new FakeLeaveTypeService(),
+            scope: new FakeAttendanceScopeService());
 
         return (service, approvals);
     }
@@ -1141,7 +1145,8 @@ public class AttendanceApprovalRegressionTests
             holidays: new FakeHolidayService(),
             xero: new StubXeroForAttendance(),
             leave: new AltomateHR.Api.Tests.Payroll.StubPayrollLeave(),
-            leaveTypes: new FakeLeaveTypeService());
+            leaveTypes: new FakeLeaveTypeService(),
+            scope: new FakeAttendanceScopeService());
     }
 
     [Theory]
@@ -1209,7 +1214,6 @@ public class AttendanceApprovalRegressionTests
         Assert.True(scope.Allowed);
         Assert.Equal(Sup, scope.EmployeeId);
         // A team id smuggled alongside `mine` must not widen it.
-        Assert.Null(scope.TeamId);
         Assert.Null(scope.EmployeeIds);
     }
 
@@ -1287,6 +1291,78 @@ public class AttendanceApprovalRegressionTests
             Sup, isAdmin: false, employeeId: Report, teamId: "team-other", mine: false, team: false);
 
         Assert.False(scope.Allowed);
+    }
+
+    [Fact]
+    public async Task ExportScope_Admin_NarrowsTheOrgByTheScreensFilters()
+    {
+        // The History tab's Export → Attendance records: the file must hold the
+        // people the admin filtered to, through the same resolver the
+        // on-screen reports use.
+        var resolver = new FakeAttendanceScopeService { Result = [Report] };
+        var scope = await BuildService([], scope: resolver).ResolveExportScopeAsync(
+            "usr-admin", isAdmin: true, employeeId: null, teamId: "team-a", mine: false, team: false,
+            projectId: "proj-a", q: "ali");
+
+        Assert.True(scope.Allowed);
+        Assert.Equal(("proj-a", "team-a", "ali"), resolver.LastCall);
+        Assert.Equal([Report], scope.EmployeeIds!.ToArray());
+        Assert.Null(scope.EmployeeId);
+        Assert.Equal("filtered", scope.FileSubject);
+    }
+
+    [Fact]
+    public async Task ExportScope_Admin_AFilterMatchingNobodyExportsNobody()
+    {
+        // Empty is not null: a search with no hits must not fall back to the org.
+        var scope = await BuildService([], scope: new FakeAttendanceScopeService { Result = [] })
+            .ResolveExportScopeAsync(
+                "usr-admin", isAdmin: true, employeeId: null, teamId: null, mine: false, team: false,
+                projectId: null, q: "nobody");
+
+        Assert.True(scope.Allowed);
+        Assert.NotNull(scope.EmployeeIds);
+        Assert.Empty(scope.EmployeeIds!);
+    }
+
+    [Fact]
+    public async Task ExportScope_Admin_UnfilteredIsTheWholeOrg()
+    {
+        var scope = await ScopeService().ResolveExportScopeAsync(
+            "usr-admin", isAdmin: true, employeeId: null, teamId: null, mine: false, team: false);
+
+        Assert.True(scope.Allowed);
+        Assert.Null(scope.EmployeeIds);
+        Assert.Null(scope.EmployeeId);
+    }
+
+    [Fact]
+    public async Task ExportScope_Admin_NamedEmployeeIgnoresTheFilters()
+    {
+        var resolver = new FakeAttendanceScopeService { Result = [] };
+        var scope = await BuildService([], scope: resolver).ResolveExportScopeAsync(
+            "usr-admin", isAdmin: true, employeeId: Report, teamId: "team-a", mine: false, team: false,
+            projectId: "proj-a", q: null);
+
+        Assert.True(scope.Allowed);
+        Assert.Equal(Report, scope.EmployeeId);
+        Assert.Null(scope.EmployeeIds);
+        Assert.Null(resolver.LastCall);
+    }
+
+    // Stands in for the shared project / team / search resolver. Returns a
+    // fixed answer and records what it was asked, so a test can check the
+    // filters reached it unchanged. Null by default: "no filter, everyone".
+    private sealed class FakeAttendanceScopeService : IAttendanceScopeService
+    {
+        public HashSet<string>? Result { get; init; }
+        public (string? ProjectId, string? TeamId, string? Q)? LastCall { get; private set; }
+
+        public Task<HashSet<string>?> ResolveAsync(string? projectId, string? teamId, string? q)
+        {
+            LastCall = (projectId, teamId, q);
+            return Task.FromResult(Result is null ? null : new HashSet<string>(Result, StringComparer.Ordinal));
+        }
     }
 
     // The star of the test: an in-memory approval-request store whose contents

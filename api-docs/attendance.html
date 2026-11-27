@@ -412,14 +412,19 @@
             <tbody>
               <tr><td><code>from</code>, <code>to</code></td><td>date</td><td>Optional. Both missing means the current month. If only one is sent, the other becomes today.</td></tr>
               <tr><td><code>employeeId</code></td><td>string</td><td>Optional. One employee (user id); adds the calendar.</td></tr>
-              <tr><td><code>teamId</code></td><td>string</td><td>Optional. Narrows the summary rows to one team; the daily records listed in the file are not narrowed by team.</td></tr>
+              <tr><td><code>projectId</code></td><td>string</td><td>Optional. Only people in this project. Ignored when <code>employeeId</code> is sent.</td></tr>
+              <tr><td><code>teamId</code></td><td>string</td><td>Optional. Only people in this team. Ignored when <code>employeeId</code> is sent.</td></tr>
+              <tr><td><code>q</code></td><td>string</td><td>Optional. Search text, matched the same way as the other admin attendance reports. Ignored when <code>employeeId</code> is sent.</td></tr>
               <tr><td><code>format</code></td><td>string</td><td><code>csv</code> (default), <code>xlsx</code> or <code>pdf</code>.</td></tr>
               <tr><td><code>mine</code>, <code>team</code></td><td>boolean</td><td>Built for signed-in people. Don't use <code>mine</code> with a key: it means "the caller's own", and a key has no records, so the file is empty. For a key <code>team=true</code> is the same as sending no filter (the whole company).</td></tr>
             </tbody>
           </table>
         </div>
         <h3>Response <code>200</code></h3>
-        <p>The file, named <code>attendance-&lt;all|name&gt;-&lt;from&gt;-to-&lt;to&gt;.&lt;ext&gt;</code>, <code>Cache-Control: no-store</code>.</p>
+        <p>The file, named <code>attendance-&lt;all|filtered|name&gt;-&lt;from&gt;-to-&lt;to&gt;.&lt;ext&gt;</code>, <code>Cache-Control: no-store</code>. <code>all</code> is the whole company, <code>filtered</code> is a <code>projectId</code>/<code>teamId</code>/<code>q</code> selection, and a name is a single <code>employeeId</code>.</p>
+        <div class="callout warn">
+          <p><strong>Filters narrow the whole file.</strong> <code>projectId</code>, <code>teamId</code> and <code>q</code> are combined and resolved to a list of people, and both the summary rows and the daily records are limited to them (previously <code>teamId</code> only narrowed the summary rows). A filter that matches nobody exports no one, not the whole company. With no filters the file covers the whole company. <code>employeeId</code> wins over all three.</p>
+        </div>
         <h3>Errors</h3>
         <p><code>400</code> <code>{ "message": "'from' must not be after 'to'." }</code></p>
 <pre><code>curl "https://&lt;api-host&gt;/attendance/export/summary?from=2026-01-01&amp;to=2026-01-31&amp;employeeId=emp_123&amp;format=pdf" \
