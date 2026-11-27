@@ -7,7 +7,7 @@
   Bookmark: this page is correct as of this commit on main. The next update
   re-checks every user-visible change after it — from any branch — then
   moves it forward.
-  user-guide-covered-up-to: 59b6853
+  user-guide-covered-up-to: 33a5c26
 -->
 <html lang="en">
 <head>
@@ -1402,9 +1402,23 @@
       <li><strong>Analytics</strong> — hours worked against the schedule: normal, expected, beyond shift, approved OT,
         rest day and holiday.</li>
       <li><strong>Performance</strong> — how long each supervisor takes to decide.</li>
-      <li><strong>History</strong> — the approval trail and attendance records, exportable as CSV, XLSX or PDF.</li>
+      <li><strong>History</strong> — the approval trail and the attendance records, each exportable as CSV, XLSX or PDF.</li>
     </ul>
-    <p>Filter by project, team or name, and pick a date range.</p>
+    <p>Filter by project, team or name, and pick a date range. Choosing a project shows the people on that project's
+      teams, and the team filter narrows both History tables.</p>
+    <p>To take History out of the system, press <span class="btn-name">Export</span>, beside the Overview buttons. The menu has
+      two groups: <strong>Attendance records as</strong> and <strong>Approval trail as</strong>, each with
+      <span class="btn-name">CSV</span>, <span class="btn-name">XLSX</span> and <span class="btn-name">PDF</span>. The file
+      uses the date range and the project, team and search you've set on the screen, and a note at the bottom of the menu
+      tells you the range and how many requests it holds.</p>
+    <figure class="shot" data-place="Attendance">
+      <div class="shot-grid" data-orient="screen">
+        <div class="shot-item">
+          <img src="shots/admin/attendance-history-export.png" alt="Attendance → Overview → History with the Export menu open, showing Attendance records as and Approval trail as, each with CSV, XLSX and PDF" loading="lazy">
+        </div>
+      </div>
+      <p class="shot-cap shot-cap-main">The Export menu on History</p>
+    </figure>
     
     <figure class="shot" data-place="Attendance">
       <div class="shot-grid" data-orient="screen">

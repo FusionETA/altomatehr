@@ -72,6 +72,7 @@ public class AttendanceService : IAttendanceService
     private readonly Xero.IXeroFileReader _xero;
     private readonly ILeaveService _leave;
     private readonly ILeaveTypeService _leaveTypes;
+    private readonly IAttendanceScopeService _scope;
 
     private readonly TeamChat.ITeamChatAlerts? _teamChat;
     // An Employee & admin can't import their own attendance from the admin portal.
@@ -100,6 +101,7 @@ public class AttendanceService : IAttendanceService
         Xero.IXeroFileReader xero,
         ILeaveService leave,
         ILeaveTypeService leaveTypes,
+        IAttendanceScopeService scope,
         TeamChat.ITeamChatAlerts? teamChat = null,
         Employees.IOwnRecordRule? ownRecord = null)
     {
@@ -109,6 +111,7 @@ public class AttendanceService : IAttendanceService
         _xero = xero;
         _leave = leave;
         _leaveTypes = leaveTypes;
+        _scope = scope;
         _repo = repo;
         _teams = teams;
         _sessions = sessions;
@@ -1621,9 +1624,10 @@ public class AttendanceService : IAttendanceService
     // Returns null for an admin — no restriction — which the export reads as
     // "do not narrow".
     public async Task<AttendanceExportScope> ResolveExportScopeAsync(
-        string callerId, bool isAdmin, string? employeeId, string? teamId, bool mine, bool team)
+        string callerId, bool isAdmin, string? employeeId, string? teamId, bool mine, bool team,
+        string? projectId = null, string? q = null)
     {
-        if (mine) return new(true, callerId, null, null);
+        if (mine) return new(true, callerId, null);
 
         // Themselves plus anyone reporting to them. Computed once and used
         // both to scope a team export and to judge a single-employee one, so
@@ -1632,29 +1636,44 @@ public class AttendanceService : IAttendanceService
             ? null
             : [callerId, .. await _teams.GetReportEmployeeIdsAsync(callerId)];
 
-        if (team) return new(true, null, permitted, null);
+        if (team) return new(true, null, permitted);
 
-        if (isAdmin) return new(true, employeeId, null, teamId);
+        if (isAdmin)
+        {
+            // One named person is that person, whatever else was filtered.
+            if (employeeId is not null) return new(true, employeeId, null);
+
+            // Otherwise the same project / team / search narrowing the admin
+            // screen uses, through the one shared resolver — so the file holds
+            // exactly the people the History tab was showing. Resolved to ids
+            // rather than passed on as a team id: a team id only ever narrowed
+            // the summary sheet, and the record list under it still carried
+            // the whole org.
+            var ids = await _scope.ResolveAsync(projectId, teamId, q);
+            return new(true, null, ids, ids is null ? null : "filtered");
+        }
 
         // A non-admin naming someone: allowed only inside their own set, and
         // only when they aren't also asking for a team they can't be checked
         // against.
         var named = employeeId is not null && teamId is null && permitted!.Contains(employeeId);
-        return named ? new(true, employeeId, null, null) : new(false, null, null, null);
+        return named ? new(true, employeeId, null) : new(false, null, null);
     }
 
     public async Task<TabularExportResult> ExportSummaryAsync(
-        DateTime from, DateTime to, string? teamId, TabularFormat format,
+        DateTime from, DateTime to, TabularFormat format,
         string? employeeId = null,
-        // A supervisor's reports. Narrower than the org, wider than one
-        // person — so the calendar stays off and the record list carries it.
-        IReadOnlyCollection<string>? employeeIds = null)
+        // A supervisor's reports, or an admin's filters. Narrower than the org,
+        // wider than one person — so the calendar stays off and the record
+        // list carries it.
+        IReadOnlyCollection<string>? employeeIds = null,
+        string? subjectLabel = null)
     {
         var start = from.Date;
         var end = to.Date;
 
         var employees = await _employees.GetSnapshotAsync();
-        var summary = await _hours.GetOrgHoursSummaryAsync(start, end, teamId);
+        var summary = await _hours.GetOrgHoursSummaryAsync(start, end, null);
 
         if (employeeId is not null)
             summary = NarrowToEmployee(summary, employeeId);
@@ -1731,7 +1750,7 @@ public class AttendanceService : IAttendanceService
         // you have to open one by one.
         var subject = employeeId is not null
             ? Slug(employees.NameOf(employeeId))
-            : employeeIds is not null ? "team" : "all";
+            : employeeIds is not null ? (subjectLabel ?? "team") : "all";
 
         var fileName = $"attendance-{subject}-{start:yyyy-MM-dd}-to-{end:yyyy-MM-dd}";
         if (format != TabularFormat.Pdf) return TabularExportResult.From(sheets, format, fileName);
